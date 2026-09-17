@@ -1,0 +1,23 @@
+[versions]
+assertj = "3.27.7"
+junit = "5.14.1"
+zelqro = "1.0.3"
+
+foojay = "1.0.0"
+lombok = "9.5.0"
+moddev = "2.0.147"
+modpublisher = "2.2.2"
+
+[libraries]
+assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+zelqro = { module = "dev.satherov:zelqro", version.ref = "zelqro" }
+
+[plugins]
+foojay = { id = "org.gradle.toolchains.foojay-resolver-convention", version.ref = "foojay" }
+lombok = { id = "io.freefair.lombok", version.ref = "lombok" }
+moddev = { id = "net.neoforged.moddev" }
+moddev-repositories = { id = "net.neoforged.moddev.repositories", version.ref = "moddev" }
+modpublisher = { id = "com.hypherionmc.modutils.modpublisher", version.ref = "modpublisher" }
