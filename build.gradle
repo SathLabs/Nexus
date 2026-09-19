@@ -82,6 +82,7 @@ neoForge {
             gameDirectory = file('runs/gametest')
             systemProperty 'neoforge.enableGameTest', 'true'
             programArguments.addAll '--report', gametestReport.absolutePath
+            systemProperty 'nexus.gametest.report', gametestReport.absolutePath
 
             def selector = project.hasProperty('tests') ? project.property('tests').toString() : ''
             if (!selector.isEmpty()) {
@@ -93,6 +94,11 @@ neoForge {
             if (project.hasProperty('realtime')) {
                 def realtime = project.property('realtime').toString()
                 systemProperty 'nexus.gametest.realtime', realtime.isEmpty() ? 'true' : realtime
+            }
+
+            def compare = project.hasProperty('compare') ? project.property('compare').toString() : ''
+            if (!compare.isEmpty()) {
+                systemProperty 'nexus.gametest.compare', file(compare).absolutePath
             }
         }
 
@@ -153,8 +159,41 @@ dependencies {
 tasks.named('runGameTestServer', JavaExec) {
     def reports = gametestReport.parentFile
 
+    // The windows TickWindowSamples declares, and the baseline of the run, which is as long as the longest of them.
+    def windows = [
+            'nexus/tick_window_samples/window.json'         : 7,
+            'nexus/tick_window_samples/profiled_window.json': 3,
+            'nexus_gametest/baseline.json'                  : 7,
+    ]
+    def profile = 'nexus/tick_window_samples/profiled_window.txt'
+    def selected = project.hasProperty('tests')
+
     doFirst {
         reports.mkdirs()
+        windows.keySet().each { new File(reports, it).delete() }
+        new File(reports, profile).delete()
+    }
+
+    doLast {
+        if (selected) {
+            return
+        }
+
+        windows.each { path, window ->
+            def file = new File(reports, path)
+            if (!file.isFile()) {
+                throw new GradleException("the run wrote no measurement to ${path}")
+            }
+
+            def nanos = new groovy.json.JsonSlurper().parse(file).nanos
+            if (nanos.size() != window) {
+                throw new GradleException("${path} holds ${nanos.size()} samples, and not the ${window} of its window")
+            }
+        }
+
+        if (!new File(reports, profile).isFile()) {
+            throw new GradleException("the run wrote no profiler breakdown to ${profile}")
+        }
     }
 }
 

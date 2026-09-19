@@ -6,6 +6,7 @@ import dev.satherov.nexus.gametest.api.client.Client;
 import dev.satherov.nexus.gametest.api.client.ClientTest;
 import dev.satherov.nexus.gametest.api.measurement.Measured;
 import dev.satherov.nexus.gametest.api.server.ServerTest;
+import dev.satherov.nexus.gametest.internal.server.TickWindow;
 
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforgespi.language.IModInfo;
@@ -109,6 +110,7 @@ public sealed interface Discovered {
 
         return switch (test) {
             case ServerTest server when server.maxTicks() <= 0 -> "ServerTest#maxTicks is not positive";
+            case ServerTest server when measured != null && server.maxTicks() < measured.value() + TickWindow.OVERHEAD -> "ServerTest#maxTicks is too short for Measured#value";
             case ServerTest server when server.setupTicks() < 0 -> "ServerTest#setupTicks is negative";
             case ServerTest server when Identifier.tryParse(server.structure()) == null -> "ServerTest#structure is not an id";
             case ClientTest client when client.maxFrames() <= 0 -> "ClientTest#maxFrames is not positive";

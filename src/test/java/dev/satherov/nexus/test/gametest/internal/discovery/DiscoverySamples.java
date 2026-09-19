@@ -17,9 +17,7 @@ public class DiscoverySamples {
 
     @Measured(5)
     @ServerTest
-    public static void measured(GameTestHelper helper) {
-        helper.succeed();
-    }
+    public static void measured(GameTestHelper helper) { }
 
     @ClientTest
     public static void client(Client client) { }
@@ -50,6 +48,10 @@ public class DiscoverySamples {
     @Measured(0)
     @ServerTest(required = false)
     public static void emptyWindow(GameTestHelper helper) { }
+
+    @Measured(5)
+    @ServerTest(maxTicks = 6, required = false)
+    public static void windowOverrunsTicks(GameTestHelper helper) { }
 
     @ServerTest(required = false)
     public static void sameId(GameTestHelper helper) { }

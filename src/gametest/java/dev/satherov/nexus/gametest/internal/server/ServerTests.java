@@ -5,10 +5,12 @@ import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.gametest.api.server.ServerTest;
 import dev.satherov.nexus.gametest.internal.discovery.Discovered;
+import dev.satherov.nexus.gametest.internal.measurement.Measurements;
 import dev.satherov.nexus.gametest.internal.option.RunOptions;
 
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.common.util.Lazy;
 import net.neoforged.neoforge.event.RegisterGameTestsEvent;
 import net.neoforged.neoforge.registries.RegisterEvent;
 
@@ -35,55 +37,77 @@ import java.util.function.Consumer;
 @EventBusSubscriber(modid = "nexus_gametest")
 public class ServerTests {
 
-    /// The empty environment every server test runs in.
+    /// The empty environment every unmeasured server test runs in.
     private static final Identifier ENVIRONMENT = Identifier.fromNamespaceAndPath("nexus_gametest", "default");
 
-    /// Registers the function of every selected test.
+    /// Every discovered test the run selects, the invalid ones included.
+    private static final Lazy<List<Discovered>> TESTS = Lazy.of(ServerTests::selected);
+
+    /// The measurements of the run, shared by every window it registers.
+    private static final Lazy<Measurements> MEASUREMENTS = Lazy.of(ServerTests::measurements);
+
+    /// Registers the function of every selected test, and the baseline where the run writes one.
     @SubscribeEvent
     public static void onRegister(RegisterEvent event) {
         event.register(Registries.TEST_FUNCTION, functions -> {
-            for (Discovered test : ServerTests.selected()) {
+            for (Discovered test : ServerTests.TESTS.get()) {
                 functions.register(test.id(), ServerTests.function(test));
+            }
+
+            if (ServerTests.hasBaseline()) {
+                functions.register(Measurements.BASELINE, TickWindow.baseline(ServerTests.MEASUREMENTS.get()));
             }
         });
     }
 
-    /// Registers every selected test against the function of the same id.
-    @SubscribeEvent
-    public static void onRegisterTests(RegisterGameTestsEvent event) {
-        Holder<TestEnvironmentDefinition<?>> environment = event.registerEnvironment(ServerTests.ENVIRONMENT);
-
-        for (Discovered test : ServerTests.selected()) {
-            ResourceKey<Consumer<GameTestHelper>> function = ResourceKey.create(Registries.TEST_FUNCTION, test.id());
-            event.registerTest(test.id(), new FunctionGameTestInstance(function, ServerTests.data(test, environment)));
-        }
-    }
-
-    /// Every discovered test the run selects, the invalid ones included.
-    private static List<Discovered> selected() {
-        RunOptions options = RunOptions.fromProperties();
-        return Discovered.all(ServerTest.class)
-                .stream()
-                .filter(test -> options.selects(test.id()))
-                .toList();
-    }
-
-    /// The discovered method for a valid test, a failure with the reason for an invalid one.
+    /// The window of a measured test, the discovered method of a plain one, a failure with the reason of an invalid one.
     private static Consumer<GameTestHelper> function(Discovered test) {
         return switch (test) {
+            case Discovered.Valid valid when ServerTests.isMeasured(valid) -> new TickWindow(valid, ServerTests.MEASUREMENTS.get());
             case Discovered.Valid(_, Method method, _, _) -> helper -> ServerTests.invoke(method, helper);
             case Discovered.Invalid(_, String reason, _) -> helper -> helper.fail(reason);
         };
     }
 
-    /// Unwraps the failure of the test, so the report names it and not the reflective call.
+    /// Calls the method of the test, unwrapping its failure so the report names it and not the reflective call.
     @SneakyThrows
-    private static void invoke(Method method, GameTestHelper helper) {
+    public static void invoke(Method method, GameTestHelper helper) {
         try {
             method.invoke(null, helper);
         } catch (InvocationTargetException failure) {
             throw failure.getCause();
         }
+    }
+
+    /// Registers every selected test against the function of the same id, and the baseline where the run writes one.
+    @SubscribeEvent
+    public static void onRegisterTests(RegisterGameTestsEvent event) {
+        Holder<TestEnvironmentDefinition<?>> shared = event.registerEnvironment(ServerTests.ENVIRONMENT);
+
+        for (Discovered test : ServerTests.TESTS.get()) {
+            // An environment of its own has vanilla batch the test alone, so its window holds no other test's cost.
+            Holder<TestEnvironmentDefinition<?>> environment = ServerTests.isMeasured(test) ? event.registerEnvironment(test.id()) : shared;
+            ServerTests.registerTest(event, test.id(), ServerTests.data(test, environment));
+        }
+
+        if (ServerTests.hasBaseline()) {
+            int window = ServerTests.MEASUREMENTS.get().baselineLength();
+            TestData<Holder<TestEnvironmentDefinition<?>>> data = new TestData<>(
+                    event.registerEnvironment(Measurements.BASELINE),
+                    Identifier.parse(ServerTest.DEFAULT_STRUCTURE),
+                    window + TickWindow.OVERHEAD,
+                    0,
+                    false
+            );
+
+            ServerTests.registerTest(event, Measurements.BASELINE, data);
+        }
+    }
+
+    /// Registers the instance of the id against the function registered under it.
+    private static void registerTest(RegisterGameTestsEvent event, Identifier id, TestData<Holder<TestEnvironmentDefinition<?>>> data) {
+        ResourceKey<Consumer<GameTestHelper>> function = ResourceKey.create(Registries.TEST_FUNCTION, id);
+        event.registerTest(id, new FunctionGameTestInstance(function, data));
     }
 
     /// The annotation's data for a valid test, one tick in the default structure for an invalid one.
@@ -105,5 +129,30 @@ public class ServerTests {
         }
 
         return new TestData<>(environment, Identifier.parse(ServerTest.DEFAULT_STRUCTURE), 1, 0, test.required());
+    }
+
+    /// If the test records a window of its own.
+    private static boolean isMeasured(Discovered test) {
+        return test instanceof Discovered.Valid valid && valid.measured() != null;
+    }
+
+    /// If the run writes a baseline: it takes a measured test for the baseline to be compared against.
+    private static boolean hasBaseline() {
+        return ServerTests.MEASUREMENTS.get().baselineLength() > 0;
+    }
+
+    /// Every discovered test the run selects, the invalid ones included.
+    private static List<Discovered> selected() {
+        RunOptions options = RunOptions.fromProperties();
+        return Discovered.all(ServerTest.class)
+                .stream()
+                .filter(test -> options.selects(test.id()))
+                .toList();
+    }
+
+    /// The measurements of the run, written next to its report.
+    private static Measurements measurements() {
+        RunOptions options = RunOptions.fromProperties();
+        return new Measurements(options.report().toAbsolutePath().getParent(), options.compare(), ServerTests.TESTS.get());
     }
 }
