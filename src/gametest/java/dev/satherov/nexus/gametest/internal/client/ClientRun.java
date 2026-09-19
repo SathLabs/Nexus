@@ -70,6 +70,9 @@ public class ClientRun {
     /// @return The required tests that failed.
     ///
     private static int runTests(Minecraft minecraft, RunOptions options, TestReport report) {
+        // A window the operator clicks away from opens the pause screen a frame later: no script clicks it away, and a paused game stops ticking the server.
+        minecraft.options.pauseOnLostFocus = false;
+
         Pump pump = new Pump(minecraft, options.realtime());
         List<Discovered> tests = Discovered.all(ClientTest.class)
                 .stream()
@@ -119,10 +122,7 @@ public class ClientRun {
 
         try {
             switch (test) {
-                case Discovered.Valid valid -> {
-                    ClientTest annotation = (ClientTest) valid.annotation();
-                    valid.invoke(new Client(minecraft, annotation.maxFrames(), pump::frame));
-                }
+                case Discovered.Valid valid -> ClientRun.invoke(valid, minecraft, pump);
                 case Discovered.Invalid(_, String reason, _) -> throw new AssertionError(reason);
             }
         } catch (Throwable failure) {
@@ -133,6 +133,33 @@ public class ClientRun {
 
         report.passed(test.id(), ClientRun.millis(started));
         return true;
+    }
+
+    ///
+    /// Invokes the test with a client of its own, and takes back what the script still holds however the test ends.
+    ///
+    private static void invoke(Discovered.Valid test, Minecraft minecraft, Pump pump) {
+        ClientTest annotation = (ClientTest) test.annotation();
+        Client client = new Client(minecraft, annotation.maxFrames(), pump::frame);
+
+        try {
+            test.invoke(client);
+        } finally {
+            ClientRun.release("the keys it held", client.keyboard()::releaseAll);
+            ClientRun.release("the buttons it held", client.mouse()::releaseAll);
+            ClientRun.release("the world it was in", client::leaveWorld);
+        }
+    }
+
+    ///
+    /// Takes back one thing the script held, logging a failure of that instead of throwing it, so the test's own failure stays the one reported.
+    ///
+    private static void release(String what, Runnable release) {
+        try {
+            release.run();
+        } catch (Throwable failure) {
+            ClientRun.log.error("the client test did not give up {}", what, failure);
+        }
     }
 
     ///

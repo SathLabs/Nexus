@@ -8,9 +8,11 @@
   "client": [
     "DeltaTrackerTimerMixin",
     "FramerateLimiterMixin",
+    "KeyboardHandlerAccess",
     "MinecraftAccess",
     "MinecraftMixin",
     "MinecraftServerMixin",
+    "MouseHandlerAccess",
     "WindowMixin"
   ],
   "injectors": {
