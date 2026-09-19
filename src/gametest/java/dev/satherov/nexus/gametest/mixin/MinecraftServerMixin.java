@@ -37,7 +37,7 @@ public abstract class MinecraftServerMixin extends ReentrantBlockableEventLoop<T
     ///
     @Inject(method = "waitUntilNextTick", at = @At("HEAD"), cancellable = true)
     private void waitForReleasedTick(CallbackInfo callback) {
-        Pump pump = Pump.accelerated();
+        Pump pump = Pump.getAccelerated();
         if (pump == null || !pump.isLockstepped((MinecraftServer) (Object) this)) {
             return;
         }

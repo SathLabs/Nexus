@@ -74,7 +74,7 @@ public final class Pump {
     ///
     /// The pump of the run that owns the clock, or `null` if the run goes at the normal rate or no run is active.
     ///
-    public static @Nullable Pump accelerated() {
+    public static @Nullable Pump getAccelerated() {
         return Pump.accelerated;
     }
 

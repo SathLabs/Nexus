@@ -26,7 +26,7 @@ public abstract class DeltaTrackerTimerMixin {
     ///
     @Inject(method = "advanceGameTime", at = @At("HEAD"), cancellable = true)
     private void advanceOneTick(long currentMs, CallbackInfoReturnable<Integer> callback) {
-        if (Pump.accelerated() == null) {
+        if (Pump.getAccelerated() == null) {
             return;
         }
 

@@ -20,7 +20,7 @@ public abstract class FramerateLimiterMixin {
     ///
     @Inject(method = "limitDisplayFPS", at = @At("HEAD"), cancellable = true)
     private static void skipFrameCap(int framerateLimit, CallbackInfo callback) {
-        if (Pump.accelerated() != null) {
+        if (Pump.getAccelerated() != null) {
             callback.cancel();
         }
     }
