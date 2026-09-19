@@ -68,6 +68,7 @@ public class DiscoveredTest {
         Assertions.assertThat(DiscoveredTest.SERVER.get(DiscoveredTest.sample("wrong_parameter"))).isEqualTo(new Discovered.Invalid(DiscoveredTest.sample("wrong_parameter"), "parameter is not a single GameTestHelper", false));
         Assertions.assertThat(DiscoveredTest.SERVER.get(DiscoveredTest.sample("no_ticks"))).isEqualTo(new Discovered.Invalid(DiscoveredTest.sample("no_ticks"), "ServerTest#maxTicks is not positive", false));
         Assertions.assertThat(DiscoveredTest.SERVER.get(DiscoveredTest.sample("negative_setup"))).isEqualTo(new Discovered.Invalid(DiscoveredTest.sample("negative_setup"), "ServerTest#setupTicks is negative", false));
+        Assertions.assertThat(DiscoveredTest.SERVER.get(DiscoveredTest.sample("wrong_structure"))).isEqualTo(new Discovered.Invalid(DiscoveredTest.sample("wrong_structure"), "ServerTest#structure is not an id", false));
         Assertions.assertThat(DiscoveredTest.SERVER.get(DiscoveredTest.sample("empty_window"))).isEqualTo(new Discovered.Invalid(DiscoveredTest.sample("empty_window"), "Measured#value is not positive", false));
         Assertions.assertThat(DiscoveredTest.SERVER.get(DiscoveredTest.sample("same_id"))).isEqualTo(new Discovered.Invalid(DiscoveredTest.sample("same_id"), "declared twice", false));
         Assertions.assertThat(DiscoveredTest.CLIENT.get(DiscoveredTest.sample("no_frames"))).isEqualTo(new Discovered.Invalid(DiscoveredTest.sample("no_frames"), "ClientTest#maxFrames is not positive", false));

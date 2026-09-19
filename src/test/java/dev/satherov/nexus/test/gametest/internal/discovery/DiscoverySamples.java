@@ -44,6 +44,9 @@ public class DiscoverySamples {
     @ServerTest(setupTicks = -1, required = false)
     public static void negativeSetup(GameTestHelper helper) { }
 
+    @ServerTest(structure = "My Structure", required = false)
+    public static void wrongStructure(GameTestHelper helper) { }
+
     @Measured(0)
     @ServerTest(required = false)
     public static void emptyWindow(GameTestHelper helper) { }

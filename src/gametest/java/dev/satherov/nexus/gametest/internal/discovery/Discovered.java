@@ -110,6 +110,7 @@ public sealed interface Discovered {
         return switch (test) {
             case ServerTest server when server.maxTicks() <= 0 -> "ServerTest#maxTicks is not positive";
             case ServerTest server when server.setupTicks() < 0 -> "ServerTest#setupTicks is negative";
+            case ServerTest server when Identifier.tryParse(server.structure()) == null -> "ServerTest#structure is not an id";
             case ClientTest client when client.maxFrames() <= 0 -> "ClientTest#maxFrames is not positive";
             default -> null;
         };

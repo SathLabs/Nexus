@@ -27,7 +27,7 @@ java {
 sourceSets {
     gametest {
         compileClasspath += sourceSets.main.output
-        runtimeClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output + sourceSets.test.output
     }
 }
 
@@ -82,6 +82,18 @@ neoForge {
             gameDirectory = file('runs/gametest')
             systemProperty 'neoforge.enableGameTest', 'true'
             programArguments.addAll '--report', gametestReport.absolutePath
+
+            def selector = project.hasProperty('tests') ? project.property('tests').toString() : ''
+            if (!selector.isEmpty()) {
+                def namespaced = selector.contains(':') ? selector : '*:' + selector
+                programArguments.addAll '--tests', namespaced
+                systemProperty 'nexus.gametest.tests', namespaced
+            }
+
+            if (project.hasProperty('realtime')) {
+                def realtime = project.property('realtime').toString()
+                systemProperty 'nexus.gametest.realtime', realtime.isEmpty() ? 'true' : realtime
+            }
         }
 
         data {
