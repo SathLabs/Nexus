@@ -48,7 +48,8 @@ configurations {
     testCompileOnly.extendsFrom compileOnly
 }
 
-def gametestReport = layout.buildDirectory.file('reports/gametest/server.xml').get().asFile
+def gametestServerReport = layout.buildDirectory.file('reports/gametest/server.xml').get().asFile
+def gametestClientReport = layout.buildDirectory.file('reports/gametest/client.xml').get().asFile
 
 neoForge {
     version = neo_version
@@ -81,8 +82,8 @@ neoForge {
             type = 'gameTestServer'
             gameDirectory = file('runs/gametest')
             systemProperty 'neoforge.enableGameTest', 'true'
-            programArguments.addAll '--report', gametestReport.absolutePath
-            systemProperty 'nexus.gametest.report', gametestReport.absolutePath
+            programArguments.addAll '--report', gametestServerReport.absolutePath
+            systemProperty 'nexus.gametest.report', gametestServerReport.absolutePath
 
             def selector = project.hasProperty('tests') ? project.property('tests').toString() : ''
             if (!selector.isEmpty()) {
@@ -99,6 +100,27 @@ neoForge {
             def compare = project.hasProperty('compare') ? project.property('compare').toString() : ''
             if (!compare.isEmpty()) {
                 systemProperty 'nexus.gametest.compare', file(compare).absolutePath
+            }
+        }
+
+        gameTestClient {
+            client()
+            gameDirectory = file('runs/gametest-client')
+            systemProperty 'nexus.gametest.report', gametestClientReport.absolutePath
+
+            def selector = project.hasProperty('tests') ? project.property('tests').toString() : ''
+            if (!selector.isEmpty()) {
+                systemProperty 'nexus.gametest.tests', selector.contains(':') ? selector : '*:' + selector
+            }
+
+            if (project.hasProperty('realtime')) {
+                def realtime = project.property('realtime').toString()
+                systemProperty 'nexus.gametest.realtime', realtime.isEmpty() ? 'true' : realtime
+            }
+
+            if (project.hasProperty('show')) {
+                def show = project.property('show').toString()
+                systemProperty 'nexus.gametest.show', show.isEmpty() ? 'true' : show
             }
         }
 
@@ -157,7 +179,7 @@ dependencies {
 }
 
 tasks.named('runGameTestServer', JavaExec) {
-    def reports = gametestReport.parentFile
+    def reports = gametestServerReport.parentFile
 
     // The windows TickWindowSamples declares, and the baseline of the run, which is as long as the longest of them.
     def windows = [
@@ -193,6 +215,79 @@ tasks.named('runGameTestServer', JavaExec) {
 
         if (!new File(reports, profile).isFile()) {
             throw new GradleException("the run wrote no profiler breakdown to ${profile}")
+        }
+    }
+}
+
+// The pid of the virtual screen a -Pxvfb run draws into, so the finalizer stops it however the run ended.
+def xvfbPid = layout.buildDirectory.file('tmp/xvfb.pid').get().asFile
+
+def stopXvfb = tasks.register('stopXvfb') {
+    description = 'Stops the virtual screen a client test run was given.'
+
+    doLast {
+        if (xvfbPid.isFile()) {
+            ProcessHandle.of(xvfbPid.text.trim() as long).ifPresent { screen -> screen.destroy() }
+            xvfbPid.delete()
+        }
+    }
+}
+
+tasks.named('runGameTestClient', JavaExec) {
+    def fmlConfig = file('runs/gametest-client/config/fml.toml')
+    def xvfb = project.hasProperty('xvfb')
+
+    if (xvfb) {
+        finalizedBy stopXvfb
+    }
+
+    doFirst {
+        gametestClientReport.parentFile.mkdirs()
+        gametestClientReport.delete()
+
+        // FML's early loading screen opens a window before any mixin can hide it; every other key of the file is FML's own.
+        def control = 'earlyWindowControl = false'
+        def lines = fmlConfig.isFile() ? fmlConfig.readLines() : []
+        def existing = lines.findIndexOf { line -> line.trim().startsWith('earlyWindowControl') }
+        if (existing < 0) {
+            lines.add(control)
+        } else {
+            lines.set(existing, control)
+        }
+
+        fmlConfig.parentFile.mkdirs()
+        fmlConfig.text = lines.join('\n') + '\n'
+
+        if (!xvfb) {
+            return
+        }
+
+        def display = (99..198).find { number -> !new File('/tmp/.X11-unix/X' + number).exists() }
+        if (display == null) {
+            throw new GradleException('every display from :99 to :198 is taken')
+        }
+
+        def screen = new ProcessBuilder('/usr/bin/Xvfb', ':' + display, '-screen', '0', '1920x1080x24').inheritIO().start()
+        xvfbPid.parentFile.mkdirs()
+        xvfbPid.text = String.valueOf(screen.pid())
+
+        // The client opens the display as it starts, so the run waits for the socket Xvfb puts up.
+        def socket = new File('/tmp/.X11-unix/X' + display)
+        def deadline = System.currentTimeMillis() + 10_000
+        while (!socket.exists()) {
+            if (!screen.isAlive() || System.currentTimeMillis() > deadline) {
+                throw new GradleException('Xvfb never came up on :' + display)
+            }
+
+            Thread.sleep(50L)
+        }
+
+        it.environment 'DISPLAY', ':' + display
+    }
+
+    doLast {
+        if (!gametestClientReport.isFile()) {
+            throw new GradleException('the run wrote no report to ' + gametestClientReport)
         }
     }
 }

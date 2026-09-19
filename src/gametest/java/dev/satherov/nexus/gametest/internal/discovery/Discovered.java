@@ -6,7 +6,6 @@ import dev.satherov.nexus.gametest.api.client.Client;
 import dev.satherov.nexus.gametest.api.client.ClientTest;
 import dev.satherov.nexus.gametest.api.measurement.Measured;
 import dev.satherov.nexus.gametest.api.server.ServerTest;
-import dev.satherov.nexus.gametest.internal.server.TickWindow;
 
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforgespi.language.IModInfo;
@@ -21,6 +20,7 @@ import org.objectweb.asm.Type;
 
 import java.lang.annotation.Annotation;
 import java.lang.annotation.ElementType;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.List;
@@ -34,6 +34,11 @@ import java.util.TreeMap;
 ///
 @ApiStatus.Internal
 public sealed interface Discovered {
+
+    ///
+    /// The ticks a measured window costs beside its samples; internal.server.TickWindow reads it from here so the packages do not reference each other.
+    ///
+    int WINDOW_OVERHEAD = 2;
 
     ///
     /// Every method carrying the annotation across all loaded mods, in id order; an id declared twice is one [Invalid].
@@ -114,7 +119,7 @@ public sealed interface Discovered {
 
         return switch (test) {
             case ServerTest server when server.maxTicks() <= 0 -> "ServerTest#maxTicks is not positive";
-            case ServerTest server when measured != null && server.maxTicks() < measured.value() + TickWindow.OVERHEAD -> "ServerTest#maxTicks is too short for Measured#value";
+            case ServerTest server when measured != null && server.maxTicks() < measured.value() + Discovered.WINDOW_OVERHEAD -> "ServerTest#maxTicks is too short for Measured#value";
             case ServerTest server when server.setupTicks() < 0 -> "ServerTest#setupTicks is negative";
             case ServerTest server when Identifier.tryParse(server.structure()) == null -> "ServerTest#structure is not an id";
             case ClientTest client when client.maxFrames() <= 0 -> "ClientTest#maxFrames is not positive";
@@ -149,6 +154,21 @@ public sealed interface Discovered {
         @Override
         public boolean required() {
             return Discovered.required(this.annotation);
+        }
+
+        ///
+        /// Calls the method with the parameter its annotation requires: a [GameTestHelper] for a [ServerTest], a [Client] for a [ClientTest].
+        /// Discovery has already checked that the method takes that parameter.
+        ///
+        /// Rethrows what the test threw, untouched, so a run names the failure and not the reflective call around it.
+        ///
+        @SneakyThrows
+        public void invoke(Object parameter) {
+            try {
+                this.method.invoke(null, parameter);
+            } catch (InvocationTargetException failure) {
+                throw failure.getCause();
+            }
         }
     }
 

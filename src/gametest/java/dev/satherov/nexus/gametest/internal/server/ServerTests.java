@@ -1,6 +1,5 @@
 package dev.satherov.nexus.gametest.internal.server;
 
-import lombok.SneakyThrows;
 import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.gametest.api.server.ServerTest;
@@ -26,8 +25,6 @@ import net.minecraft.world.level.block.Rotation;
 
 import org.jetbrains.annotations.ApiStatus;
 
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -76,21 +73,9 @@ public class ServerTests {
     private static Consumer<GameTestHelper> function(Discovered test) {
         return switch (test) {
             case Discovered.Valid valid when ServerTests.isMeasured(valid) -> new TickWindow(valid, ServerTests.MEASUREMENTS.get());
-            case Discovered.Valid(_, Method method, _, _) -> helper -> ServerTests.invoke(method, helper);
+            case Discovered.Valid valid -> valid::invoke;
             case Discovered.Invalid(_, String reason, _) -> helper -> helper.fail(reason);
         };
-    }
-
-    ///
-    /// Calls the method of the test, unwrapping its failure so the report names it and not the reflective call.
-    ///
-    @SneakyThrows
-    public static void invoke(Method method, GameTestHelper helper) {
-        try {
-            method.invoke(null, helper);
-        } catch (InvocationTargetException failure) {
-            throw failure.getCause();
-        }
     }
 
     ///
@@ -111,7 +96,7 @@ public class ServerTests {
             TestData<Holder<TestEnvironmentDefinition<?>>> data = new TestData<>(
                     event.registerEnvironment(Measurements.BASELINE),
                     Identifier.parse(ServerTest.DEFAULT_STRUCTURE),
-                    window + TickWindow.OVERHEAD,
+                    window + Discovered.WINDOW_OVERHEAD,
                     0,
                     false
             );

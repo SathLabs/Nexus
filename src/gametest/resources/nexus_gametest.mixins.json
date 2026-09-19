@@ -5,6 +5,14 @@
   "mixins": [
     "GameTestServerMixin"
   ],
+  "client": [
+    "DeltaTrackerTimerMixin",
+    "FramerateLimiterMixin",
+    "MinecraftAccess",
+    "MinecraftMixin",
+    "MinecraftServerMixin",
+    "WindowMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   },

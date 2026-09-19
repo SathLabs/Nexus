@@ -31,11 +31,6 @@ import java.util.function.Consumer;
 @ApiStatus.Internal
 public final class TickWindow implements Consumer<GameTestHelper> {
 
-    ///
-    /// The ticks a window takes beside its samples: it idles that many after the body, and ends on the tick after its last sample.
-    ///
-    public static final int OVERHEAD = 2;
-
     private final Measurements measurements;
 
     ///
@@ -79,7 +74,7 @@ public final class TickWindow implements Consumer<GameTestHelper> {
     @Override
     public void accept(GameTestHelper helper) {
         if (this.test != null) {
-            ServerTests.invoke(this.test.method(), helper);
+            this.test.invoke(helper);
             if (helper.testInfo.hasSucceeded()) {
                 TickWindow.log.error("'{}' succeeded in its own body, so no window was recorded; a measured test leaves succeeding to the harness", this.test.id());
                 return;
@@ -92,7 +87,7 @@ public final class TickWindow implements Consumer<GameTestHelper> {
 
         // A sample reads the tick that finished before it, so the window idles past the tick the body ran in.
         helper.startSequence()
-                .thenIdle(TickWindow.OVERHEAD)
+                .thenIdle(Discovered.WINDOW_OVERHEAD)
                 .thenExecuteFor(this.length, () -> nanos.add(TickWindow.lastTickNanos(server)))
                 .thenExecute(() -> this.write(server, nanos.toLongArray(), profile))
                 .thenSucceed();
