@@ -5,7 +5,9 @@ import dev.satherov.nexus.gametest.api.server.ServerTest;
 
 import net.minecraft.gametest.framework.GameTestHelper;
 
+///
 /// The server tests that record a window of their own, so a run writes their measurements next to the report.
+///
 public class TickWindowSamples {
 
     @Measured(7)

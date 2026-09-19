@@ -28,19 +28,25 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 
+///
 /// Where a run's measurements go: one JSON file per test under the report directory, plus the summary and the comparison against `-Pcompare`.
+///
 @Slf4j
 @ApiStatus.Internal
 @Accessors(fluent = true)
 public final class Measurements {
 
+    ///
     /// The id the run's empty window is written under.
+    ///
     public static final Identifier BASELINE = Identifier.fromNamespaceAndPath("nexus_gametest", "baseline");
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     private final Path directory;
     private final @Nullable Path compare;
+    ///
     /// The length of the baseline window: the longest window declared by any discovered test of this side.
+    ///
     @Getter
     private final int baselineLength;
 
@@ -60,7 +66,9 @@ public final class Measurements {
         this.baselineLength = longest;
     }
 
+    ///
     /// Writes the measurement's file and logs its summary and, if the compare directory holds a counterpart, the difference.
+    ///
     public void write(Measurement measurement) {
         if (measurement.nanos().length == 0) {
             Measurements.log.warn("'{}' recorded an empty window", measurement.test());
@@ -101,18 +109,24 @@ public final class Measurements {
         }
     }
 
+    ///
     /// Writes the baseline of the run from an empty window of [#baselineLength()] recorded by the caller.
+    ///
     public void writeBaseline(long[] nanos) {
         this.write(new Measurement(Measurements.BASELINE, nanos, null));
     }
 
+    ///
     /// The file vanilla's profiler breakdown of the test goes into, next to its numbers.
     /// The caller saves the results into it and passes the same path as the measurement's profile.
+    ///
     public Path profileFile(Identifier test) {
         return Measurements.file(this.directory, test, ".txt");
     }
 
+    ///
     /// The summary the compare directory holds for the test, or `null` if there is none we can read.
+    ///
     private @Nullable Summary earlier(Identifier test) {
         if (this.compare == null) {
             return null;
@@ -132,12 +146,16 @@ public final class Measurements {
         }
     }
 
+    ///
     /// A file of the test under a directory of its namespace, so no two ids can share one file.
+    ///
     private static Path file(Path directory, Identifier test, String extension) {
         return test.withSuffix(extension).resolveAgainst(directory);
     }
 
+    ///
     /// The numbers a measurement's file carries beside its series, in nanoseconds; a difference is the earlier run's subtracted from them.
+    ///
     private record Summary(long min, double median, long p95, long max, double mean) {
 
         private static final double NANOS_PER_MILLISECOND = 1_000_000.0D;
@@ -182,7 +200,9 @@ public final class Measurements {
             return json;
         }
 
+        ///
         /// The numbers converted to milliseconds, as one line for the log.
+        ///
         private String milliseconds() {
             return String.format(
                     Locale.ROOT,

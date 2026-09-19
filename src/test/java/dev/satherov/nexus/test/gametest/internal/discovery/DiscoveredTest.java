@@ -19,7 +19,9 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+///
 /// Checks that [Discovered] derives ids, accepts the samples that meet the constraints, and names the reason for the rest.
+///
 public class DiscoveredTest {
 
     private static final Map<Identifier, Discovered> SERVER = DiscoveredTest.byId(Discovered.all(ServerTest.class));

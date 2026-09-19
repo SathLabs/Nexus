@@ -11,7 +11,9 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Path;
 import java.util.List;
 
+///
 /// Checks that [RunOptions] reads every property and matches ids against the selector.
+///
 public class RunOptionsTest {
 
     private static final List<String> PROPERTIES = List.of(RunOptions.TESTS, RunOptions.REALTIME, RunOptions.SHOW, RunOptions.COMPARE, RunOptions.RECORD, RunOptions.GOLDENS, RunOptions.REPORT);

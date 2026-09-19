@@ -7,7 +7,9 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.state.BlockState;
 
+///
 /// The server test that checks the level a run takes place in is void at the test's own position.
+///
 public class VoidLevelSamples {
 
     @ServerTest

@@ -29,11 +29,15 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
 
+///
 /// A method carrying a test annotation, checked against that annotation's constraints.
+///
 @ApiStatus.Internal
 public sealed interface Discovered {
 
+    ///
     /// Every method carrying the annotation across all loaded mods, in id order; an id declared twice is one [Invalid].
+    ///
     static List<Discovered> all(Class<? extends Annotation> annotation) {
         Map<Identifier, Discovered> byId = new TreeMap<>();
         for (ModFileScanData scan : ModList.get().getAllScanData()) {
@@ -132,10 +136,14 @@ public sealed interface Discovered {
 
     Identifier id();
 
+    ///
     /// If a failure of the test fails the run.
+    ///
     boolean required();
 
+    ///
     /// A method that meets the constraints; `measured` is `null` when the method carries no [Measured].
+    ///
     record Valid(Identifier id, Method method, Annotation annotation, @Nullable Measured measured) implements Discovered {
 
         @Override
@@ -144,6 +152,8 @@ public sealed interface Discovered {
         }
     }
 
+    ///
     /// A method that does not; the run reports it as a failed test with the reason.
+    ///
     record Invalid(Identifier id, String reason, boolean required) implements Discovered { }
 }
