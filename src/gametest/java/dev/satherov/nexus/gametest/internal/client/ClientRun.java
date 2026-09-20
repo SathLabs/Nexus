@@ -5,14 +5,24 @@ import lombok.extern.slf4j.Slf4j;
 
 import dev.satherov.nexus.gametest.api.client.Client;
 import dev.satherov.nexus.gametest.api.client.ClientTest;
+import dev.satherov.nexus.gametest.api.measurement.Measured;
 import dev.satherov.nexus.gametest.internal.discovery.Discovered;
+import dev.satherov.nexus.gametest.internal.measurement.Measurement;
+import dev.satherov.nexus.gametest.internal.measurement.Measurements;
 import dev.satherov.nexus.gametest.internal.option.RunOptions;
 
+import net.neoforged.neoforge.common.util.Lazy;
+
+import net.minecraft.client.CloudStatus;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.resources.Identifier;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jspecify.annotations.Nullable;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -35,6 +45,16 @@ public class ClientRun {
     private static final int LOADING_FRAMES = 60_000;
 
     ///
+    /// Every discovered client test the run selects, the invalid ones included.
+    ///
+    private static final Lazy<List<Discovered>> TESTS = Lazy.of(ClientRun::selected);
+
+    ///
+    /// The measurements of the run, shared by its baseline and every window it records.
+    ///
+    private static final Lazy<Measurements> MEASUREMENTS = Lazy.of(ClientRun::measurements);
+
+    ///
     /// If the client was started as a test run.
     ///
     public static boolean isActive() {
@@ -42,7 +62,7 @@ public class ClientRun {
     }
 
     ///
-    /// Runs every selected test, writes the report, and returns when the last test is done.
+    /// Records the baseline, runs every selected test, writes the report; returns when the last test is done.
     ///
     /// The report holds what ran however the run ends, so a client that dies mid-run still leaves the tests it got through.
     ///
@@ -73,14 +93,17 @@ public class ClientRun {
         // A window the operator clicks away from opens the pause screen a frame later: no script clicks it away, and a paused game stops ticking the server.
         minecraft.options.pauseOnLostFocus = false;
 
+        // What moves on its own is frozen, so one machine draws the same frame on every run; the panorama has to stop before the first frame for its angle to stay zero.
+        minecraft.options.hideSplashTexts().set(true);
+        minecraft.options.panoramaSpeed().set(0.0D);
+        minecraft.options.cloudStatus().set(CloudStatus.OFF);
+
         Pump pump = new Pump(minecraft, options.realtime());
-        List<Discovered> tests = Discovered.all(ClientTest.class)
-                .stream()
-                .filter(test -> options.selects(test.id()))
-                .toList();
+        List<Discovered> tests = ClientRun.TESTS.get();
 
         ClientRun.awaitLoaded(minecraft, pump);
         ClientRun.reset(minecraft, pump);
+        ClientRun.baseline(pump);
 
         int failed = 0;
         for (Discovered test : tests) {
@@ -96,13 +119,15 @@ public class ClientRun {
     }
 
     ///
-    /// Pumps frames until the client has finished loading.
+    /// Pumps frames until the client has finished loading and its loading overlay is gone.
+    ///
+    /// The load counts as finished when the overlay starts fading out, and the overlay draws over the screen until the fade ends, so a test before that reads the overlay and not its own screen.
     ///
     /// A reload that fails and recovers leaves the client loading for good, so the run gives up after [#LOADING_FRAMES] frames.
     ///
     private static void awaitLoaded(Minecraft minecraft, Pump pump) {
         for (int frame = 0; frame < ClientRun.LOADING_FRAMES; frame++) {
-            if (minecraft.isGameLoadFinished()) {
+            if (minecraft.isGameLoadFinished() && minecraft.getOverlay() == null) {
                 return;
             }
 
@@ -110,6 +135,19 @@ public class ClientRun {
         }
 
         throw new IllegalStateException("the client did not finish loading in " + ClientRun.LOADING_FRAMES + " frames");
+    }
+
+    ///
+    /// Records the empty window of the run, out of the state every test starts in, so a reader can subtract the harness from every measured window.
+    ///
+    /// A run whose tests declare no window records none.
+    ///
+    private static void baseline(Pump pump) {
+        Measurements measurements = ClientRun.MEASUREMENTS.get();
+        int length = measurements.baselineLength();
+        if (length > 0) {
+            measurements.writeBaseline(pump.measure(length, null));
+        }
     }
 
     ///
@@ -136,19 +174,60 @@ public class ClientRun {
     }
 
     ///
-    /// Invokes the test with a client of its own, and takes back what the script still holds however the test ends.
+    /// Invokes the test with a client of its own, records the window it declared, and takes back what the script still holds however the test ends.
     ///
     private static void invoke(Discovered.Valid test, Minecraft minecraft, Pump pump) {
         ClientTest annotation = (ClientTest) test.annotation();
-        Client client = new Client(minecraft, annotation.maxFrames(), pump::frame);
+        Client client = new Client(minecraft, test.id(), annotation.maxFrames(), pump::frame);
 
         try {
             test.invoke(client);
+            ClientRun.measure(test, pump);
         } finally {
             ClientRun.release("the keys it held", client.keyboard()::releaseAll);
             ClientRun.release("the buttons it held", client.mouse()::releaseAll);
             ClientRun.release("the world it was in", client::leaveWorld);
         }
+    }
+
+    ///
+    /// Records the window the test declared, out of the state its body left, and writes it; a test that declares none records nothing.
+    ///
+    /// The frames of the window are the harness's own, so none of them counts against the test's frame budget.
+    ///
+    /// A window that fails to record is logged and leaves the test passing.
+    ///
+    private static void measure(Discovered.Valid test, Pump pump) {
+        Measured measured = test.measured();
+        if (measured == null) {
+            return;
+        }
+
+        Measurements measurements = ClientRun.MEASUREMENTS.get();
+        Path profile = measured.profile() ? measurements.profileFile(test.id()) : null;
+
+        try {
+            long[] nanos = pump.measure(measured.value(), profile);
+            measurements.write(new Measurement(test.id(), nanos, ClientRun.breakdown(test.id(), profile)));
+        } catch (Throwable failure) {
+            ClientRun.log.error("the window of client test '{}' was not recorded", test.id(), failure);
+        }
+    }
+
+    ///
+    /// The file the breakdown of the window went into, or `null` if the test asked for none or the profiler wrote none.
+    ///
+    private static @Nullable Path breakdown(Identifier test, @Nullable Path profile) {
+        if (profile == null) {
+            return null;
+        }
+
+        if (!Files.isRegularFile(profile)) {
+            ClientRun.log.warn("The profiler of '{}' wrote no breakdown, so it is left out of the measurement", test);
+            return null;
+        }
+
+        return profile;
     }
 
     ///
@@ -177,5 +256,24 @@ public class ClientRun {
     private static void reset(Minecraft minecraft, Pump pump) {
         minecraft.disconnect(new TitleScreen(), false);
         pump.frame();
+    }
+
+    ///
+    /// Every discovered client test the run selects, the invalid ones included.
+    ///
+    private static List<Discovered> selected() {
+        RunOptions options = RunOptions.fromProperties();
+        return Discovered.all(ClientTest.class)
+                .stream()
+                .filter(test -> options.selects(test.id()))
+                .toList();
+    }
+
+    ///
+    /// The measurements of the run, written next to its report.
+    ///
+    private static Measurements measurements() {
+        RunOptions options = RunOptions.fromProperties();
+        return new Measurements(options.report().toAbsolutePath().getParent(), options.compare(), ClientRun.TESTS.get());
     }
 }

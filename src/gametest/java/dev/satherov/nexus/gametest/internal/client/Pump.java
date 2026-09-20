@@ -7,11 +7,18 @@ import dev.satherov.nexus.gametest.mixin.MinecraftAccess;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.util.Util;
+import net.minecraft.util.profiling.ActiveProfiler;
+import net.minecraft.util.profiling.Profiler;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 ///
 /// Drives frames on the render thread: one tick per frame in lockstep with the integrated server, or vanilla's timing at normal rate.
@@ -54,6 +61,11 @@ public final class Pump {
     /// If the server thread sits in [#awaitTick()].
     ///
     private boolean parked;
+
+    ///
+    /// The frames the pump has measured, which a profiled window counts its ticks by.
+    ///
+    private int frames;
 
     ///
     /// Takes the clock for an accelerated run: vsync goes off, and the mixins find the pump through the static.
@@ -131,6 +143,68 @@ public final class Pump {
                 this.released = false;
             }
         }
+    }
+
+    ///
+    /// Runs the given number of frames recording each one's duration.
+    ///
+    /// With a file, vanilla's profiler covers the window and its breakdown goes into that file, one tick per frame; the
+    /// durations of such a window carry the profiler's own cost.
+    ///
+    /// A breakdown that could not be written leaves no file behind.
+    ///
+    /// @param frames  The frames the window records.
+    /// @param profile The file the profiler breakdown goes into, or `null` to record the durations alone.
+    ///
+    /// @return The duration of every frame of the window, in nanoseconds, in order, oldest first.
+    ///
+    public long[] measure(int frames, @Nullable Path profile) {
+        if (profile == null) {
+            return this.window(frames, null);
+        }
+
+        ActiveProfiler profiler = new ActiveProfiler(Util.timeSource, () -> this.frames, () -> true);
+        long[] nanos = this.window(frames, profiler);
+        if (!profiler.getResults().saveResults(profile)) {
+            Pump.log.warn("Can't write the profiler breakdown of the window to {}", profile);
+            Pump.discardBreakdown(profile);
+        }
+
+        return nanos;
+    }
+
+    ///
+    /// Deletes the file of a breakdown that was not written, so an earlier run's is never left behind to be read as this window's.
+    ///
+    private static void discardBreakdown(Path profile) {
+        try {
+            Files.deleteIfExists(profile);
+        } catch (IOException failure) {
+            Pump.log.warn("Can't delete the profiler breakdown at {}", profile, failure);
+        }
+    }
+
+    ///
+    /// Runs the frames of one window and returns each one's duration, in nanoseconds; with a profiler, every frame is one of its ticks.
+    ///
+    private long[] window(int frames, @Nullable ActiveProfiler profiler) {
+        long[] nanos = new long[frames];
+        for (int frame = 0; frame < frames; frame++) {
+            this.frames++;
+
+            long started = Util.getNanos();
+            if (profiler == null) {
+                this.frame();
+            } else {
+                try (Profiler.Scope _ = Profiler.use(profiler)) {
+                    this.frame();
+                }
+            }
+
+            nanos[frame] = Util.getNanos() - started;
+        }
+
+        return nanos;
     }
 
     ///

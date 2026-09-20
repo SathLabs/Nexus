@@ -9,6 +9,7 @@
     "DeltaTrackerTimerMixin",
     "FramerateLimiterMixin",
     "KeyboardHandlerAccess",
+    "LogoRendererMixin",
     "MinecraftAccess",
     "MinecraftMixin",
     "MinecraftServerMixin",

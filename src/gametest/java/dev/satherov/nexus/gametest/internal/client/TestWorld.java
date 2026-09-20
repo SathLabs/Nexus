@@ -10,9 +10,15 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.server.IntegratedServer;
+import net.minecraft.core.Holder;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.FileUtil;
+import net.minecraft.world.clock.ClockTimeMarkers;
+import net.minecraft.world.clock.WorldClock;
+import net.minecraft.world.clock.WorldClocks;
+import net.minecraft.world.level.gamerules.GameRules;
 import net.minecraft.world.level.storage.LevelStorageSource;
 import net.minecraft.world.phys.Vec3;
 
@@ -74,12 +80,43 @@ public final class TestWorld {
     }
 
     ///
-    /// Pumps frames until the player floats at the level's spawn with the chunk around it loaded.
+    /// Pumps frames until the player floats at the level's spawn with the chunk around it loaded, in a level that no longer advances by itself.
     ///
     public void awaitSpawn() {
+        this.freeze();
         this.client.until("the player to log in", () -> !this.overworld().players().isEmpty());
         this.floatAtSpawn();
         this.client.until("the player to float at the spawn", () -> TestWorld.isFloating(this.client.minecraft()));
+    }
+
+    ///
+    /// Stops the level's time and its weather and moves its clock to noon, so the same frame of a test looks the same on every run of one machine.
+    ///
+    /// Setting a rule broadcasts the clock to everyone, so the server thread takes the write, and the pumping of the next frames is what gives it the task.
+    /// The wait is what has the level frozen before the join goes on, and not in a frame a test has already looked at.
+    ///
+    private void freeze() {
+        ServerLevel level = this.overworld();
+        MinecraftServer server = level.getServer();
+        Holder<WorldClock> clock = server.registryAccess().getOrThrow(WorldClocks.OVERWORLD);
+
+        server.execute(() -> {
+            GameRules rules = level.getGameRules();
+            rules.set(GameRules.ADVANCE_TIME, false, server);
+            rules.set(GameRules.ADVANCE_WEATHER, false, server);
+            level.clockManager().moveToTimeMarker(clock, ClockTimeMarkers.NOON);
+        });
+
+        this.client.until("the level to freeze at noon", () -> this.isFrozen(clock));
+    }
+
+    ///
+    /// If the level advances neither its time nor its weather, and its clock stands at noon.
+    ///
+    private boolean isFrozen(Holder<WorldClock> clock) {
+        ServerLevel level = this.overworld();
+        GameRules rules = level.getGameRules();
+        return !rules.get(GameRules.ADVANCE_TIME) && !rules.get(GameRules.ADVANCE_WEATHER) && level.clockManager().isAtTimeMarker(clock, ClockTimeMarkers.NOON);
     }
 
     ///

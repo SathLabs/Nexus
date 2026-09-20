@@ -7,6 +7,7 @@ import dev.satherov.nexus.gametest.internal.client.TestWorld;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 
 import org.jetbrains.annotations.ApiStatus;
@@ -39,6 +40,11 @@ public final class Client {
     private final Mouse mouse;
 
     ///
+    /// The id of the test the client runs.
+    ///
+    private final Identifier test;
+
+    ///
     /// The frames the script may pump before the test fails.
     ///
     private final int maxFrames;
@@ -62,12 +68,14 @@ public final class Client {
     /// Creates the client a [ClientTest] method is called with.
     ///
     /// @param minecraft The client the script drives.
+    /// @param test      The id of the test the client runs.
     /// @param maxFrames The frames the script may pump before the test fails.
     /// @param frame     The running of one frame, called once per [#tick()].
     ///
     @ApiStatus.Internal
-    public Client(Minecraft minecraft, int maxFrames, Runnable frame) {
+    public Client(Minecraft minecraft, Identifier test, int maxFrames, Runnable frame) {
         this.minecraft = minecraft;
+        this.test = test;
         this.maxFrames = maxFrames;
         this.frame = frame;
 
@@ -122,6 +130,13 @@ public final class Client {
     ///
     public @Nullable Screen screen() {
         return this.minecraft.screen;
+    }
+
+    ///
+    /// The last rendered frame.
+    ///
+    public Capture capture() {
+        return Capture.from(this.test, this.minecraft.getMainRenderTarget());
     }
 
     ///

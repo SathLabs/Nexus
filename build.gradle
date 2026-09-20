@@ -48,8 +48,9 @@ configurations {
     testCompileOnly.extendsFrom compileOnly
 }
 
-def gametestServerReport = layout.buildDirectory.file('reports/gametest/server.xml').get().asFile
-def gametestClientReport = layout.buildDirectory.file('reports/gametest/client.xml').get().asFile
+// A directory of its own per run: both sides put their measurements next to the report, under the one baseline id.
+def gametestServerReport = layout.buildDirectory.file('reports/gametest/server/server.xml').get().asFile
+def gametestClientReport = layout.buildDirectory.file('reports/gametest/client/client.xml').get().asFile
 
 neoForge {
     version = neo_version
@@ -121,6 +122,21 @@ neoForge {
             if (project.hasProperty('show')) {
                 def show = project.property('show').toString()
                 systemProperty 'nexus.gametest.show', show.isEmpty() ? 'true' : show
+            }
+
+            def compare = project.hasProperty('compare') ? project.property('compare').toString() : ''
+            if (!compare.isEmpty()) {
+                systemProperty 'nexus.gametest.compare', file(compare).absolutePath
+            }
+
+            def goldens = project.hasProperty('goldens') ? project.property('goldens').toString() : ''
+            if (!goldens.isEmpty()) {
+                systemProperty 'nexus.gametest.goldens', file(goldens).absolutePath
+            }
+
+            if (project.hasProperty('record')) {
+                def record = project.property('record').toString()
+                systemProperty 'nexus.gametest.record', record.isEmpty() ? 'true' : record
             }
         }
 
@@ -236,6 +252,16 @@ def stopXvfb = tasks.register('stopXvfb') {
 tasks.named('runGameTestClient', JavaExec) {
     def fmlConfig = file('runs/gametest-client/config/fml.toml')
     def xvfb = project.hasProperty('xvfb')
+    def reports = gametestClientReport.parentFile
+
+    // The windows ClientRunSamples declares, and the baseline of the run, which is as long as the longest of them.
+    def windows = [
+            'nexus/client_run_samples/window.json'         : 40,
+            'nexus/client_run_samples/profiled_window.json': 3,
+            'nexus_gametest/baseline.json'                 : 40,
+    ]
+    def profile = 'nexus/client_run_samples/profiled_window.txt'
+    def selected = project.hasProperty('tests')
 
     if (xvfb) {
         finalizedBy stopXvfb
@@ -244,6 +270,8 @@ tasks.named('runGameTestClient', JavaExec) {
     doFirst {
         gametestClientReport.parentFile.mkdirs()
         gametestClientReport.delete()
+        windows.keySet().each { new File(reports, it).delete() }
+        new File(reports, profile).delete()
 
         // FML's early loading screen opens a window before any mixin can hide it; every other key of the file is FML's own.
         def control = 'earlyWindowControl = false'
@@ -288,6 +316,26 @@ tasks.named('runGameTestClient', JavaExec) {
     doLast {
         if (!gametestClientReport.isFile()) {
             throw new GradleException('the run wrote no report to ' + gametestClientReport)
+        }
+
+        if (selected) {
+            return
+        }
+
+        windows.each { path, window ->
+            def file = new File(reports, path)
+            if (!file.isFile()) {
+                throw new GradleException("the run wrote no measurement to ${path}")
+            }
+
+            def nanos = new groovy.json.JsonSlurper().parse(file).nanos
+            if (nanos.size() != window) {
+                throw new GradleException("${path} holds ${nanos.size()} samples, and not the ${window} of its window")
+            }
+        }
+
+        if (!new File(reports, profile).isFile()) {
+            throw new GradleException("the run wrote no profiler breakdown to ${profile}")
         }
     }
 }
