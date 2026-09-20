@@ -18,6 +18,8 @@ public abstract class MinecraftMixin {
     ///
     /// Takes the loop on its first pass, at the top of the body and outside the frame's profiler scope, and stops the client once the run is done.
     ///
+    /// @param callback The callback of the injection.
+    ///
     @Inject(
             method = "run",
             at = @At(value = "INVOKE", target = "Lnet/minecraft/util/profiling/SingleTickProfiler;createTickProfiler(Ljava/lang/String;)Lnet/minecraft/util/profiling/SingleTickProfiler;"),

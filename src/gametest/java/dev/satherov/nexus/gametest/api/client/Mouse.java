@@ -14,7 +14,8 @@ import java.util.HashSet;
 import java.util.Set;
 
 ///
-/// The mouse of a client under test; positions are gui-scaled pixels and buttons are GLFW button codes.
+/// The mouse of a client under test.
+/// Positions are gui-scaled pixels and buttons are GLFW button codes.
 ///
 public final class Mouse {
 
@@ -87,7 +88,8 @@ public final class Mouse {
     }
 
     ///
-    /// Releases a held button; does nothing if it is not down.
+    /// Releases a held button.
+    /// Does nothing if it is not down.
     ///
     /// @param button The button to release.
     ///
@@ -119,6 +121,9 @@ public final class Mouse {
 
     ///
     /// Sends one button event of the given action through the client's mouse handler.
+    ///
+    /// @param button The button the event is for.
+    /// @param action The GLFW action of the event.
     ///
     private void send(@MouseButtonInfo.MouseButton int button, @MouseButtonInfo.Action int action) {
         Minecraft minecraft = this.client.minecraft();

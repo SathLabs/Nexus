@@ -14,9 +14,6 @@ import org.lwjgl.glfw.GLFW;
 ///
 public class KeyboardSamples {
 
-    ///
-    /// The label of the pause screen's return to game button.
-    ///
     private static final Component RETURN_TO_GAME = Component.translatable("menu.returnToGame");
 
     @ClientTest
@@ -34,9 +31,6 @@ public class KeyboardSamples {
         client.leaveWorld();
     }
 
-    ///
-    /// The return to game button of the pause screen the client shows.
-    ///
     private static AbstractWidget returnToGame(Client client) {
         if (!(client.screen() instanceof PauseScreen pause)) {
             throw new AssertionError("the client does not show the pause screen");

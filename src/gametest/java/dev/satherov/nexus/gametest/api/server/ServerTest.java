@@ -42,12 +42,16 @@ public @interface ServerTest {
     ///
     /// Defaults to {@value #DEFAULT_STRUCTURE}.
     ///
+    /// @return The structure the test runs in.
+    ///
     String structure() default ServerTest.DEFAULT_STRUCTURE;
 
     ///
     /// The ticks the test may take before it fails.
     ///
     /// Defaults to {@value #DEFAULT_MAX_TICKS}.
+    ///
+    /// @return The ticks the test may take before it fails.
     ///
     int maxTicks() default ServerTest.DEFAULT_MAX_TICKS;
 
@@ -56,15 +60,21 @@ public @interface ServerTest {
     ///
     /// Defaults to {@value #DEFAULT_SETUP_TICKS}.
     ///
+    /// @return The ticks we wait after placing the structure before the body runs.
+    ///
     int setupTicks() default ServerTest.DEFAULT_SETUP_TICKS;
 
     ///
     /// If a failure fails the run.
     ///
+    /// @return `true` if a failure fails the run.
+    ///
     boolean required() default true;
 
     ///
     /// If the structure needs open sky above it.
+    ///
+    /// @return `true` if the structure needs open sky above it.
     ///
     boolean skyAccess() default false;
 }

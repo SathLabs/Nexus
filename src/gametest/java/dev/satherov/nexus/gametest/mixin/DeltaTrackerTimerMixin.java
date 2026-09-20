@@ -16,13 +16,23 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(DeltaTracker.Timer.class)
 public abstract class DeltaTrackerTimerMixin {
 
+    ///
+    /// Vanilla's count of ticks the current frame advances the game by.
+    ///
     @Shadow
     private float deltaTicks;
+
+    ///
+    /// Vanilla's fraction of a tick left over after the frame's whole ticks.
+    ///
     @Shadow
     private float deltaTickResidual;
 
     ///
     /// The frame is the tick under an accelerated run, so it carries the whole of one and leaves nothing over as a partial tick.
+    ///
+    /// @param currentMs The current clock time, in milliseconds.
+    /// @param callback  The callback of the injection.
     ///
     @Inject(method = "advanceGameTime", at = @At("HEAD"), cancellable = true)
     private void advanceOneTick(long currentMs, CallbackInfoReturnable<Integer> callback) {

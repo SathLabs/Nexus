@@ -16,7 +16,8 @@ import java.util.HashSet;
 import java.util.Set;
 
 ///
-/// The keyboard of a client under test; keys are GLFW key codes and every event goes through the same path a real window uses.
+/// The keyboard of a client under test.
+/// Keys are GLFW key codes and every event goes through the same path a real window uses.
 ///
 public final class Keyboard {
 
@@ -61,7 +62,8 @@ public final class Keyboard {
     }
 
     ///
-    /// Releases a held key; does nothing if it is not down.
+    /// Releases a held key.
+    /// Does nothing if it is not down.
     ///
     /// @param key The key to release.
     ///
@@ -99,6 +101,8 @@ public final class Keyboard {
     ///
     /// The GLFW modifier bits of the modifier keys the script is holding down.
     ///
+    /// @return The GLFW modifier bits of the modifier keys the script is holding down.
+    ///
     @ApiStatus.Internal
     @InputWithModifiers.Modifiers
     public int modifiers() {
@@ -113,6 +117,9 @@ public final class Keyboard {
     ///
     /// Sends one key event of the given action through the client's keyboard handler.
     ///
+    /// @param key    The key the event is for.
+    /// @param action The GLFW action of the event.
+    ///
     private void send(@InputConstants.Value int key, @KeyEvent.Action int action) {
         Minecraft minecraft = this.client.minecraft();
         ((KeyboardHandlerAccess) minecraft.keyboardHandler).invokeKeyPress(
@@ -124,6 +131,10 @@ public final class Keyboard {
 
     ///
     /// The GLFW modifier bit of the key, or `0` if it is not a modifier key.
+    ///
+    /// @param key The key to look up.
+    ///
+    /// @return The GLFW modifier bit of the key, or `0` if it is not a modifier key.
     ///
     @InputWithModifiers.Modifiers
     private static int modifier(@InputConstants.Value int key) {

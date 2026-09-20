@@ -18,6 +18,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(LogoRenderer.class)
 public abstract class LogoRendererMixin {
 
+    ///
+    /// Vanilla's roll for the MINCERAFT logo, made once when the renderer is built.
+    ///
     @Final
     @Shadow
     @Mutable
@@ -27,6 +30,9 @@ public abstract class LogoRendererMixin {
     /// Takes the roll back once the renderer is built, before anything reads it.
     ///
     /// Vanilla shows MINCERAFT on about one renderer in ten thousand, and a run builds one per title screen, so a byte-exact golden of that screen would fail on the roll alone.
+    ///
+    /// @param keepLogoThroughFade If the logo is kept through the fade.
+    /// @param callback            The callback of the injection.
     ///
     @Inject(method = "<init>", at = @At("RETURN"))
     private void hideEasterEgg(boolean keepLogoThroughFade, CallbackInfo callback) {

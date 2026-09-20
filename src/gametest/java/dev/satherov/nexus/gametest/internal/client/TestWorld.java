@@ -35,7 +35,8 @@ import java.io.UncheckedIOException;
 public final class TestWorld {
 
     ///
-    /// The save name a join asks for; vanilla numbers it where a save of that name is already there.
+    /// The save name a join asks for.
+    /// Vanilla numbers it where a save of that name is already there.
     ///
     private static final String SAVE_NAME = "nexus-gametest";
 
@@ -50,7 +51,12 @@ public final class TestWorld {
     private final String name;
 
     ///
-    /// Creates the level and starts joining it; the player is only in it once [#awaitSpawn()] returns.
+    /// Creates the level and starts joining it.
+    /// The player is only in it once [#awaitSpawn()] returns.
+    ///
+    /// @param client The client the level is joined on.
+    ///
+    /// @return The level the client is joining.
     ///
     public static TestWorld create(Client client) {
         Minecraft minecraft = client.minecraft();
@@ -70,6 +76,12 @@ public final class TestWorld {
 
     ///
     /// A save name no directory under the level source uses yet.
+    ///
+    /// @param source The level source the save goes under.
+    ///
+    /// @return A save name no directory under the level source uses yet.
+    ///
+    /// @throws UncheckedIOException If the level source can't be read.
     ///
     private static String freeName(LevelStorageSource source) {
         try {
@@ -113,6 +125,10 @@ public final class TestWorld {
     ///
     /// If the level advances neither its time nor its weather, and its clock stands at noon.
     ///
+    /// @param clock The level's clock.
+    ///
+    /// @return `true` if the level advances neither its time nor its weather, and its clock stands at noon.
+    ///
     private boolean isFrozen(Holder<WorldClock> clock) {
         ServerLevel level = this.overworld();
         GameRules rules = level.getGameRules();
@@ -136,6 +152,10 @@ public final class TestWorld {
     ///
     /// If the player flies in the level and the chunk it floats in has arrived.
     ///
+    /// @param minecraft The client the player is on.
+    ///
+    /// @return `true` if the player flies in the level and the chunk it floats in has arrived.
+    ///
     private static boolean isFloating(Minecraft minecraft) {
         LocalPlayer player = minecraft.player;
         return player != null && player.getAbilities().flying && player.level().isLoaded(player.blockPosition());
@@ -143,6 +163,10 @@ public final class TestWorld {
 
     ///
     /// The overworld of the integrated server the level runs on.
+    ///
+    /// @return The overworld of the integrated server the level runs on.
+    ///
+    /// @throws IllegalStateException If the integrated server is gone.
     ///
     public ServerLevel overworld() {
         IntegratedServer server = this.client.minecraft().getSingleplayerServer();
@@ -165,6 +189,8 @@ public final class TestWorld {
 
     ///
     /// Deletes the save the level was created in.
+    ///
+    /// @throws UncheckedIOException If the save can't be deleted.
     ///
     private void deleteSave() {
         try (LevelStorageSource.LevelStorageAccess access = this.client.minecraft().getLevelSource().createAccess(this.name)) {

@@ -31,6 +31,9 @@ import java.util.function.Consumer;
 @ApiStatus.Internal
 public final class TickWindow implements Consumer<GameTestHelper> {
 
+    ///
+    /// Where the window's measurement is written.
+    ///
     private final Measurements measurements;
 
     ///
@@ -48,6 +51,14 @@ public final class TickWindow implements Consumer<GameTestHelper> {
     ///
     private final boolean profiled;
 
+    ///
+    /// Creates the window of a measured test, as long as the [Measured] the test declares.
+    ///
+    /// @param test         The test the window measures.
+    /// @param measurements Where the window's measurement is written.
+    ///
+    /// @throws NullPointerException If the test declares no window.
+    ///
     public TickWindow(Discovered.Valid test, Measurements measurements) {
         Measured measured = Objects.requireNonNull(test.measured(), "'" + test.id() + "' declares no window");
 
@@ -57,6 +68,11 @@ public final class TickWindow implements Consumer<GameTestHelper> {
         this.profiled = measured.profile();
     }
 
+    ///
+    /// Creates the empty window of the run, as long as the longest window any test of this side declares.
+    ///
+    /// @param measurements Where the window's measurement is written.
+    ///
     private TickWindow(Measurements measurements) {
         this.measurements = measurements;
         this.test = null;
@@ -67,10 +83,19 @@ public final class TickWindow implements Consumer<GameTestHelper> {
     ///
     /// The empty window of the run: it records what a test that does nothing costs, so a reader can subtract the harness from every measured window.
     ///
+    /// @param measurements Where the window's measurement is written.
+    ///
+    /// @return The empty window of the run.
+    ///
     public static TickWindow baseline(Measurements measurements) {
         return new TickWindow(measurements);
     }
 
+    ///
+    /// Runs the body of the test, samples the ticks of the window, writes them, then succeeds the test.
+    ///
+    /// @param helper The helper of the running test.
+    ///
     @Override
     public void accept(GameTestHelper helper) {
         if (this.test != null) {
@@ -96,6 +121,11 @@ public final class TickWindow implements Consumer<GameTestHelper> {
     ///
     /// Starts vanilla's profiler over the window and returns the file its breakdown goes into, or `null` if the test asked for none.
     ///
+    /// @param helper The helper of the running test.
+    /// @param server The server the profiler records.
+    ///
+    /// @return The file the breakdown goes into, or `null` if the test asked for none.
+    ///
     private @Nullable Path startProfile(GameTestHelper helper, MinecraftServer server) {
         if (this.test == null || !this.profiled) {
             return null;
@@ -111,6 +141,10 @@ public final class TickWindow implements Consumer<GameTestHelper> {
     ///
     /// Writes what the window recorded: the baseline of the run, or the measurement of the test it measured.
     ///
+    /// @param server  The server the window ran on.
+    /// @param nanos   The duration of each tick of the window, in nanoseconds.
+    /// @param profile The file the breakdown goes into, or `null` if the test asked for none.
+    ///
     private void write(MinecraftServer server, long[] nanos, @Nullable Path profile) {
         if (this.test == null) {
             this.measurements.writeBaseline(nanos);
@@ -123,6 +157,12 @@ public final class TickWindow implements Consumer<GameTestHelper> {
 
     ///
     /// The file the breakdown of the window goes into, or `null` if the test asked for none or the profiler stopped before the window closed.
+    ///
+    /// @param server  The server the window ran on.
+    /// @param test    The id of the measured test.
+    /// @param profile The file the breakdown goes into, or `null` if the test asked for none.
+    ///
+    /// @return The file the breakdown of the window goes into, or `null` if the test asked for none or the profiler stopped before the window closed.
     ///
     private static @Nullable Path breakdown(MinecraftServer server, Identifier test, @Nullable Path profile) {
         if (profile == null) {
@@ -141,6 +181,10 @@ public final class TickWindow implements Consumer<GameTestHelper> {
     ///
     /// The duration of the server tick that finished before the one we are in, in nanoseconds.
     ///
+    /// @param server The server the durations are read from.
+    ///
+    /// @return The duration of the server tick that finished before the one we are in, in nanoseconds.
+    ///
     private static long lastTickNanos(MinecraftServer server) {
         long[] times = server.getTickTimesNanos();
         return times[Math.floorMod(server.getTickCount() - 1, times.length)];
@@ -149,21 +193,47 @@ public final class TickWindow implements Consumer<GameTestHelper> {
     ///
     /// Ends the recording with the test, so a test that fails after its body does not leave the profiler running into the tests that follow.
     ///
+    /// @param server The server whose recording ends.
+    ///
     private record ProfilerEnd(MinecraftServer server) implements GameTestListener {
 
+        ///
+        /// Does nothing: the recording ends with the test and nowhere else.
+        ///
+        /// @param testInfo The test whose structure was loaded.
+        ///
         @Override
         public void testStructureLoaded(GameTestInfo testInfo) { }
 
+        ///
+        /// Ends the recording.
+        ///
+        /// @param testInfo The test that passed.
+        /// @param runner   The runner of the test.
+        ///
         @Override
         public void testPassed(GameTestInfo testInfo, GameTestRunner runner) {
             this.server.finishRecordingMetrics();
         }
 
+        ///
+        /// Ends the recording.
+        ///
+        /// @param testInfo The test that failed.
+        /// @param runner   The runner of the test.
+        ///
         @Override
         public void testFailed(GameTestInfo testInfo, GameTestRunner runner) {
             this.server.finishRecordingMetrics();
         }
 
+        ///
+        /// Does nothing: the recording ends with the test and nowhere else.
+        ///
+        /// @param original The test that is rerun.
+        /// @param copy     The copy of the test added for the rerun.
+        /// @param runner   The runner of the test.
+        ///
         @Override
         public void testAddedForRerun(GameTestInfo original, GameTestInfo copy, GameTestRunner runner) { }
     }

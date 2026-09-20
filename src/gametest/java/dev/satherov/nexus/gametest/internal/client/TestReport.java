@@ -44,10 +44,18 @@ public final class TestReport {
     private final Element suite;
 
     ///
-    /// The nanos the report was opened at; the suite's time is measured from it.
+    /// The nanos the report was opened at.
+    /// The suite's time is measured from it.
     ///
     private final long started = System.nanoTime();
 
+    ///
+    /// Opens an empty report over the file, which nothing writes until [#write()].
+    ///
+    /// @param file The file the report is written to.
+    ///
+    /// @throws ParserConfigurationException If no document builder can be created.
+    ///
     @SneakyThrows(ParserConfigurationException.class)
     public TestReport(Path file) {
         this.file = file;
@@ -64,12 +72,20 @@ public final class TestReport {
     ///
     /// Records the test as passed, having taken the given milliseconds.
     ///
+    /// @param id     The id of the test.
+    /// @param millis The milliseconds the test took.
+    ///
     public void passed(Identifier id, long millis) {
         this.testCase(id, millis);
     }
 
     ///
     /// Records the test as failed: as a `failure` if it is required, and as a `skipped` if it is not.
+    ///
+    /// @param id       The id of the test.
+    /// @param millis   The milliseconds the test took.
+    /// @param failure  The failure the test ended with.
+    /// @param required If the test is required.
     ///
     public void failed(Identifier id, long millis, Throwable failure, boolean required) {
         Element result = this.document.createElement(required ? "failure" : "skipped");
@@ -78,7 +94,13 @@ public final class TestReport {
     }
 
     ///
-    /// The case of the test, appended to the suite; `classname` is the mod that declares it, where vanilla names the structure.
+    /// The case of the test, appended to the suite.
+    /// `classname` is the mod that declares it, where vanilla puts the structure.
+    ///
+    /// @param id     The id of the test.
+    /// @param millis The milliseconds the test took.
+    ///
+    /// @return The case of the test, appended to the suite.
     ///
     private Element testCase(Identifier id, long millis) {
         Element testCase = this.document.createElement("testcase");
@@ -91,6 +113,9 @@ public final class TestReport {
 
     ///
     /// Writes the report, creating the directory it sits in.
+    ///
+    /// @throws IOException          If the directory the report sits in can't be created.
+    /// @throws TransformerException If the report can't be written to its file.
     ///
     @SneakyThrows({ IOException.class, TransformerException.class })
     public void write() {

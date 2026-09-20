@@ -18,6 +18,9 @@ public abstract class FramerateLimiterMixin {
     ///
     /// A capped frame is a measurement of the cap, so an accelerated run waits out none of it.
     ///
+    /// @param framerateLimit The frame cap.
+    /// @param callback       The callback of the injection.
+    ///
     @Inject(method = "limitDisplayFPS", at = @At("HEAD"), cancellable = true)
     private static void skipFrameCap(int framerateLimit, CallbackInfo callback) {
         if (Pump.getAccelerated() != null) {

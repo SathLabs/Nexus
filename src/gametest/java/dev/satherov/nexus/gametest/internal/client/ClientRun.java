@@ -57,16 +57,21 @@ public class ClientRun {
     ///
     /// If the client was started as a test run.
     ///
+    /// @return `true` if the client was started as a test run.
+    ///
     public static boolean isActive() {
         return ClientRun.ACTIVE;
     }
 
     ///
-    /// Records the baseline, runs every selected test, writes the report; returns when the last test is done.
+    /// Records the baseline, runs every selected test, writes the report.
+    /// Returns when the last test is done.
     ///
     /// The report holds what ran however the run ends, so a client that dies mid-run still leaves the tests it got through.
     ///
     /// A run with a required failure exits the process with the number of them, since the client's own shutdown always exits `0`.
+    ///
+    /// @param minecraft The client the tests run on.
     ///
     public static void run(Minecraft minecraft) {
         RunOptions options = RunOptions.fromProperties();
@@ -87,13 +92,18 @@ public class ClientRun {
     ///
     /// Runs every test the options select, each from the title screen and back to it.
     ///
+    /// @param minecraft The client the tests run on.
+    /// @param options   The options of the run.
+    /// @param report    The report every outcome is recorded in.
+    ///
     /// @return The required tests that failed.
     ///
     private static int runTests(Minecraft minecraft, RunOptions options, TestReport report) {
         // A window the operator clicks away from opens the pause screen a frame later: no script clicks it away, and a paused game stops ticking the server.
         minecraft.options.pauseOnLostFocus = false;
 
-        // What moves on its own is frozen, so one machine draws the same frame on every run; the panorama has to stop before the first frame for its angle to stay zero.
+        // What moves on its own is frozen, so one machine draws the same frame on every run.
+        // The panorama has to stop before the first frame for its angle to stay zero.
         minecraft.options.hideSplashTexts().set(true);
         minecraft.options.panoramaSpeed().set(0.0D);
         minecraft.options.cloudStatus().set(CloudStatus.OFF);
@@ -125,6 +135,11 @@ public class ClientRun {
     ///
     /// A reload that fails and recovers leaves the client loading for good, so the run gives up after [#LOADING_FRAMES] frames.
     ///
+    /// @param minecraft The client that loads.
+    /// @param pump      The pump that runs the frames.
+    ///
+    /// @throws IllegalStateException If the client is still loading after [#LOADING_FRAMES] frames.
+    ///
     private static void awaitLoaded(Minecraft minecraft, Pump pump) {
         for (int frame = 0; frame < ClientRun.LOADING_FRAMES; frame++) {
             if (minecraft.isGameLoadFinished() && minecraft.getOverlay() == null) {
@@ -142,6 +157,8 @@ public class ClientRun {
     ///
     /// A run whose tests declare no window records none.
     ///
+    /// @param pump The pump that records the window.
+    ///
     private static void baseline(Pump pump) {
         Measurements measurements = ClientRun.MEASUREMENTS.get();
         int length = measurements.baselineLength();
@@ -151,7 +168,13 @@ public class ClientRun {
     }
 
     ///
-    /// Runs the test and records its outcome in the report; an invalid one is recorded as a failure with its reason.
+    /// Runs the test and records its outcome in the report.
+    /// An invalid one is recorded as a failure with its reason.
+    ///
+    /// @param test      The test to run.
+    /// @param minecraft The client the test runs on.
+    /// @param pump      The pump that runs the frames.
+    /// @param report    The report the outcome is recorded in.
     ///
     /// @return If the test passed.
     ///
@@ -176,6 +199,10 @@ public class ClientRun {
     ///
     /// Invokes the test with a client of its own, records the window it declared, and takes back what the script still holds however the test ends.
     ///
+    /// @param test      The test to invoke.
+    /// @param minecraft The client the test runs on.
+    /// @param pump      The pump that runs the frames.
+    ///
     private static void invoke(Discovered.Valid test, Minecraft minecraft, Pump pump) {
         ClientTest annotation = (ClientTest) test.annotation();
         Client client = new Client(minecraft, test.id(), annotation.maxFrames(), pump::frame);
@@ -191,11 +218,15 @@ public class ClientRun {
     }
 
     ///
-    /// Records the window the test declared, out of the state its body left, and writes it; a test that declares none records nothing.
+    /// Records the window the test declared, out of the state its body left, and writes it.
+    /// A test that declares none records nothing.
     ///
     /// The frames of the window are the harness's own, so none of them counts against the test's frame budget.
     ///
     /// A window that fails to record is logged and leaves the test passing.
+    ///
+    /// @param test The test whose window is recorded.
+    /// @param pump The pump that records the window.
     ///
     private static void measure(Discovered.Valid test, Pump pump) {
         Measured measured = test.measured();
@@ -217,6 +248,11 @@ public class ClientRun {
     ///
     /// The file the breakdown of the window went into, or `null` if the test asked for none or the profiler wrote none.
     ///
+    /// @param test    The id of the test the window belongs to.
+    /// @param profile The file the profiler breakdown goes into, or `null` if the test asked for none.
+    ///
+    /// @return The file the breakdown of the window went into, or `null` if the test asked for none or the profiler wrote none.
+    ///
     private static @Nullable Path breakdown(Identifier test, @Nullable Path profile) {
         if (profile == null) {
             return null;
@@ -233,6 +269,9 @@ public class ClientRun {
     ///
     /// Takes back one thing the script held, logging a failure of that instead of throwing it, so the test's own failure stays the one reported.
     ///
+    /// @param what    The thing the script held, as it is logged.
+    /// @param release The taking back of the thing.
+    ///
     private static void release(String what, Runnable release) {
         try {
             release.run();
@@ -244,6 +283,10 @@ public class ClientRun {
     ///
     /// The milliseconds since the given nanos.
     ///
+    /// @param started The nanos the measurement started at.
+    ///
+    /// @return The milliseconds since the given nanos.
+    ///
     private static long millis(long started) {
         return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
     }
@@ -253,6 +296,9 @@ public class ClientRun {
     ///
     /// A run directory of its own has the client open on the accessibility onboarding, which no script can click away, so the run sets the screen itself.
     ///
+    /// @param minecraft The client to reset.
+    /// @param pump      The pump that runs the frame.
+    ///
     private static void reset(Minecraft minecraft, Pump pump) {
         minecraft.disconnect(new TitleScreen(), false);
         pump.frame();
@@ -260,6 +306,8 @@ public class ClientRun {
 
     ///
     /// Every discovered client test the run selects, the invalid ones included.
+    ///
+    /// @return Every discovered client test the run selects, the invalid ones included.
     ///
     private static List<Discovered> selected() {
         RunOptions options = RunOptions.fromProperties();
@@ -271,6 +319,8 @@ public class ClientRun {
 
     ///
     /// The measurements of the run, written next to its report.
+    ///
+    /// @return The measurements of the run, written next to its report.
     ///
     private static Measurements measurements() {
         RunOptions options = RunOptions.fromProperties();

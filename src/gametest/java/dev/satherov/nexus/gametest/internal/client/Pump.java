@@ -21,7 +21,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 ///
-/// Drives frames on the render thread: one tick per frame in lockstep with the integrated server, or vanilla's timing at normal rate.
+/// Runs frames on the render thread: one tick per frame in lockstep with the integrated server, or vanilla's timing at normal rate.
 ///
 @Slf4j
 @ApiStatus.Internal
@@ -38,12 +38,12 @@ public final class Pump {
     private static volatile @Nullable Pump accelerated;
 
     ///
-    /// The client the pump drives.
+    /// The client whose frames the pump runs.
     ///
     private final Minecraft minecraft;
 
     ///
-    /// If vanilla's timing runs, so the pump drives neither the frames nor the server.
+    /// If vanilla's timing runs, so neither the frames nor the server's ticks wait on the pump.
     ///
     private final boolean realtime;
 
@@ -70,12 +70,15 @@ public final class Pump {
     ///
     /// Takes the clock for an accelerated run: vsync goes off, and the mixins find the pump through the static.
     ///
+    /// @param minecraft The client whose frames the pump runs.
+    /// @param realtime  If vanilla's timing runs, so neither the frames nor the server's ticks wait on the pump.
+    ///
     public Pump(Minecraft minecraft, boolean realtime) {
         this.minecraft = minecraft;
         this.realtime = realtime;
 
         if (!realtime) {
-            // Vsync is the display's own clock: it holds every frame to the refresh rate however fast the pump drives them.
+            // Vsync is the display's own clock: it holds every frame to the refresh rate however fast the pump runs them.
             minecraft.getWindow().updateVsync(false);
 
             // The server thread reads the static, so the pump is published once its fields are set and not before.
@@ -86,12 +89,19 @@ public final class Pump {
     ///
     /// The pump of the run that owns the clock, or `null` if the run goes at the normal rate or no run is active.
     ///
+    /// @return The pump of the run that owns the clock, or `null` if the run goes at the normal rate or no run is active.
+    ///
     public static @Nullable Pump getAccelerated() {
         return Pump.accelerated;
     }
 
     ///
-    /// If the pump drives this server's ticks right now; it drives none of another server's, and none of this one's while it starts up or stops.
+    /// If the pump runs this server's ticks right now.
+    /// It runs none of another server's, and none of this one's while it starts up or stops.
+    ///
+    /// @param server The server the pump may run the ticks of.
+    ///
+    /// @return `true` if the pump runs this server's ticks right now.
     ///
     public boolean isLockstepped(MinecraftServer server) {
         return server == this.minecraft.getSingleplayerServer() && server.isReady() && server.isRunning() && !server.isShutdown();
@@ -148,8 +158,8 @@ public final class Pump {
     ///
     /// Runs the given number of frames recording each one's duration.
     ///
-    /// With a file, vanilla's profiler covers the window and its breakdown goes into that file, one tick per frame; the
-    /// durations of such a window carry the profiler's own cost.
+    /// With a file, vanilla's profiler covers the window and its breakdown goes into that file, one tick per frame.
+    /// The durations of such a window carry the profiler's own cost.
     ///
     /// A breakdown that could not be written leaves no file behind.
     ///
@@ -176,6 +186,8 @@ public final class Pump {
     ///
     /// Deletes the file of a breakdown that was not written, so an earlier run's is never left behind to be read as this window's.
     ///
+    /// @param profile The file of the breakdown that was not written.
+    ///
     private static void discardBreakdown(Path profile) {
         try {
             Files.deleteIfExists(profile);
@@ -185,7 +197,13 @@ public final class Pump {
     }
 
     ///
-    /// Runs the frames of one window and returns each one's duration, in nanoseconds; with a profiler, every frame is one of its ticks.
+    /// Runs the frames of one window and returns each one's duration, in nanoseconds.
+    /// With a profiler, every frame is one of its ticks.
+    ///
+    /// @param frames   The frames the window records.
+    /// @param profiler The profiler the window runs under, or `null` to record the durations alone.
+    ///
+    /// @return The duration of every frame of the window, in nanoseconds, in order, oldest first.
     ///
     private long[] window(int frames, @Nullable ActiveProfiler profiler) {
         long[] nanos = new long[frames];
@@ -208,7 +226,8 @@ public final class Pump {
     }
 
     ///
-    /// Called by the integrated server's thread before each tick; returns once the client has released a tick, or at once while the server is not ready or is stopping.
+    /// Called by the integrated server's thread before each tick.
+    /// Returns once the client has released a tick, or at once while the server is not ready or is stopping.
     ///
     public void awaitTick() {
         IntegratedServer server = this.minecraft.getSingleplayerServer();
@@ -226,7 +245,12 @@ public final class Pump {
     }
 
     ///
-    /// Takes the released tick if there is one; `true` once the server may tick, whether the render thread released it or the lockstep ended.
+    /// Takes the released tick if there is one.
+    /// `true` once the server may tick, whether the render thread released it or the lockstep ended.
+    ///
+    /// @param server The server that wants to tick.
+    ///
+    /// @return `true` once the server may tick, whether the render thread released it or the lockstep ended.
     ///
     private boolean takeTick(IntegratedServer server) {
         synchronized (this.lock) {

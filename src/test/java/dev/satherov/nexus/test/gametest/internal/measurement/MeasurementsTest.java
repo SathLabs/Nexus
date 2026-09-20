@@ -175,9 +175,6 @@ public class MeasurementsTest {
         return MeasurementsTest.read(this.directory, measurement.test());
     }
 
-    ///
-    /// Writes the same test's file of an earlier run into the compare directory.
-    ///
     private Path counterpart(long[] nanos) throws IOException {
         new Measurements(this.compare, null, List.of()).write(new Measurement(MeasurementsTest.TEST, nanos, null));
         return MeasurementsTest.file(this.compare, MeasurementsTest.TEST);
@@ -191,9 +188,6 @@ public class MeasurementsTest {
         return directory.resolve(test.getNamespace()).resolve(test.getPath() + ".json");
     }
 
-    ///
-    /// A discovered test of the sample method, measured if the sample declares a window.
-    ///
     private static Discovered.Valid valid(String sample) throws NoSuchMethodException {
         Method method = MeasurementsTest.class.getDeclaredMethod(sample);
         return new Discovered.Valid(MeasurementsTest.TEST, method, method.getAnnotation(Sample.class), method.getAnnotation(Measured.class));
@@ -210,9 +204,6 @@ public class MeasurementsTest {
     @Measured(40)
     private static void longWindow() { }
 
-    ///
-    /// Stands in for the test annotation a discovered method carries, which [Measurements] never reads.
-    ///
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.METHOD)
     private @interface Sample { }

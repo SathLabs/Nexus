@@ -40,16 +40,35 @@ public final class Measurements {
     /// The id the run's empty window is written under.
     ///
     public static final Identifier BASELINE = Identifier.fromNamespaceAndPath("nexus_gametest", "baseline");
+
+    ///
+    /// The JSON writer of the measurement files, pretty printed.
+    ///
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
+    ///
+    /// The directory the measurement files go into.
+    ///
     private final Path directory;
+
+    ///
+    /// The directory of an earlier run's measurement files, or `null` if this run compares against nothing.
+    ///
     private final @Nullable Path compare;
+
     ///
     /// The length of the baseline window: the longest window declared by any discovered test of this side.
     ///
     @Getter
     private final int baselineLength;
 
+    ///
+    /// Creates the measurements of a run, taking the baseline's length from the longest window the tests declare.
+    ///
+    /// @param directory The directory the measurement files go into.
+    /// @param compare   The directory of an earlier run's measurement files, or `null` for no comparison.
+    /// @param tests     Every discovered test of the run.
+    ///
     public Measurements(Path directory, @Nullable Path compare, List<Discovered> tests) {
         this.directory = directory;
         this.compare = compare;
@@ -68,6 +87,8 @@ public final class Measurements {
 
     ///
     /// Writes the measurement's file and logs its summary and, if the compare directory holds a counterpart, the difference.
+    ///
+    /// @param measurement The measurement to write.
     ///
     public void write(Measurement measurement) {
         if (measurement.nanos().length == 0) {
@@ -112,6 +133,8 @@ public final class Measurements {
     ///
     /// Writes the baseline of the run from an empty window of [#baselineLength()] recorded by the caller.
     ///
+    /// @param nanos The duration of each tick or frame of the empty window, in nanoseconds.
+    ///
     public void writeBaseline(long[] nanos) {
         this.write(new Measurement(Measurements.BASELINE, nanos, null));
     }
@@ -120,12 +143,20 @@ public final class Measurements {
     /// The file vanilla's profiler breakdown of the test goes into, next to its numbers.
     /// The caller saves the results into it and passes the same path as the measurement's profile.
     ///
+    /// @param test The id of the measured test.
+    ///
+    /// @return The file vanilla's profiler breakdown of the test goes into.
+    ///
     public Path profileFile(Identifier test) {
         return Measurements.file(this.directory, test, ".txt");
     }
 
     ///
     /// The summary the compare directory holds for the test, or `null` if there is none we can read.
+    ///
+    /// @param test The id of the measured test.
+    ///
+    /// @return The summary the compare directory holds for the test, or `null` if there is none we can read.
     ///
     private @Nullable Summary earlier(Identifier test) {
         if (this.compare == null) {
@@ -149,17 +180,40 @@ public final class Measurements {
     ///
     /// A file of the test under a directory of its namespace, so no two ids can share one file.
     ///
+    /// @param directory The directory the file goes under.
+    /// @param test      The id of the test.
+    /// @param extension The extension of the file, with its dot.
+    ///
+    /// @return The file of the test under a directory of its namespace.
+    ///
     private static Path file(Path directory, Identifier test, String extension) {
         return test.withSuffix(extension).resolveAgainst(directory);
     }
 
     ///
-    /// The numbers a measurement's file carries beside its series, in nanoseconds; a difference is the earlier run's subtracted from them.
+    /// The numbers a measurement's file carries beside its series, in nanoseconds.
+    /// A difference is the earlier run's subtracted from them.
+    ///
+    /// @param min    The shortest duration.
+    /// @param median The median duration.
+    /// @param p95    The 95th percentile of the durations.
+    /// @param max    The longest duration.
+    /// @param mean   The mean duration.
     ///
     private record Summary(long min, double median, long p95, long max, double mean) {
 
+        ///
+        /// The number of nanoseconds in a millisecond.
+        ///
         private static final double NANOS_PER_MILLISECOND = 1_000_000.0D;
 
+        ///
+        /// The summary of the durations, which are left in the order they were recorded.
+        ///
+        /// @param nanos The durations to summarize, in nanoseconds.
+        ///
+        /// @return The summary of the durations.
+        ///
         private static Summary of(long[] nanos) {
             long[] sorted = nanos.clone();
             Arrays.sort(sorted);
@@ -169,6 +223,15 @@ public final class Measurements {
             return new Summary(sorted[0], median, sorted[(int) Math.ceil(sorted.length * 0.95D) - 1], sorted[sorted.length - 1], Arrays.stream(sorted).average().orElseThrow());
         }
 
+        ///
+        /// The summary the JSON holds.
+        ///
+        /// @param json The summary as JSON.
+        ///
+        /// @return The summary the JSON holds.
+        ///
+        /// @throws JsonSyntaxException If a number is missing, of the wrong type, or the median or mean is not finite.
+        ///
         private static Summary from(JsonObject json) {
             Summary summary = new Summary(
                     GsonHelper.getAsLong(json, "min"),
@@ -186,10 +249,22 @@ public final class Measurements {
             return summary;
         }
 
+        ///
+        /// Each number with the earlier run's subtracted from it.
+        ///
+        /// @param earlier The summary of the earlier run.
+        ///
+        /// @return Each number with the earlier run's subtracted from it.
+        ///
         private Summary minus(Summary earlier) {
             return new Summary(this.min - earlier.min, this.median - earlier.median, this.p95 - earlier.p95, this.max - earlier.max, this.mean - earlier.mean);
         }
 
+        ///
+        /// The summary as a JSON object.
+        ///
+        /// @return The summary as a JSON object.
+        ///
         private JsonObject toJson() {
             JsonObject json = new JsonObject();
             json.addProperty("min", this.min);
@@ -202,6 +277,8 @@ public final class Measurements {
 
         ///
         /// The numbers converted to milliseconds, as one line for the log.
+        ///
+        /// @return The numbers converted to milliseconds, as one line for the log.
         ///
         private String milliseconds() {
             return String.format(

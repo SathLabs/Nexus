@@ -20,11 +20,12 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 ///
-/// Checks that [Discovered] derives ids, accepts the samples that meet the constraints, and names the reason for the rest.
+/// Checks that [Discovered] derives ids, accepts the samples that meet the constraints, and rejects the rest with a reason.
 ///
 public class DiscoveredTest {
 
     private static final Map<Identifier, Discovered> SERVER = DiscoveredTest.byId(Discovered.all(ServerTest.class));
+
     private static final Map<Identifier, Discovered> CLIENT = DiscoveredTest.byId(Discovered.all(ClientTest.class));
 
     private static Map<Identifier, Discovered> byId(List<Discovered> found) {

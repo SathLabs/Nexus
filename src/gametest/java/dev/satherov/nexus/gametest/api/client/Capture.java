@@ -57,6 +57,9 @@ public final class Capture {
     ///
     /// Copies the image's pixels out, so the frame outlives the native memory it was read into.
     ///
+    /// @param test  The id of the test the frame was captured in.
+    /// @param image The image the frame was read back into.
+    ///
     private Capture(Identifier test, NativeImage image) {
         this.test = test;
         this.width = image.getWidth();
@@ -70,9 +73,13 @@ public final class Capture {
     /// @param test   The id of the test the frame is captured in.
     /// @param target The render target the client draws its frames into.
     ///
+    /// @return The frame the target holds.
+    ///
+    /// @throws IllegalStateException If the frame was not read back from the framebuffer.
+    ///
     @ApiStatus.Internal
     public static Capture from(Identifier test, RenderTarget target) {
-        MutableObject<NativeImage> frame = new MutableObject<>();
+        MutableObject<@Nullable NativeImage> frame = new MutableObject<>();
         Screenshot.takeScreenshot(target, frame::setValue);
 
         // Vanilla hands the image over on a fenced task, so the fence waits the copy out and the flush below runs that task.
@@ -83,7 +90,10 @@ public final class Capture {
         RenderSystem.executePendingTasks();
 
         NativeImage image = frame.get();
-        if (image == null) throw new IllegalStateException("the frame was not read back from the framebuffer");
+        if (image == null) {
+            throw new IllegalStateException("the frame was not read back from the framebuffer");
+        }
+
         try (image) {
             return new Capture(test, image);
         }
@@ -94,6 +104,8 @@ public final class Capture {
     ///
     /// @param x The column of the pixel, from the left.
     /// @param y The row of the pixel, from the top.
+    ///
+    /// @return The ARGB color at the position.
     ///
     /// @throws IndexOutOfBoundsException If the position is outside the frame.
     ///
@@ -107,6 +119,8 @@ public final class Capture {
     /// Writes the frame as PNG.
     ///
     /// @param path The file to write.
+    ///
+    /// @throws UncheckedIOException If the frame could not be written.
     ///
     public void write(Path path) {
         try (NativeImage image = new NativeImage(this.width, this.height, false)) {
@@ -122,7 +136,9 @@ public final class Capture {
 
     ///
     /// Fails the test if the frame differs from the golden at `<modid>/goldens/<class>/<name>.png` in the mod's resources,
-    /// `<class>` being the test's class in snake case; with `-Precord` writes it under `-Pgoldens` instead and passes.
+    /// `<class>` being the test's class in snake case.
+    ///
+    /// With `-Precord` writes it under `-Pgoldens` instead and passes.
     ///
     /// @param name The name of the golden, without the `.png`.
     ///
@@ -140,6 +156,12 @@ public final class Capture {
 
     ///
     /// Writes the frame as the golden the run records, creating the directories it sits in.
+    ///
+    /// @param path    The path of the golden, below the directory the goldens are recorded into.
+    /// @param goldens The directory goldens are recorded into, or `null` if none was given.
+    ///
+    /// @throws AssertionError       If the run records goldens without a directory to record them into.
+    /// @throws UncheckedIOException If the directory of the golden could not be created.
     ///
     private void record(String path, @Nullable Path goldens) {
         if (goldens == null) {
@@ -159,6 +181,13 @@ public final class Capture {
     ///
     /// The golden at the path, read from the resources every mod of the run has on the class path.
     ///
+    /// @param path The path of the golden in the resources.
+    ///
+    /// @return The golden at the path.
+    ///
+    /// @throws AssertionError       If there is no golden at the path.
+    /// @throws UncheckedIOException If the golden could not be read.
+    ///
     private Capture golden(String path) {
         try (InputStream stream = Capture.class.getClassLoader().getResourceAsStream(path)) {
             if (stream == null) {
@@ -175,6 +204,11 @@ public final class Capture {
 
     ///
     /// Fails the test at the first pixel the golden has a different color at.
+    ///
+    /// @param golden The golden the frame is compared to.
+    /// @param path   The path of the golden.
+    ///
+    /// @throws AssertionError If the frame differs from the golden in size or in a pixel.
     ///
     private void assertMatches(Capture golden, String path) {
         if (golden.width != this.width || golden.height != this.height) {

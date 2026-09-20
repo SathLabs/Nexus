@@ -19,6 +19,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin extends ReentrantBlockableEventLoop<TickTask> {
 
+    ///
+    /// Vanilla's clock time the next tick is due at, in nanoseconds.
+    ///
     @Shadow
     protected long nextTickTimeNanos;
 
@@ -31,9 +34,11 @@ public abstract class MinecraftServerMixin extends ReentrantBlockableEventLoop<T
     }
 
     ///
-    /// Vanilla's wait stays in place wherever the pump drives no tick of this server: every other server, and the spans where this one starts up or stops.
+    /// Vanilla's wait stays in place wherever the pump runs no tick of this server: every other server, and the spans where this one starts up or stops.
     ///
     /// The released tick is what the server's clock counts from, so a tick keeps its normal budget and vanilla's wait is usable again the moment the lockstep ends.
+    ///
+    /// @param callback The callback of the injection.
     ///
     @Inject(method = "waitUntilNextTick", at = @At("HEAD"), cancellable = true)
     private void waitForReleasedTick(CallbackInfo callback) {

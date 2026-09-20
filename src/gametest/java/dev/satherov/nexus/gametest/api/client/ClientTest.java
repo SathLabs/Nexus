@@ -29,10 +29,14 @@ public @interface ClientTest {
     ///
     /// Defaults to {@value #DEFAULT_MAX_FRAMES}.
     ///
+    /// @return The frames the script may pump before the test fails.
+    ///
     int maxFrames() default ClientTest.DEFAULT_MAX_FRAMES;
 
     ///
     /// If a failure fails the run.
+    ///
+    /// @return `true` if a failure fails the run.
     ///
     boolean required() default true;
 }

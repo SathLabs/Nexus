@@ -36,12 +36,18 @@ import java.util.TreeMap;
 public sealed interface Discovered {
 
     ///
-    /// The ticks a measured window costs beside its samples; internal.server.TickWindow reads it from here so the packages do not reference each other.
+    /// The ticks a measured window costs beside its samples.
+    /// internal.server.TickWindow reads it from here so the packages do not reference each other.
     ///
     int WINDOW_OVERHEAD = 2;
 
     ///
-    /// Every method carrying the annotation across all loaded mods, in id order; an id declared twice is one [Invalid].
+    /// Every method carrying the annotation across all loaded mods, in id order.
+    /// An id declared twice is one [Invalid].
+    ///
+    /// @param annotation The test annotation to look for.
+    ///
+    /// @return Every method carrying the annotation, in id order.
     ///
     static List<Discovered> all(Class<? extends Annotation> annotation) {
         Map<Identifier, Discovered> byId = new TreeMap<>();
@@ -60,6 +66,15 @@ public sealed interface Discovered {
         return List.copyOf(byId.values());
     }
 
+    ///
+    /// The method as a [Valid], or as an [Invalid] carrying the constraint it breaks.
+    ///
+    /// @param modId      The id of the mod that declares the method.
+    /// @param method     The annotated method.
+    /// @param annotation The test annotation the method carries.
+    ///
+    /// @return The method as a [Valid], or as an [Invalid] carrying the constraint it breaks.
+    ///
     private static Discovered of(String modId, Method method, Class<? extends Annotation> annotation) {
         String owner = method.getDeclaringClass().getName();
         Identifier id = Identifier.fromNamespaceAndPath(modId, Discovered.snake(owner.substring(owner.lastIndexOf('.') + 1)) + "/" + Discovered.snake(method.getName()));
@@ -68,7 +83,18 @@ public sealed interface Discovered {
         return reason == null ? new Valid(id, method, test, method.getAnnotation(Measured.class)) : new Invalid(id, reason, Discovered.required(test));
     }
 
-    // FML records a method as its name followed by its descriptor.
+    ///
+    /// The method the scan found, looked up on the class that declares it.
+    ///
+    /// FML records a method as its name followed by its descriptor.
+    ///
+    /// @param found The method the scan recorded.
+    ///
+    /// @return The method, looked up on the class that declares it.
+    ///
+    /// @throws IllegalStateException  If the class does not declare the method the scan recorded.
+    /// @throws ClassNotFoundException If the class the scan recorded can't be loaded.
+    ///
     @SneakyThrows(ClassNotFoundException.class)
     private static Method method(ModFileScanData.AnnotationData found) {
         int descriptor = found.memberName().indexOf('(');
@@ -82,10 +108,27 @@ public sealed interface Discovered {
         throw new IllegalStateException("'" + found.memberName() + "' is not declared by " + owner.getName());
     }
 
+    ///
+    /// The name in snake case, with the `$` of a nested class turned into a `.`.
+    ///
+    /// @param name The name to convert.
+    ///
+    /// @return The name in snake case, with the `$` of a nested class turned into a `.`.
+    ///
     private static String snake(String name) {
         return name.replace('$', '.').replaceAll("(?<=[^.])(?=[A-Z])", "_").toLowerCase(Locale.ROOT);
     }
 
+    ///
+    /// The first constraint of the annotation the method breaks, or `null` if it breaks none.
+    ///
+    /// @param method The annotated method.
+    /// @param test   The test annotation the method carries.
+    ///
+    /// @return The first constraint of the annotation the method breaks, or `null` if it breaks none.
+    ///
+    /// @throws IllegalArgumentException If the annotation is not a test annotation.
+    ///
     private static @Nullable String reason(Method method, Annotation test) {
         if (!Modifier.isPublic(method.getDeclaringClass().getModifiers())) {
             return "class is not public";
@@ -127,6 +170,15 @@ public sealed interface Discovered {
         };
     }
 
+    ///
+    /// The `required` element of the annotation, whichever test annotation it is.
+    ///
+    /// @param test The test annotation the element is read from.
+    ///
+    /// @return The `required` element of the annotation.
+    ///
+    /// @throws IllegalArgumentException If the annotation is not a test annotation.
+    ///
     private static boolean required(Annotation test) {
         return switch (test) {
             case ServerTest server -> server.required();
@@ -135,22 +187,47 @@ public sealed interface Discovered {
         };
     }
 
+    ///
+    /// One [Invalid] for an id two methods declare, required if either of them is.
+    ///
+    /// @param first  The test of the id.
+    /// @param second The other test of the same id.
+    ///
+    /// @return One [Invalid] for the id, required if either of them is.
+    ///
     private static Discovered twice(Discovered first, Discovered second) {
         return new Invalid(first.id(), "declared twice", first.required() || second.required());
     }
 
+    ///
+    /// The id of the test, `<modid>:<class>/<method>` in snake case.
+    ///
+    /// @return The id of the test, `<modid>:<class>/<method>` in snake case.
+    ///
     Identifier id();
 
     ///
     /// If a failure of the test fails the run.
     ///
+    /// @return `true` if a failure of the test fails the run.
+    ///
     boolean required();
 
     ///
-    /// A method that meets the constraints; `measured` is `null` when the method carries no [Measured].
+    /// A method that meets the constraints.
+    ///
+    /// @param id         The test's id.
+    /// @param method     The test method.
+    /// @param annotation The [ServerTest] or [ClientTest] the method carries.
+    /// @param measured   The [Measured] the method carries, or `null` if it carries none.
     ///
     record Valid(Identifier id, Method method, Annotation annotation, @Nullable Measured measured) implements Discovered {
 
+        ///
+        /// Reads the `required` element of whichever test annotation the method carries.
+        ///
+        /// @return `true` if a failure of the test fails the run.
+        ///
         @Override
         public boolean required() {
             return Discovered.required(this.annotation);
@@ -160,7 +237,9 @@ public sealed interface Discovered {
         /// Calls the method with the parameter its annotation requires: a [GameTestHelper] for a [ServerTest], a [Client] for a [ClientTest].
         /// Discovery has already checked that the method takes that parameter.
         ///
-        /// Rethrows what the test threw, untouched, so a run names the failure and not the reflective call around it.
+        /// Rethrows what the test threw, untouched, so a run reports the failure and not the reflective call around it.
+        ///
+        /// @param parameter The [GameTestHelper] or [Client] the method takes.
         ///
         @SneakyThrows
         public void invoke(Object parameter) {
@@ -173,7 +252,12 @@ public sealed interface Discovered {
     }
 
     ///
-    /// A method that does not; the run reports it as a failed test with the reason.
+    /// A method that does not.
+    /// The run records it as a failed test with the reason.
+    ///
+    /// @param id       The test's id.
+    /// @param reason   The constraint the method breaks.
+    /// @param required If the failure fails the run.
     ///
     record Invalid(Identifier id, String reason, boolean required) implements Discovered { }
 }

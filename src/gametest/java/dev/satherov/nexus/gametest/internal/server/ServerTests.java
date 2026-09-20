@@ -54,6 +54,8 @@ public class ServerTests {
     ///
     /// Registers the function of every selected test, and the baseline where the run writes one.
     ///
+    /// @param event The registry event the functions are registered on.
+    ///
     @SubscribeEvent
     public static void onRegister(RegisterEvent event) {
         event.register(Registries.TEST_FUNCTION, functions -> {
@@ -70,6 +72,10 @@ public class ServerTests {
     ///
     /// The window of a measured test, the discovered method of a plain one, a failure with the reason of an invalid one.
     ///
+    /// @param test The discovered test.
+    ///
+    /// @return The function the test runs as.
+    ///
     private static Consumer<GameTestHelper> function(Discovered test) {
         return switch (test) {
             case Discovered.Valid valid when ServerTests.isMeasured(valid) -> new TickWindow(valid, ServerTests.MEASUREMENTS.get());
@@ -80,6 +86,8 @@ public class ServerTests {
 
     ///
     /// Registers every selected test against the function of the same id, and the baseline where the run writes one.
+    ///
+    /// @param event The event the tests and their environments are registered on.
     ///
     @SubscribeEvent
     public static void onRegisterTests(RegisterGameTestsEvent event) {
@@ -108,6 +116,10 @@ public class ServerTests {
     ///
     /// Registers the instance of the id against the function registered under it.
     ///
+    /// @param event The event the test is registered on.
+    /// @param id    The id of the test.
+    /// @param data  The data the test is registered with.
+    ///
     private static void registerTest(RegisterGameTestsEvent event, Identifier id, TestData<Holder<TestEnvironmentDefinition<?>>> data) {
         ResourceKey<Consumer<GameTestHelper>> function = ResourceKey.create(Registries.TEST_FUNCTION, id);
         event.registerTest(id, new FunctionGameTestInstance(function, data));
@@ -115,6 +127,11 @@ public class ServerTests {
 
     ///
     /// The annotation's data for a valid test, one tick in the default structure for an invalid one.
+    ///
+    /// @param test        The discovered test.
+    /// @param environment The environment the test runs in.
+    ///
+    /// @return The data the test is registered with.
     ///
     private static TestData<Holder<TestEnvironmentDefinition<?>>> data(Discovered test, Holder<TestEnvironmentDefinition<?>> environment) {
         if (test instanceof Discovered.Valid(_, _, ServerTest annotation, _)) {
@@ -139,6 +156,10 @@ public class ServerTests {
     ///
     /// If the test records a window of its own.
     ///
+    /// @param test The discovered test.
+    ///
+    /// @return `true` if the test records a window of its own.
+    ///
     private static boolean isMeasured(Discovered test) {
         return test instanceof Discovered.Valid valid && valid.measured() != null;
     }
@@ -146,12 +167,16 @@ public class ServerTests {
     ///
     /// If the run writes a baseline: it takes a measured test for the baseline to be compared against.
     ///
+    /// @return `true` if the run writes a baseline.
+    ///
     private static boolean hasBaseline() {
         return ServerTests.MEASUREMENTS.get().baselineLength() > 0;
     }
 
     ///
     /// Every discovered test the run selects, the invalid ones included.
+    ///
+    /// @return Every discovered test the run selects, the invalid ones included.
     ///
     private static List<Discovered> selected() {
         RunOptions options = RunOptions.fromProperties();
@@ -163,6 +188,8 @@ public class ServerTests {
 
     ///
     /// The measurements of the run, written next to its report.
+    ///
+    /// @return The measurements of the run.
     ///
     private static Measurements measurements() {
         RunOptions options = RunOptions.fromProperties();

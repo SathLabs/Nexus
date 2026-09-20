@@ -8,7 +8,8 @@ import dev.satherov.nexus.gametest.api.server.ServerTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 
 ///
-/// Test methods for [DiscoveredTest]; the broken ones are optional so the runs only report them.
+/// Test methods for [DiscoveredTest].
+/// The broken ones are optional so the runs only report them.
 ///
 public class DiscoverySamples {
 
@@ -64,9 +65,6 @@ public class DiscoverySamples {
     @ClientTest(maxFrames = 0, required = false)
     public static void noFrames(Client client) { }
 
-    ///
-    /// Not public, so the method in it is rejected for the class.
-    ///
     static class Hidden {
 
         @ServerTest(required = false)

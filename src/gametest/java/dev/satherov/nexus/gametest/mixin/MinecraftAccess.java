@@ -14,6 +14,8 @@ public interface MinecraftAccess {
     ///
     /// Runs one frame, ticking the client only if the frame advances the game time.
     ///
+    /// @param advanceGameTime If the frame advances the game time.
+    ///
     @Invoker("runTick")
     void invokeRunTick(boolean advanceGameTime);
 }

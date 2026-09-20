@@ -29,7 +29,10 @@ public abstract class GameTestServerMixin extends MinecraftServer {
     }
 
     ///
-    /// Vanilla looks the flat preset up inside a lambda of `create`; the regex selector matches them whatever they are numbered.
+    /// Vanilla looks the flat preset up inside a lambda of `create`.
+    /// The regex selector matches them whatever they are numbered.
+    ///
+    /// @return The key of the void preset.
     ///
     @Redirect(
             method = "/^lambda\\$create\\$/",
@@ -42,6 +45,8 @@ public abstract class GameTestServerMixin extends MinecraftServer {
 
     ///
     /// Under [RunOptions#REALTIME], waits the way [MinecraftServer] does, so the run ticks at the normal rate.
+    ///
+    /// @param callback The callback of the injection.
     ///
     @Inject(method = "waitUntilNextTick", at = @At("HEAD"), cancellable = true)
     private void waitAtNormalRate(CallbackInfo callback) {

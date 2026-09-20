@@ -20,14 +20,19 @@ public @interface Measured {
 
     ///
     /// The length of the recorded window, in ticks on the server and frames on the client.
-    /// Must be positive; the method must also carry [ServerTest] or [ClientTest].
+    /// Must be positive.
+    /// The method must also carry [ServerTest] or [ClientTest].
     /// On a [ServerTest], [ServerTest#maxTicks()] has to hold the window and the two ticks the harness takes beside it.
+    ///
+    /// @return The length of the recorded window.
     ///
     int value();
 
     ///
     /// If vanilla's profiler breakdown over the window is written next to the numbers.
     /// The durations of the window then carry the profiler's own cost, so they only compare to another profiled run.
+    ///
+    /// @return `true` if vanilla's profiler breakdown over the window is written next to the numbers.
     ///
     boolean profile() default false;
 }

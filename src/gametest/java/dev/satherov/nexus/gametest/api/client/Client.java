@@ -16,7 +16,8 @@ import org.jspecify.annotations.Nullable;
 import java.util.function.BooleanSupplier;
 
 ///
-/// A client under the control of one test script; every method runs on the render thread and returns when its work is done.
+/// A client under the control of one test script.
+/// Every method runs on the render thread and returns when its work is done.
 ///
 @Accessors(fluent = true)
 public final class Client {
@@ -67,7 +68,7 @@ public final class Client {
     ///
     /// Creates the client a [ClientTest] method is called with.
     ///
-    /// @param minecraft The client the script drives.
+    /// @param minecraft The client the script runs on.
     /// @param test      The id of the test the client runs.
     /// @param maxFrames The frames the script may pump before the test fails.
     /// @param frame     The running of one frame, called once per [#tick()].
@@ -84,7 +85,8 @@ public final class Client {
     }
 
     ///
-    /// Runs one frame; the game advances exactly one tick in it unless the run is at normal rate.
+    /// Runs one frame.
+    /// The game advances exactly one tick in it unless the run is at normal rate.
     ///
     /// Fails the test if the frames it may pump are already spent.
     ///
@@ -108,10 +110,12 @@ public final class Client {
     ///
     /// Runs frames until the condition holds.
     ///
-    /// Fails the test, naming what was awaited, if the frames the test may pump run out first.
+    /// Fails the test if the frames it may pump run out first, with what was awaited in the failure message.
     ///
-    /// @param what      The thing that is waited for, named in the failure.
+    /// @param what      The thing that is waited for.
     /// @param condition The condition, checked before every frame.
+    ///
+    /// @throws AssertionError If the frames the script may pump run out before the condition holds.
     ///
     public void until(String what, BooleanSupplier condition) {
         while (!condition.getAsBoolean()) {
@@ -135,6 +139,8 @@ public final class Client {
     ///
     /// The last rendered frame.
     ///
+    /// @return The last rendered frame.
+    ///
     public Capture capture() {
         return Capture.from(this.test, this.minecraft.getMainRenderTarget());
     }
@@ -151,7 +157,8 @@ public final class Client {
     }
 
     ///
-    /// Leaves the world and deletes its save; does nothing if not in one.
+    /// Leaves the world and deletes its save.
+    /// Does nothing if not in one.
     ///
     public void leaveWorld() {
         if (this.world == null) {
@@ -165,6 +172,8 @@ public final class Client {
     ///
     /// The overworld of the integrated server.
     ///
+    /// @return The overworld of the integrated server.
+    ///
     /// @throws IllegalStateException If not in a world.
     ///
     public ServerLevel serverLevel() {
@@ -174,6 +183,8 @@ public final class Client {
 
     ///
     /// Runs one frame against the frames the test may pump.
+    ///
+    /// @throws AssertionError If the frames the test may pump are already spent.
     ///
     private void pump() {
         if (this.frames >= this.maxFrames) {

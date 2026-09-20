@@ -34,12 +34,20 @@ public class VoidLevel {
     ///
     /// Settings for a fresh level of the given name.
     ///
+    /// @param name The name of the level.
+    ///
+    /// @return Settings for a fresh level of the given name.
+    ///
     public static LevelSettings settings(String name) {
         return new LevelSettings(name, GameType.CREATIVE, LevelSettings.DifficultySettings.DEFAULT, true, WorldDataConfiguration.DEFAULT);
     }
 
     ///
     /// The preset's dimensions from the loaded registries.
+    ///
+    /// @param registries The loaded registries.
+    ///
+    /// @return The preset's dimensions.
     ///
     public static WorldDimensions dimensions(HolderLookup.Provider registries) {
         return registries.lookupOrThrow(Registries.WORLD_PRESET).getOrThrow(VoidLevel.PRESET).value().createWorldDimensions();
