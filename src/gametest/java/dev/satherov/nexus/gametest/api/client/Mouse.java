@@ -98,13 +98,13 @@ public final class Mouse {
     }
 
     ///
-    /// Scrolls vertically by the amount, positive towards the user.
+    /// Scrolls vertically by the amount, positive away from the user.
     ///
     /// @param amount The distance to scroll by.
     ///
     public void scroll(double amount) {
         Minecraft minecraft = this.client.minecraft();
-        ((MouseHandlerAccess) minecraft.mouseHandler).invokeOnScroll(minecraft.getWindow().handle(), 0.0D, -amount); // GLFW's offset is positive away from the user
+        ((MouseHandlerAccess) minecraft.mouseHandler).invokeOnScroll(minecraft.getWindow().handle(), 0.0D, amount);
     }
 
     ///
