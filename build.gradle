@@ -194,44 +194,174 @@ dependencies {
     testRuntimeOnly libs.junit.platform.launcher
 }
 
-tasks.named('runGameTestServer', JavaExec) {
-    def reports = gametestServerReport.parentFile
+// Every sample a run reports, by its id, with the outcome it should end in and a part of its failure message where one is given.
+// A passing test is 'passed', and an optional failure is 'skipped', as vanilla writes it into the report.
+// The measurement files the run should leave in its report directory, by their path without the extension, and the measured
+// samples that should leave none.
+def discoverySamples = 'dev.satherov.nexus.test.game.gametest.internal.discovery.DiscoverySamples'
 
-    // The windows TickWindowSamples declares, and the baseline of the run, which is as long as the longest of them.
-    def windows = [
-            'nexus/tick_window_samples/window.json'         : 7,
-            'nexus/tick_window_samples/profiled_window.json': 3,
-            'nexus_gametest/baseline.json'                  : 7,
-    ]
-    def profile = 'nexus/tick_window_samples/profiled_window.txt'
-    def selected = project.hasProperty('tests')
+def serverRun = [
+        cases       : [
+                'nexus:discovery_samples/meets_constraints'         : ['passed'],
+                'nexus:discovery_samples/optional'                  : ['passed'],
+                'nexus:discovery_samples/measured'                  : ['passed'],
+                'nexus:discovery_samples/long_window'               : ['passed'],
+                'nexus:discovery_samples/not_public'                : ['skipped', "Method '${discoverySamples}#notPublic' is not public"],
+                'nexus:discovery_samples/not_static'                : ['skipped', "Method '${discoverySamples}#notStatic' is not static"],
+                'nexus:discovery_samples/not_void'                  : ['skipped', "Method '${discoverySamples}#notVoid' does not return void"],
+                'nexus:discovery_samples/two_parameters'            : ['skipped', 'Found more than one parameter, 2 total'],
+                'nexus:discovery_samples/takes_a_string'            : ['skipped', "Parameter is not a 'GameTestHelper', found 'String' instead"],
+                'nexus:discovery_samples/empty_window'              : ['skipped', 'Measured#value is not positive'],
+                'nexus:discovery_samples/no_ticks'                  : ['skipped', 'ServerTest#maxTicks is not positive'],
+                'nexus:discovery_samples/window_overruns_ticks'     : ['skipped', 'ServerTest#maxTicks is too short for Measured#value'],
+                'nexus:discovery_samples/negative_setup'            : ['skipped', 'ServerTest#setupTicks is negative'],
+                'nexus:discovery_samples/wrong_structure'           : ['skipped', 'ServerTest#structure is not an identifier'],
+                'nexus:discovery_samples/same_id'                   : ['skipped', 'Declared twice'],
+                'nexus:discovery_samples/throws_its_own_exception'  : ['skipped', 'Thrown by the sample on purpose'],
+                'nexus:discovery_samples.hidden_class/hidden_method': ['skipped', "Class '${discoverySamples}\$HiddenClass' is not public"],
+                'nexus:void_level_samples/air_around_and_below'     : ['passed'],
+                'nexus:tick_window_samples/window'                  : ['passed'],
+                'nexus:tick_window_samples/profiled_window'         : ['passed'],
+                'nexus:tick_window_samples/succeeds_itself'         : ['passed'],
+                'nexus:tick_window_samples/tick_rate'               : ['passed'],
+                'nexus:server_test_samples/past_max_ticks'          : ['skipped', 'within 2 ticks'],
+                'nexus:server_test_samples/optional_failure'        : ['skipped', 'The optional sample failed'],
+                'nexus_gametest:baseline'                           : ['passed'],
+        ],
+        measurements: [
+                'nexus/discovery_samples/measured'         : [window: 5, profile: false],
+                'nexus/discovery_samples/long_window'      : [window: 10, profile: false],
+                'nexus/tick_window_samples/window'         : [window: 7, profile: false],
+                'nexus/tick_window_samples/profiled_window': [window: 3, profile: true],
+                'nexus_gametest/baseline'                  : [window: 10, profile: false],
+        ],
+        unmeasured  : [
+                'nexus/discovery_samples/window_overruns_ticks',
+                'nexus/discovery_samples/empty_window',
+                'nexus/tick_window_samples/succeeds_itself',
+        ],
+]
+
+def clientRun = [
+        cases       : [
+                'nexus:discovery_samples/client'                  : ['passed'],
+                'nexus:discovery_samples/client_with_helper'      : ['skipped', "Parameter is not a 'Client', found 'GameTestHelper' instead"],
+                'nexus:discovery_samples/no_frames'               : ['skipped', 'ClientTest#maxFrames is not positive'],
+                'nexus:client_samples/title_screen_at_start'      : ['passed'],
+                'nexus:client_samples/ticks_advance_server'       : ['passed'],
+                'nexus:client_samples/until_out_of_frames'        : ['passed'],
+                'nexus:client_samples/server_level_outside_world' : ['passed'],
+                'nexus:test_world_samples/join_world'             : ['passed'],
+                'nexus:test_world_samples/leave_world'            : ['passed'],
+                'nexus:keyboard_samples/press_opens_inventory'    : ['passed'],
+                'nexus:keyboard_samples/hold_sets_modifier'       : ['passed'],
+                'nexus:keyboard_samples/type_into_text_field'     : ['passed'],
+                'nexus:mouse_samples/click_opens_options'         : ['passed'],
+                'nexus:mouse_samples/scroll_selects_previous_slot': ['passed'],
+                'nexus:capture_samples/size_of_render_target'     : ['passed'],
+                'nexus:capture_samples/pixel_matches_write'       : ['passed'],
+                'nexus:capture_samples/pixel_outside_frame'       : ['passed'],
+                'nexus:capture_samples/missing_golden'            : ['passed'],
+                'nexus:capture_samples/title_screen'              : ['passed'],
+                'nexus:client_run_samples/window'                 : ['passed'],
+                'nexus:client_run_samples/profiled_window'        : ['passed'],
+                'nexus:client_run_samples/optional_failure'       : ['skipped', 'This test always fails'],
+                'nexus:client_run_samples/out_of_frames'          : ['skipped', 'ran out of frames'],
+        ],
+        measurements: [
+                'nexus/client_run_samples/window'         : [window: 40, profile: false],
+                'nexus/client_run_samples/profiled_window': [window: 3, profile: true],
+                'nexus_gametest/baseline'                 : [window: 40, profile: false],
+        ],
+        unmeasured  : [],
+]
+
+// Deletes the report and every measurement file of the previous run, so a stale file can't pass the checks.
+def clearGameTestRun = { report, run ->
+    report.parentFile.mkdirs()
+    report.delete()
+    (run.measurements.keySet() + run.unmeasured).each { path ->
+        new File(report.parentFile, path + '.json').delete()
+        new File(report.parentFile, path + '.txt').delete()
+    }
+}
+
+// Checks the report and the measurement files of a run against what the run should leave behind.
+// Every 'nexus:' test the run reports has to be in its data.
+// If the run was started with a '-Ptests' selector, only the cases it reported are checked.
+def verifyGameTestRun = { report, run, selected ->
+    if (!report.isFile()) {
+        throw new GradleException("The run wrote no report to '${report}'")
+    }
+
+    def cases = new groovy.xml.XmlSlurper().parse(report).'**'.findAll { node -> node.name() == 'testcase' }
+    def failed = cases.findAll { testCase -> !testCase.failure.isEmpty() }.collect { testCase -> "'${testCase.@name}'" }
+    if (!failed.isEmpty()) {
+        throw new GradleException("Required tests failed: ${failed.join(', ')}")
+    }
+
+    run.cases.each { id, expected ->
+        def reported = cases.findAll { testCase -> testCase.@name.text() == id }
+        if (reported.isEmpty() && !selected) {
+            throw new GradleException("The run did not report '${id}'")
+        }
+
+        reported.each { testCase ->
+            def result = testCase.children()
+            def outcome = result.isEmpty() ? 'passed' : result[0].name()
+            if (outcome != expected[0]) {
+                throw new GradleException("'${id}' ended as '${outcome}' instead of '${expected[0]}'")
+            }
+
+            def message = result.@message.text()
+            if (expected.size() > 1 && !message.contains(expected[1])) {
+                throw new GradleException("'${id}' failed with '${message}' instead of '${expected[1]}'")
+            }
+        }
+    }
+
+    if (selected) {
+        return
+    }
+
+    def unknown = cases.collect { testCase -> testCase.@name.text() }.findAll { id -> id.startsWith('nexus:') && !run.cases.containsKey(id) }
+    if (!unknown.isEmpty()) {
+        throw new GradleException("The run reported tests without an expected outcome: ${unknown.collect { id -> "'${id}'" }.join(', ')}")
+    }
+
+    run.measurements.each { path, measurement ->
+        def file = new File(report.parentFile, path + '.json')
+        if (!file.isFile()) {
+            throw new GradleException("The run wrote no measurement to '${path}.json'")
+        }
+
+        def nanos = new groovy.json.JsonSlurper().parse(file).nanos
+        if (nanos.size() != measurement.window) {
+            throw new GradleException("'${path}.json' holds '${nanos.size()}' ticks or frames instead of '${measurement.window}'")
+        }
+
+        def profile = new File(report.parentFile, path + '.txt').isFile()
+        if (profile != measurement.profile) {
+            throw new GradleException("The run wrote ${profile ? 'a' : 'no'} profile to '${path}.txt'")
+        }
+    }
+
+    run.unmeasured.each { path ->
+        if (new File(report.parentFile, path + '.json').exists() || new File(report.parentFile, path + '.txt').exists()) {
+            throw new GradleException("The run wrote a measurement to '${path}'")
+        }
+    }
+}
+
+tasks.named('runGameTestServer', JavaExec) {
+    def selected = project.hasProperty('tests') && !project.property('tests').toString().isEmpty()
 
     doFirst {
-        reports.mkdirs()
-        windows.keySet().each { new File(reports, it).delete() }
-        new File(reports, profile).delete()
+        clearGameTestRun(gametestServerReport, serverRun)
     }
 
     doLast {
-        if (selected) {
-            return
-        }
-
-        windows.each { path, window ->
-            def file = new File(reports, path)
-            if (!file.isFile()) {
-                throw new GradleException("the run wrote no measurement to ${path}")
-            }
-
-            def nanos = new groovy.json.JsonSlurper().parse(file).nanos
-            if (nanos.size() != window) {
-                throw new GradleException("${path} holds ${nanos.size()} samples, and not the ${window} of its window")
-            }
-        }
-
-        if (!new File(reports, profile).isFile()) {
-            throw new GradleException("the run wrote no profiler breakdown to ${profile}")
-        }
+        verifyGameTestRun(gametestServerReport, serverRun, selected)
     }
 }
 
@@ -252,26 +382,14 @@ def stopXvfb = tasks.register('stopXvfb') {
 tasks.named('runGameTestClient', JavaExec) {
     def fmlConfig = file('runs/gametest-client/config/fml.toml')
     def xvfb = project.hasProperty('xvfb')
-    def reports = gametestClientReport.parentFile
-
-    // The windows ClientRunSamples declares, and the baseline of the run, which is as long as the longest of them.
-    def windows = [
-            'nexus/client_run_samples/window.json'         : 40,
-            'nexus/client_run_samples/profiled_window.json': 3,
-            'nexus_gametest/baseline.json'                 : 40,
-    ]
-    def profile = 'nexus/client_run_samples/profiled_window.txt'
-    def selected = project.hasProperty('tests')
+    def selected = project.hasProperty('tests') && !project.property('tests').toString().isEmpty()
 
     if (xvfb) {
         finalizedBy stopXvfb
     }
 
     doFirst {
-        gametestClientReport.parentFile.mkdirs()
-        gametestClientReport.delete()
-        windows.keySet().each { new File(reports, it).delete() }
-        new File(reports, profile).delete()
+        clearGameTestRun(gametestClientReport, clientRun)
 
         // FML's early loading screen opens a window before any mixin can hide it; every other key of the file is FML's own.
         def control = 'earlyWindowControl = false'
@@ -314,29 +432,7 @@ tasks.named('runGameTestClient', JavaExec) {
     }
 
     doLast {
-        if (!gametestClientReport.isFile()) {
-            throw new GradleException('the run wrote no report to ' + gametestClientReport)
-        }
-
-        if (selected) {
-            return
-        }
-
-        windows.each { path, window ->
-            def file = new File(reports, path)
-            if (!file.isFile()) {
-                throw new GradleException("the run wrote no measurement to ${path}")
-            }
-
-            def nanos = new groovy.json.JsonSlurper().parse(file).nanos
-            if (nanos.size() != window) {
-                throw new GradleException("${path} holds ${nanos.size()} samples, and not the ${window} of its window")
-            }
-        }
-
-        if (!new File(reports, profile).isFile()) {
-            throw new GradleException("the run wrote no profiler breakdown to ${profile}")
-        }
+        verifyGameTestRun(gametestClientReport, clientRun, selected)
     }
 }
 
