@@ -14,43 +14,45 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 ///
-/// Ties the integrated server's tick to the pump: it waits for a released tick instead of waiting on the clock.
+/// Makes the integrated server wait for a released tick instead of its clock while the pump runs it in lockstep.
 ///
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin extends ReentrantBlockableEventLoop<TickTask> {
-
+    
     ///
-    /// Vanilla's clock time the next tick is due at, in nanoseconds.
+    /// The time the next tick is due at, in nanoseconds.
     ///
     @Shadow
     protected long nextTickTimeNanos;
-
+    
     ///
-    /// Never called: the mixin extends the server's event loop only so [#waitForReleasedTick(CallbackInfo)] can drain its tasks.
+    /// Never called.
+    ///
+    /// The mixin only extends the server's event loop so that [#waitForReleasedTick(CallbackInfo)] can run its tasks.
     ///
     private MinecraftServerMixin() {
-        //noinspection DataFlowIssue The constructor is dropped when the mixin is applied
+        //noinspection DataFlowIssue This is never called.
         super(null, false);
     }
-
+    
     ///
-    /// Vanilla's wait stays in place wherever the pump runs no tick of this server: every other server, and the spans where this one starts up or stops.
+    /// Runs the server's tasks and then waits for the pump to release a tick, if the pump runs this server in lockstep.
     ///
-    /// The released tick is what the server's clock counts from, so a tick keeps its normal budget and vanilla's wait is usable again the moment the lockstep ends.
+    /// The next tick is due immediately after the wait.
     ///
     /// @param callback The callback of the injection.
     ///
     @Inject(method = "waitUntilNextTick", at = @At("HEAD"), cancellable = true)
     private void waitForReleasedTick(CallbackInfo callback) {
-        Pump pump = Pump.getAccelerated();
+        Pump pump = Pump.getInstance();
+        //noinspection ConstantValue No intellij, this is not actually always true.
         if (pump == null || !pump.isLockstepped((MinecraftServer) (Object) this)) {
             return;
         }
-
+        
         this.runAllTasks();
         pump.awaitTick();
-
-        // The tick loop adds a whole tick's worth to this per pass and never takes it back, so a lockstep that outruns real time runs it ever further ahead.
+        
         this.nextTickTimeNanos = Util.getNanos();
         callback.cancel();
     }

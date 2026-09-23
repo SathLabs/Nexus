@@ -13,16 +13,13 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 ///
-/// Keeps the window of a client test run off the screen.
-/// It still renders every frame into it.
+/// Hides the window of a client test run.
 ///
 @Mixin(Window.class)
 public abstract class WindowMixin {
-
+    
     ///
-    /// Hides the window a client test run is about to create, unless [RunOptions#SHOW] asks for a visible one.
-    ///
-    /// The hint sits on the creation call and not at the head, because NeoForge takes the early loading screen's window over where there is one.
+    /// Hides the window that is about to be created, if a client test run is active and [RunOptions#SHOW] is not set.
     ///
     /// @param width    The width of the window.
     /// @param height   The height of the window.
@@ -33,7 +30,10 @@ public abstract class WindowMixin {
     ///
     @Inject(
             method = "createGlfwWindow",
-            at = @At(value = "INVOKE", target = "Lorg/lwjgl/glfw/GLFW;glfwCreateWindow(IILjava/lang/CharSequence;JJ)J"),
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lorg/lwjgl/glfw/GLFW;glfwCreateWindow(IILjava/lang/CharSequence;JJ)J"
+            ),
             allow = 1
     )
     private static void hideWindow(int width, int height, String title, long monitor, GpuBackend backend, CallbackInfoReturnable<Long> callback) {

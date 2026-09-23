@@ -13,31 +13,32 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 ///
-/// Keeps the easter egg logo out of a client test run, however the renderer's own dice fall.
+/// Keeps the easter egg logo off the title screen during a client test run.
 ///
 @Mixin(LogoRenderer.class)
 public abstract class LogoRendererMixin {
-
+    
     ///
-    /// Vanilla's roll for the MINCERAFT logo, made once when the renderer is built.
+    /// `true` if the MINCERAFT logo is shown, rolled once when the renderer is created.
     ///
     @Final
     @Shadow
     @Mutable
     private boolean showEasterEgg;
-
+    
     ///
-    /// Takes the roll back once the renderer is built, before anything reads it.
-    ///
-    /// Vanilla shows MINCERAFT on about one renderer in ten thousand, and a run builds one per title screen, so a byte-exact golden of that screen would fail on the roll alone.
+    /// Turns the easter egg off once the renderer is created, if a client test run is active.
     ///
     /// @param keepLogoThroughFade If the logo is kept through the fade.
     /// @param callback            The callback of the injection.
     ///
-    @Inject(method = "<init>", at = @At("RETURN"))
+    @Inject(
+            method = "<init>",
+            at = @At("RETURN")
+    )
     private void hideEasterEgg(boolean keepLogoThroughFade, CallbackInfo callback) {
         if (ClientRun.isActive()) {
-            this.showEasterEgg = false;
+            this.showEasterEgg = false; // fuck you for breaking my goldens with your random ass chance once every ten thousand runs
         }
     }
 }

@@ -28,41 +28,46 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 
 ///
-/// A joined void level: created under a unique name, deleted on leave.
+/// A reference to a world the player is in and what the player can do within it.
+///
+/// @see VoidLevel
 ///
 @ApiStatus.Internal
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class TestWorld {
-
+    
     ///
-    /// The save name a join asks for.
-    /// Vanilla numbers it where a save of that name is already there.
+    /// The name of the save file the level should be created in.
+    ///
+    /// If the name is already taken, vanilla will just add a number to it.
     ///
     private static final String SAVE_NAME = "nexus-gametest";
-
+    
     ///
-    /// The client the level was joined on.
+    /// The client that joined the level.
     ///
     private final Client client;
-
+    
     ///
-    /// The name of the save the level lives in.
+    /// The actual name of the save file.
     ///
     private final String name;
-
+    
     ///
-    /// Creates the level and starts joining it.
-    /// The player is only in it once [#awaitSpawn()] returns.
+    /// Creates a new test world and then joins it.
     ///
-    /// @param client The client the level is joined on.
+    /// The player will only be in the world after [#awaitSpawn()] finishes.
     ///
-    /// @return The level the client is joining.
+    /// @param client The client that joined the level.
+    ///
+    /// @return The level the client joined.
     ///
     public static TestWorld create(Client client) {
         Minecraft minecraft = client.minecraft();
         String name = TestWorld.freeName(minecraft.getLevelSource());
-
-        // Vanilla spins the render thread inside this call until the server is ready, so the load costs the test no frames.
+        
+        // Vanilla traps the render thread here until the server is ready,
+        // so waiting for a world to load doesn't impact the available frames for a test case.
         minecraft.createWorldOpenFlows().createFreshLevel(
                 name,
                 VoidLevel.settings(name),
@@ -70,18 +75,18 @@ public final class TestWorld {
                 VoidLevel::dimensions,
                 new TitleScreen()
         );
-
+        
         return new TestWorld(client, name);
     }
-
+    
     ///
-    /// A save name no directory under the level source uses yet.
+    /// Returns a save directory name that has not yet been used.
     ///
-    /// @param source The level source the save goes under.
+    /// @param source The level source for the save file.
     ///
-    /// @return A save name no directory under the level source uses yet.
+    /// @return A save directory name that has not yet been used.
     ///
-    /// @throws UncheckedIOException If the level source can't be read.
+    /// @throws UncheckedIOException If the level source could not be read.
     ///
     private static String freeName(LevelStorageSource source) {
         try {
@@ -90,9 +95,21 @@ public final class TestWorld {
             throw new UncheckedIOException("failed to name a test world under " + source.getBaseDir(), failure);
         }
     }
-
+    
     ///
-    /// Pumps frames until the player floats at the level's spawn with the chunk around it loaded, in a level that no longer advances by itself.
+    /// Checks if the player is floating and the chunk it's floating is loaded.
+    ///
+    /// @param minecraft The client the player is on.
+    ///
+    /// @return `true` if the player is floating and the chunk it's floating in is loaded.
+    ///
+    private static boolean isFloating(Minecraft minecraft) {
+        LocalPlayer player = minecraft.player;
+        return player != null && player.getAbilities().flying && player.level().isLoaded(player.blockPosition());
+    }
+    
+    ///
+    /// Waits until the player is floating at the level's spawnpoint and the level's clocks are stopped.
     ///
     public void awaitSpawn() {
         this.freeze();
@@ -100,97 +117,84 @@ public final class TestWorld {
         this.floatAtSpawn();
         this.client.until("the player to float at the spawn", () -> TestWorld.isFloating(this.client.minecraft()));
     }
-
+    
     ///
-    /// Stops the level's time and its weather and moves its clock to noon, so the same frame of a test looks the same on every run of one machine.
-    ///
-    /// Setting a rule broadcasts the clock to everyone, so the server thread takes the write, and the pumping of the next frames is what gives it the task.
-    /// The wait is what has the level frozen before the join goes on, and not in a frame a test has already looked at.
+    /// Freezes the level's time and weather before moving its clock to noon as to ensure that every frame looks the same across every test.
     ///
     private void freeze() {
         ServerLevel level = this.overworld();
         MinecraftServer server = level.getServer();
         Holder<WorldClock> clock = server.registryAccess().getOrThrow(WorldClocks.OVERWORLD);
-
+        
         server.execute(() -> {
             GameRules rules = level.getGameRules();
             rules.set(GameRules.ADVANCE_TIME, false, server);
             rules.set(GameRules.ADVANCE_WEATHER, false, server);
             level.clockManager().moveToTimeMarker(clock, ClockTimeMarkers.NOON);
         });
-
+        
         this.client.until("the level to freeze at noon", () -> this.isFrozen(clock));
     }
-
+    
     ///
-    /// If the level advances neither its time nor its weather, and its clock stands at noon.
+    /// Checks if the level's time and weather are frozen and the clock is at noon.
     ///
     /// @param clock The level's clock.
     ///
-    /// @return `true` if the level advances neither its time nor its weather, and its clock stands at noon.
+    /// @return `true` if the level's time and weather are frozen and the clock is at noon.
     ///
     private boolean isFrozen(Holder<WorldClock> clock) {
         ServerLevel level = this.overworld();
         GameRules rules = level.getGameRules();
         return !rules.get(GameRules.ADVANCE_TIME) && !rules.get(GameRules.ADVANCE_WEATHER) && level.clockManager().isAtTimeMarker(clock, ClockTimeMarkers.NOON);
     }
-
+    
     ///
-    /// Puts the player at the level's spawn and has it fly, since a void level has nothing to stand on.
+    /// Moves the player to the level's spawn and makes it fly.
     ///
     private void floatAtSpawn() {
         ServerLevel level = this.overworld();
         ServerPlayer player = level.players().getFirst();
         Vec3 spawn = level.getRespawnData().pos().getBottomCenter();
-
+        
         player.getAbilities().flying = true;
         player.onUpdateAbilities();
         player.setDeltaMovement(Vec3.ZERO);
         player.teleportTo(spawn.x, spawn.y, spawn.z);
     }
-
+    
     ///
-    /// If the player flies in the level and the chunk it floats in has arrived.
+    /// Gets the server level of the test worlds overworld, which must exist.
     ///
-    /// @param minecraft The client the player is on.
+    /// @return The overworld of the integrated server.
     ///
-    /// @return `true` if the player flies in the level and the chunk it floats in has arrived.
-    ///
-    private static boolean isFloating(Minecraft minecraft) {
-        LocalPlayer player = minecraft.player;
-        return player != null && player.getAbilities().flying && player.level().isLoaded(player.blockPosition());
-    }
-
-    ///
-    /// The overworld of the integrated server the level runs on.
-    ///
-    /// @return The overworld of the integrated server the level runs on.
-    ///
-    /// @throws IllegalStateException If the integrated server is gone.
+    /// @throws IllegalStateException If the integrated server does not exist anymore.
     ///
     public ServerLevel overworld() {
         IntegratedServer server = this.client.minecraft().getSingleplayerServer();
-        if (server == null) throw new IllegalStateException("the test world's server is gone");
+        if (server == null) {
+            throw new IllegalStateException("the test world's server is gone");
+        }
         return server.overworld();
     }
-
+    
     ///
-    /// Disconnects, pumps until the title screen is back, deletes the save.
+    /// Disconnects from the test world, waits until the title screen shows up and then deletes the save file.
     ///
     public void leave() {
         try {
-            // Vanilla spins the render thread inside the disconnect until the server has saved, stopped and unlocked the save.
+            // Vanilla does the same thing here as when creating the world, trapping the render thread until the server has stopped.
             this.client.minecraft().disconnect(new TitleScreen(), false);
             this.client.until("the title screen", () -> this.client.screen() instanceof TitleScreen);
         } finally {
             this.deleteSave();
         }
     }
-
+    
     ///
-    /// Deletes the save the level was created in.
+    /// Deletes the save file of the test world.
     ///
-    /// @throws UncheckedIOException If the save can't be deleted.
+    /// @throws UncheckedIOException If the save couldn't be deleted.
     ///
     private void deleteSave() {
         try (LevelStorageSource.LevelStorageAccess access = this.client.minecraft().getLevelSource().createAccess(this.name)) {

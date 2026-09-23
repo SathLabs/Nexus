@@ -20,7 +20,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 ///
-/// Checks that [Discovered] derives ids, accepts the samples that meet the constraints, and rejects the rest with a reason.
+/// Checks that [Discovered] derives ids, accepts the samples that meet the constraints, and rejects the rest with a violation.
 ///
 public class DiscoveredTest {
 

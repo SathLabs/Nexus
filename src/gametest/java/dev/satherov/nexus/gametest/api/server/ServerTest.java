@@ -2,6 +2,7 @@ package dev.satherov.nexus.gametest.api.server;
 
 import net.minecraft.gametest.framework.GameTestHelper;
 
+import org.jetbrains.annotations.Range;
 import org.junit.platform.commons.annotation.Testable;
 
 import java.lang.annotation.ElementType;
@@ -10,71 +11,72 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 ///
-/// Marks a `public static void` method with exactly one [GameTestHelper] parameter as a server test.
-/// The declaring class must be public, the id `<modid>:<class>/<method>` unique across all mods, [#maxTicks()]
-/// positive, and [#setupTicks()] not negative. A method breaking any of these is reported as a failed test with the
-/// reason.
+/// Marks a method as a server test.
 ///
-/// The id is the class and method name in snake case, a nested class joined to its outer class with a `.`.
+/// The method must be `public` `static`, return `void` and take exactly one [GameTestHelper] parameter.
+///
+/// The declaring class must be `public` and the generated identifier `<modid>:<class>/<method>` must be unique across all mods.
+/// - `<class>` is the class name in snake case. Nested classes are joined with a `.`.
+/// - `<method>` is the method name in snake case.
 ///
 @Testable
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)
 public @interface ServerTest {
-
+    
     ///
-    /// The structure a test runs in if [#structure()] is not given.
+    /// The default structure to use if [#structure()] does not specify anything.
     ///
     String DEFAULT_STRUCTURE = "minecraft:empty";
-
+    
     ///
-    /// The ticks a test may take if [#maxTicks()] is not given.
+    /// The default number of ticks a test is allowed to take if [#maxTicks()] does not specify anything.
     ///
     int DEFAULT_MAX_TICKS = 100;
-
+    
     ///
-    /// The ticks we wait before the body runs if [#setupTicks()] is not given.
+    /// The default number of ticks to wait for the setup to complete before the test runs if [#setupTicks()] does not specify anything.
     ///
     int DEFAULT_SETUP_TICKS = 0;
-
+    
     ///
-    /// The structure the test runs in.
+    /// The structure of the test.
     ///
     /// Defaults to {@value #DEFAULT_STRUCTURE}.
     ///
-    /// @return The structure the test runs in.
+    /// @return The structure of the test.
     ///
     String structure() default ServerTest.DEFAULT_STRUCTURE;
-
+    
     ///
-    /// The ticks the test may take before it fails.
+    /// The maximum number of ticks the test is allowed to take before it fails.
     ///
     /// Defaults to {@value #DEFAULT_MAX_TICKS}.
     ///
-    /// @return The ticks the test may take before it fails.
+    /// @return The maximum number of ticks the test is allowed to take before it fails.
     ///
-    int maxTicks() default ServerTest.DEFAULT_MAX_TICKS;
-
+    @Range(from = 1, to = Integer.MAX_VALUE) int maxTicks() default ServerTest.DEFAULT_MAX_TICKS;
+    
     ///
-    /// The ticks we wait after placing the structure before the body runs.
+    /// The number of ticks we wait after placing the structure before the actual test runs.
     ///
     /// Defaults to {@value #DEFAULT_SETUP_TICKS}.
     ///
-    /// @return The ticks we wait after placing the structure before the body runs.
+    /// @return The number of ticks we wait after placing the structure before the actual test runs.
     ///
-    int setupTicks() default ServerTest.DEFAULT_SETUP_TICKS;
-
+    @Range(from = 0, to = Integer.MAX_VALUE) int setupTicks() default ServerTest.DEFAULT_SETUP_TICKS;
+    
     ///
-    /// If a failure fails the run.
+    /// If this test failing causes the entire test-run to fail.
     ///
-    /// @return `true` if a failure fails the run.
+    /// @return `true` if this test failing causes the entire test-run to fail.
     ///
     boolean required() default true;
-
+    
     ///
-    /// If the structure needs open sky above it.
+    /// If the structure needs access to the sky above it.
     ///
-    /// @return `true` if the structure needs open sky above it.
+    /// @return `true` if the structure needs access to the sky above it.
     ///
     boolean skyAccess() default false;
 }

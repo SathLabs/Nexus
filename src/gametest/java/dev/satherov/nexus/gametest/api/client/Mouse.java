@@ -14,21 +14,26 @@ import java.util.HashSet;
 import java.util.Set;
 
 ///
-/// The mouse of a client under test.
-/// Positions are gui-scaled pixels and buttons are GLFW button codes.
+/// The fake mouse a client may use during a test.
+///
+/// Positions are all GUI-scaled pixels.
+///
+/// All buttons are GLFW button codes.
+///
+/// @see GLFW
 ///
 public final class Mouse {
-
+    
     ///
-    /// The client the mouse belongs to.
+    /// The client that this mouse belongs to.
     ///
     private final Client client;
-
+    
     ///
-    /// The buttons the script is holding down.
+    /// All buttons currently held down.
     ///
     private final Set<Integer> held = new HashSet<>();
-
+    
     ///
     /// Creates the mouse of the given client.
     ///
@@ -38,26 +43,26 @@ public final class Mouse {
     public Mouse(Client client) {
         this.client = client;
     }
-
+    
     ///
-    /// Moves the cursor to the position.
+    /// Moves the cursor to the given position.
     ///
-    /// @param x The x of the position.
-    /// @param y The y of the position.
+    /// @param x The horizontal position to move, starting from the left side.
+    /// @param y The vertical position to move, starting from the top side.
     ///
     public void move(double x, double y) {
         Minecraft minecraft = this.client.minecraft();
         Window window = minecraft.getWindow();
-
+        
         ((MouseHandlerAccess) minecraft.mouseHandler).invokeOnMove(
                 window.handle(),
                 x * window.getScreenWidth() / window.getGuiScaledWidth(),
                 y * window.getScreenHeight() / window.getGuiScaledHeight()
         );
     }
-
+    
     ///
-    /// Presses and releases the button at the current position within the current frame.
+    /// Clicks the given button and then releases it.
     ///
     /// @param button The button to click.
     ///
@@ -65,20 +70,20 @@ public final class Mouse {
         this.send(button, GLFW.GLFW_PRESS);
         this.send(button, GLFW.GLFW_RELEASE);
     }
-
+    
     ///
     /// Moves to the position and clicks the left button.
     ///
-    /// @param x The x of the position.
-    /// @param y The y of the position.
+    /// @param x The horizontal position to move, starting from the left side.
+    /// @param y The vertical position to move, starting from the top side.
     ///
     public void click(double x, double y) {
         this.move(x, y);
         this.click(GLFW.GLFW_MOUSE_BUTTON_LEFT);
     }
-
+    
     ///
-    /// Presses the button and keeps it down until [#release(int)].
+    /// Clicks the given button and holds it down until [#release(int)] is called.
     ///
     /// @param button The button to hold down.
     ///
@@ -86,10 +91,11 @@ public final class Mouse {
         this.held.add(button);
         this.send(button, GLFW.GLFW_PRESS);
     }
-
+    
     ///
     /// Releases a held button.
-    /// Does nothing if it is not down.
+    ///
+    /// Does nothing if it is not held down.
     ///
     /// @param button The button to release.
     ///
@@ -98,9 +104,13 @@ public final class Mouse {
             this.send(button, GLFW.GLFW_RELEASE);
         }
     }
-
+    
     ///
-    /// Scrolls vertically by the amount, positive away from the user.
+    /// Scrolls vertically by the given amount.
+    ///
+    /// Positive means scrolling the wheel up, away from the user, the same as GLFW.
+    ///
+    /// A unit of `1.0` would be one "step" of the wheel.
     ///
     /// @param amount The distance to scroll by.
     ///
@@ -108,9 +118,9 @@ public final class Mouse {
         Minecraft minecraft = this.client.minecraft();
         ((MouseHandlerAccess) minecraft.mouseHandler).invokeOnScroll(minecraft.getWindow().handle(), 0.0D, amount);
     }
-
+    
     ///
-    /// Releases everything the script still holds.
+    /// Releases all held buttons.
     ///
     @ApiStatus.Internal
     public void releaseAll() {
@@ -118,11 +128,11 @@ public final class Mouse {
             this.release(button);
         }
     }
-
+    
     ///
-    /// Sends one button event of the given action through the client's mouse handler.
+    /// Sends one button event of the given action type with the given button.
     ///
-    /// @param button The button the event is for.
+    /// @param button The button that the event is for.
     /// @param action The GLFW action of the event.
     ///
     private void send(@MouseButtonInfo.MouseButton int button, @MouseButtonInfo.Action int action) {

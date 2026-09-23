@@ -6,13 +6,13 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Invoker;
 
 ///
-/// Opens the client's own frame to the pump.
+/// Allows manually controlling the flow of ticks.
 ///
 @Mixin(Minecraft.class)
 public interface MinecraftAccess {
-
+    
     ///
-    /// Runs one frame, ticking the client only if the frame advances the game time.
+    /// Advances one frame, ticking the client only if the frame actually advances the game time.
     ///
     /// @param advanceGameTime If the frame advances the game time.
     ///

@@ -10,26 +10,29 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 ///
-/// Hands the client loop to the client run.
+/// Starts [ClientRun] from the client loop.
 ///
 @Mixin(Minecraft.class)
 public abstract class MinecraftMixin {
-
+    
     ///
-    /// Takes the loop on its first pass, at the top of the body and outside the frame's profiler scope, and stops the client once the run is done.
+    /// Runs the client tests on the first pass of the loop and then stops the client, if a client test run is active.
     ///
     /// @param callback The callback of the injection.
     ///
     @Inject(
             method = "run",
-            at = @At(value = "INVOKE", target = "Lnet/minecraft/util/profiling/SingleTickProfiler;createTickProfiler(Ljava/lang/String;)Lnet/minecraft/util/profiling/SingleTickProfiler;"),
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/util/profiling/SingleTickProfiler;createTickProfiler(Ljava/lang/String;)Lnet/minecraft/util/profiling/SingleTickProfiler;"
+            ),
             allow = 1
     )
     private void runClientTests(CallbackInfo callback) {
         if (!ClientRun.isActive()) {
             return;
         }
-
+        
         Minecraft minecraft = (Minecraft) (Object) this;
         ClientRun.run(minecraft);
         minecraft.stop();

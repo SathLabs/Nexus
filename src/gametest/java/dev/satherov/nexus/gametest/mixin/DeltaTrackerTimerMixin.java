@@ -11,35 +11,39 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 ///
-/// Hands the client one whole tick per frame while an accelerated run owns the clock.
+/// Gives the client one whole tick per frame while an accelerated run is active.
 ///
 @Mixin(DeltaTracker.Timer.class)
 public abstract class DeltaTrackerTimerMixin {
-
+    
     ///
-    /// Vanilla's count of ticks the current frame advances the game by.
+    /// The number of ticks the current frame advances the game by.
     ///
     @Shadow
     private float deltaTicks;
-
+    
     ///
-    /// Vanilla's fraction of a tick left over after the frame's whole ticks.
+    /// The fraction of a tick left over after the whole ticks of the frame.
     ///
     @Shadow
     private float deltaTickResidual;
-
+    
     ///
-    /// The frame is the tick under an accelerated run, so it carries the whole of one and leaves nothing over as a partial tick.
+    /// Sets the frame to exactly one whole tick with nothing left over, if an accelerated run is active.
     ///
-    /// @param currentMs The current clock time, in milliseconds.
+    /// @param currentMs The current time, in milliseconds.
     /// @param callback  The callback of the injection.
     ///
-    @Inject(method = "advanceGameTime", at = @At("HEAD"), cancellable = true)
+    @Inject(
+            method = "advanceGameTime",
+            at = @At("HEAD"),
+            cancellable = true
+    )
     private void advanceOneTick(long currentMs, CallbackInfoReturnable<Integer> callback) {
-        if (Pump.getAccelerated() == null) {
+        if (Pump.getInstance() == null) {
             return;
         }
-
+        
         this.deltaTicks = 1.0F;
         this.deltaTickResidual = 0.0F;
         callback.setReturnValue(1);

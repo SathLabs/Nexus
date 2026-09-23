@@ -9,30 +9,33 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 ///
-/// Records how long each tick or frame takes once the test's body returned: ticks on a [ServerTest], frames on a
-/// [ClientTest]. The numbers go into a file next to the report and never fail the test.
+/// Can be used to profile how long a specific action took to execute.
 ///
-/// The body leaves succeeding to the harness: a body that succeeds itself ends the test before the window opens.
+/// Must be placed on a method with either of the following:
+/// - [ServerTest]: Measures the time a specific number of `ticks` took to execute.
+/// - [ClientTest]: Measures the time a specific number of `frames` took to execute.
+///
+/// The results can optionally be written to a file.
 ///
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)
 public @interface Measured {
-
+    
     ///
-    /// The length of the recorded window, in ticks on the server and frames on the client.
+    /// The number of ticks or frames to record for.
+    ///
     /// Must be positive.
-    /// The method must also carry [ServerTest] or [ClientTest].
-    /// On a [ServerTest], [ServerTest#maxTicks()] has to hold the window and the two ticks the harness takes beside it.
     ///
-    /// @return The length of the recorded window.
+    /// @return The length of the window to record.
     ///
     int value();
-
+    
     ///
-    /// If vanilla's profiler breakdown over the window is written next to the numbers.
-    /// The durations of the window then carry the profiler's own cost, so they only compare to another profiled run.
+    /// If vanilla's default result should be written to the file as well.
     ///
-    /// @return `true` if vanilla's profiler breakdown over the window is written next to the numbers.
+    /// This will add the duration it takes vanilla to write the results as well, so you should only compare those results to another one with this flag.
+    ///
+    /// @return `true` if vanilla's profiler report should be written down as well.
     ///
     boolean profile() default false;
 }
