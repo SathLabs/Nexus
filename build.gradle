@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.lombok)
     alias(libs.plugins.moddev)
     alias(libs.plugins.modpublisher)
+    alias(libs.plugins.nexus.gradle)
 }
 
 version = "${mod_version}+${mc_version}"
@@ -27,7 +28,7 @@ java {
 sourceSets {
     gametest {
         compileClasspath += sourceSets.main.output
-        runtimeClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output + sourceSets.test.output
     }
 }
 
@@ -44,11 +45,7 @@ configurations {
     gametestImplementation.extendsFrom implementation
     gametestCompileOnly.extendsFrom compileOnly
     gametestRuntimeOnly.extendsFrom runtimeOnly
-
-    testCompileOnly.extendsFrom compileOnly
 }
-
-def gametestReport = layout.buildDirectory.file('reports/gametest/server.xml').get().asFile
 
 neoForge {
     version = neo_version
@@ -68,30 +65,19 @@ neoForge {
     runs {
         client {
             client()
-            gameDirectory = file('runs/client')
         }
 
         server {
             server()
             programArgument '--nogui'
-            gameDirectory = file('runs/server')
-        }
-
-        gameTestServer {
-            type = 'gameTestServer'
-            gameDirectory = file('runs/gametest')
-            systemProperty 'neoforge.enableGameTest', 'true'
-            programArguments.addAll '--report', gametestReport.absolutePath
         }
 
         data {
             clientData()
-            gameDirectory = file('runs/data')
             programArguments.addAll '--mod', mod_id, '--all', '--output', file('src/generated/resources/').absolutePath, '--existing', file('src/main/resources/').absolutePath
         }
 
         configureEach {
-            sourceSet = sourceSets.gametest
             systemProperty 'forge.logging.markers', 'REGISTRIES'
             logLevel = org.slf4j.event.Level.DEBUG
         }
@@ -100,7 +86,6 @@ neoForge {
     mods {
         "${mod_id}" {
             sourceSet sourceSets.main
-            sourceSet sourceSets.test
         }
 
         "${mod_id}_gametest" {
@@ -111,6 +96,14 @@ neoForge {
     unitTest {
         enable()
         testedMod = mods.named(mod_id)
+    }
+}
+
+nexus {
+    gametest {
+        modId = mod_id
+        sourceSet = sourceSets.test
+        harness = dependencies.create(sourceSets.gametest.output)
     }
 }
 
@@ -125,10 +118,11 @@ dependencies {
     implementation libs.zelqro
     jarJar libs.zelqro
 
-    gametestApi(project)
+    gametestApi project(':')
     gametestApi libs.assertj.core
+    gametestApi platform(libs.junit.bom)
+    gametestApi libs.junit.platform.commons
 
-    testImplementation sourceSets.gametest.output
     testImplementation libs.assertj.core
 
     testImplementation platform(libs.junit.bom)
@@ -136,20 +130,41 @@ dependencies {
     testRuntimeOnly libs.junit.platform.launcher
 }
 
-tasks.named('runGameTestServer', JavaExec) {
-    def reports = gametestReport.parentFile
-
-    doFirst {
-        reports.mkdirs()
-    }
-}
-
 tasks.named('test', Test) {
     useJUnitPlatform()
+    filter {
+        excludeTestsMatching 'dev.satherov.nexus.test.unit.gametest.RunReportTest'
+    }
 
     testLogging {
         events 'passed', 'skipped', 'failed'
     }
+}
+
+tasks.register('verifyGameTestRuns', Test) {
+    description = 'Runs the gametests of both sides and then checks their reports.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+
+    // FML's JUnit launcher would boot the game here, and that needs the arguments moddev only gives the test task.
+    classpath = sourceSets.test.runtimeClasspath.filter { file -> !file.name.startsWith('junit-fml') }
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'dev.satherov.nexus.test.unit.gametest.RunReportTest'
+    }
+
+    dependsOn 'runGameTestServer', 'runGameTestClient'
+    doNotTrackState 'The runs rewrite the reports it checks'
+
+    systemProperty 'nexus.gametest.reports', layout.buildDirectory.dir('reports/gametest').get().asFile.absolutePath
+    def tests = providers.gradleProperty('tests').getOrElse('')
+    if (!tests.isEmpty()) {
+        systemProperty 'nexus.gametest.tests', tests
+    }
+}
+
+tasks.named('runGameTestClient') {
+    mustRunAfter 'runGameTestServer'
 }
 
 tasks.withType(JavaCompile).configureEach {

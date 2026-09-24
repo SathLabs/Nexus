@@ -34,6 +34,7 @@ runs/
 **/src/generated/**/.cache/
 repo/
 !**/src/**/repo/
+src/test/resources/nexus/goldens/
 
 CLAUDE.md
 .claude/

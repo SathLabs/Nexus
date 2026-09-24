@@ -2,7 +2,20 @@
   "required": true,
   "package": "dev.satherov.nexus.gametest.mixin",
   "compatibilityLevel": "JAVA_25",
-  "mixins": [],
+  "mixins": [
+    "GameTestServerMixin"
+  ],
+  "client": [
+    "DeltaTrackerTimerMixin",
+    "FramerateLimiterMixin",
+    "KeyboardHandlerAccess",
+    "LogoRendererMixin",
+    "MinecraftAccess",
+    "MinecraftMixin",
+    "MinecraftServerMixin",
+    "MouseHandlerAccess",
+    "WindowMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   },
