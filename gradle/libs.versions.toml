@@ -7,6 +7,7 @@ foojay = "1.0.0"
 lombok = "9.5.0"
 moddev = "2.0.147"
 modpublisher = "2.2.2"
+nexus-gradle = "1.0.0"
 
 [libraries]
 assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
@@ -22,3 +23,4 @@ lombok = { id = "io.freefair.lombok", version.ref = "lombok" }
 moddev = { id = "net.neoforged.moddev" }
 moddev-repositories = { id = "net.neoforged.moddev.repositories", version.ref = "moddev" }
 modpublisher = { id = "com.hypherionmc.modutils.modpublisher", version.ref = "modpublisher" }
+nexus-gradle = { id = "dev.satherov.nexus.gradle-plugin", version.ref = "nexus-gradle" }
