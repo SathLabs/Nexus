@@ -118,7 +118,7 @@ dependencies {
     implementation libs.zelqro
     jarJar libs.zelqro
 
-    gametestApi(project)
+    gametestApi project(':')
     gametestApi libs.assertj.core
     gametestApi platform(libs.junit.bom)
     gametestApi libs.junit.platform.commons
