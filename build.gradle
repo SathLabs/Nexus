@@ -65,18 +65,15 @@ neoForge {
     runs {
         client {
             client()
-            gameDirectory = file('runs/client')
         }
 
         server {
             server()
             programArgument '--nogui'
-            gameDirectory = file('runs/server')
         }
 
         data {
             clientData()
-            gameDirectory = file('runs/data')
             programArguments.addAll '--mod', mod_id, '--all', '--output', file('src/generated/resources/').absolutePath, '--existing', file('src/main/resources/').absolutePath
         }
 
@@ -102,10 +99,12 @@ neoForge {
     }
 }
 
-nexusGametest {
-    modId = mod_id
-    sourceSet = sourceSets.test
-    harness = dependencies.create(sourceSets.gametest.output)
+nexus {
+    gametest {
+        modId = mod_id
+        sourceSet = sourceSets.test
+        harness = dependencies.create(sourceSets.gametest.output)
+    }
 }
 
 sourceSets.main.resources {
