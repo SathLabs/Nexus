@@ -5,6 +5,7 @@ import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.NexusCodec;
+import dev.satherov.nexus.api.codec.StructCodec;
 
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -15,9 +16,13 @@ import net.minecraft.util.StringRepresentable;
 import net.minecraft.util.Unit;
 
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
+import io.netty.buffer.ByteBuf;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 
 ///
@@ -25,6 +30,30 @@ import java.util.UUID;
 ///
 @UtilityClass
 public class ParityCases {
+    
+    private static final StructCodec<Listing, Access.Plain> LISTING = NexusCodec.struct(
+            "listing",
+            NexusCodec.STRING.field("item", Listing::item),
+            NexusCodec.INT.optionalField("count", 1, Listing::count),
+            NexusCodec.STRING.optionalField("label", Listing::label),
+            Listing::new
+    );
+    
+    private static final MapCodec<Listing> LISTING_DFU = RecordCodecBuilder.mapCodec(instance -> instance.group(
+            Codec.STRING.fieldOf("item").forGetter(Listing::item),
+            Codec.INT.optionalFieldOf("count", 1).forGetter(Listing::count),
+            Codec.STRING.optionalFieldOf("label").forGetter(Listing::label)
+    ).apply(instance, Listing::new));
+    
+    private static final StreamCodec<ByteBuf, Listing> LISTING_STREAM = StreamCodec.composite(
+            ByteBufCodecs.STRING_UTF8,
+            Listing::item,
+            ByteBufCodecs.INT,
+            Listing::count,
+            ByteBufCodecs.optional(ByteBufCodecs.STRING_UTF8),
+            Listing::label,
+            Listing::new
+    );
     
     public static final List<Case<?>> ALL = List.of(
             new Case<>("BOOL", NexusCodec.BOOL, Codec.BOOL, ByteBufCodecs.BOOL, List.of(true, false)),
@@ -73,7 +102,33 @@ public class ParityCases {
                     ByteBufCodecs.idMapper(ordinal -> Phase.values()[ordinal], Phase::ordinal),
                     List.of(Phase.values())
             ),
-            new Case<>("unit", NexusCodec.unit(Unit.INSTANCE), Unit.CODEC, Unit.STREAM_CODEC, List.of(Unit.INSTANCE))
+            new Case<>("unit", NexusCodec.unit(Unit.INSTANCE), Unit.CODEC, Unit.STREAM_CODEC, List.of(Unit.INSTANCE)),
+            new Case<>(
+                    "struct(listing)",
+                    ParityCases.LISTING,
+                    ParityCases.LISTING_DFU.codec(),
+                    ParityCases.LISTING_STREAM,
+                    List.of(
+                            new Listing("stone", 1, Optional.empty()),
+                            new Listing("dirt", 64, Optional.of("cheap")),
+                            new Listing("", 0, Optional.of(""))
+                    )
+            ),
+            new Case<>(
+                    "struct(offer)",
+                    NexusCodec.struct(
+                            "offer",
+                            ParityCases.LISTING.inline(Offer::listing),
+                            NexusCodec.INT.field("price", Offer::price),
+                            Offer::new
+                    ),
+                    RecordCodecBuilder.create(instance -> instance.group(
+                            ParityCases.LISTING_DFU.forGetter(Offer::listing),
+                            Codec.INT.fieldOf("price").forGetter(Offer::price)
+                    ).apply(instance, Offer::new)),
+                    StreamCodec.composite(ParityCases.LISTING_STREAM, Offer::listing, ByteBufCodecs.INT, Offer::price, Offer::new),
+                    List.of(new Offer(new Listing("stone", 1, Optional.empty()), 5), new Offer(new Listing("gold", 3, Optional.of("shiny")), 100))
+            )
     );
     
     public record Case<T>(String name, NexusCodec<T, ? super Access.Registries> codec, Codec<T> dfu, StreamCodec<? super RegistryFriendlyByteBuf, T> stream, List<T> values) { }
@@ -108,4 +163,8 @@ public class ParityCases {
         NEW_MOON,
         FULL_MOON
     }
+    
+    public record Listing(String item, int count, Optional<String> label) { }
+    
+    public record Offer(Listing listing, int price) { }
 }

@@ -9,10 +9,14 @@ import dev.satherov.nexus.api.codec.CodecException;
 import dev.satherov.nexus.api.codec.CodecFormat;
 import dev.satherov.nexus.api.codec.CodecResult;
 import dev.satherov.nexus.api.codec.NexusCodec;
+import dev.satherov.nexus.api.codec.StructField;
 
 import net.minecraft.network.FriendlyByteBuf;
 
 import org.jetbrains.annotations.ApiStatus;
+
+import java.util.Optional;
+import java.util.function.Function;
 
 ///
 /// A codec that every internal codec extends, with the entry points of [NexusCodec] written once.
@@ -108,6 +112,30 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
         } catch (CodecException failure) {
             return new CodecResult.Failure<>(failure);
         }
+    }
+    
+    ///
+    /// Creates a field with this codec and no fallback, which fails to decode if its key is missing.
+    ///
+    @Override
+    public <Z> StructField<Z, T, A> field(String name, Function<Z, T> getter) {
+        return new Structs.BoundField<>(this, name, getter, null);
+    }
+    
+    ///
+    /// Creates a field with this codec and the given fallback.
+    ///
+    @Override
+    public <Z> StructField<Z, T, A> optionalField(String name, T fallback, Function<Z, T> getter) {
+        return new Structs.BoundField<>(this, name, getter, fallback);
+    }
+    
+    ///
+    /// Creates a field with the optional codec over this codec and empty as the fallback.
+    ///
+    @Override
+    public <Z> StructField<Z, Optional<T>, A> optionalField(String name, Function<Z, Optional<T>> getter) {
+        return new Structs.BoundField<>(Structs.optional(this), name, getter, Optional.empty());
     }
     
     ///
