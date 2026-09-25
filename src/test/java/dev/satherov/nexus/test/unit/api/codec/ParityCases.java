@@ -8,27 +8,57 @@ import dev.satherov.nexus.api.codec.MapKey;
 import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.codec.NexusCodecException;
 import dev.satherov.nexus.api.codec.StructCodec;
+import dev.satherov.nexus.api.codec.VanillaCodecs;
 
+import net.neoforged.neoforge.common.CommonHooks;
+import net.neoforged.neoforge.fluids.FluidStack;
+
+import net.minecraft.ChatFormatting;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
 import net.minecraft.core.RegistryCodecs;
 import net.minecraft.core.UUIDUtil;
+import net.minecraft.core.Vec3i;
+import net.minecraft.core.component.DataComponentInitializers;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.data.registries.VanillaRegistries;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
 import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.ComponentSerialization;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.RegistryFileCodec;
 import net.minecraft.resources.RegistryFixedCodec;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.tags.ItemTags;
+import net.minecraft.tags.TagKey;
 import net.minecraft.util.ExtraCodecs;
 import net.minecraft.util.StringRepresentable;
 import net.minecraft.util.Unit;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.RotatedPillarBlock;
+import net.minecraft.world.level.block.StairBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.Half;
+import net.minecraft.world.level.material.Fluids;
+import net.minecraft.world.phys.Vec3;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -38,6 +68,8 @@ import com.mojang.serialization.DataResult;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import io.netty.buffer.ByteBuf;
+
+import org.jspecify.annotations.Nullable;
 
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -385,6 +417,77 @@ public class ParityCases {
                     ParityCases.LISTING_DFU.codec(),
                     ParityCases.LISTING_STREAM,
                     List.of(new Listing("stone", 1, Optional.empty()), new Listing("dirt", 64, Optional.of("cheap")))
+            ),
+            new Case<>(
+                    "BLOCK_POS",
+                    VanillaCodecs.BLOCK_POS,
+                    BlockPos.CODEC,
+                    BlockPos.STREAM_CODEC,
+                    List.of(BlockPos.ZERO, new BlockPos(1, -64, -1), new BlockPos(29_999_999, 2047, -30_000_000))
+            ),
+            new Case<>(
+                    "CHUNK_POS",
+                    VanillaCodecs.CHUNK_POS,
+                    ChunkPos.CODEC,
+                    ChunkPos.STREAM_CODEC,
+                    List.of(ChunkPos.ZERO, new ChunkPos(-1, 5), new ChunkPos(Integer.MIN_VALUE, Integer.MAX_VALUE))
+            ),
+            new Case<>(
+                    "GLOBAL_POS",
+                    VanillaCodecs.GLOBAL_POS,
+                    GlobalPos.CODEC,
+                    GlobalPos.STREAM_CODEC,
+                    List.of(GlobalPos.of(Level.OVERWORLD, BlockPos.ZERO), GlobalPos.of(Level.NETHER, new BlockPos(1, 2, 3)))
+            ),
+            new Case<>("VEC3", VanillaCodecs.VEC3, Vec3.CODEC, Vec3.STREAM_CODEC, List.of(Vec3.ZERO, new Vec3(1.5D, -2.0D, 0.1D))),
+            new Case<>("VEC3I", VanillaCodecs.VEC3I, Vec3i.CODEC, Vec3i.STREAM_CODEC, List.of(Vec3i.ZERO, new Vec3i(1, -2, 300))),
+            new Case<>("DIRECTION", VanillaCodecs.DIRECTION, Direction.CODEC, Direction.STREAM_CODEC, List.of(Direction.values())),
+            new Case<>("COMPOUND_TAG", VanillaCodecs.COMPOUND_TAG, CompoundTag.CODEC, ByteBufCodecs.COMPOUND_TAG, List.of(new CompoundTag(), ParityCases.compoundTag())),
+            new Case<>(
+                    "BLOCK_STATE",
+                    VanillaCodecs.BLOCK_STATE,
+                    BlockState.CODEC,
+                    ByteBufCodecs.idMapper(Block.BLOCK_STATE_REGISTRY),
+                    List.of(
+                            Blocks.STONE.defaultBlockState(),
+                            Blocks.OAK_LOG.defaultBlockState().setValue(RotatedPillarBlock.AXIS, Direction.Axis.X),
+                            Blocks.OAK_STAIRS.defaultBlockState().setValue(StairBlock.FACING, Direction.EAST).setValue(StairBlock.HALF, Half.TOP)
+                    )
+            ),
+            new Case<>(
+                    "ITEM_STACK",
+                    VanillaCodecs.ITEM_STACK.xmap(MatchedItem::new, MatchedItem::stack),
+                    ItemStack.OPTIONAL_CODEC.xmap(MatchedItem::new, MatchedItem::stack),
+                    ItemStack.OPTIONAL_STREAM_CODEC.map(MatchedItem::new, MatchedItem::stack),
+                    ParityCases.itemStacks().stream().map(MatchedItem::new).toList()
+            ),
+            new Case<>(
+                    "FLUID_STACK",
+                    VanillaCodecs.FLUID_STACK.xmap(MatchedFluid::new, MatchedFluid::stack),
+                    FluidStack.OPTIONAL_CODEC.xmap(MatchedFluid::new, MatchedFluid::stack),
+                    FluidStack.OPTIONAL_STREAM_CODEC.map(MatchedFluid::new, MatchedFluid::stack),
+                    ParityCases.fluidStacks().stream().map(MatchedFluid::new).toList()
+            ),
+            new Case<>(
+                    "COMPONENT",
+                    VanillaCodecs.COMPONENT,
+                    ComponentSerialization.CODEC,
+                    ComponentSerialization.STREAM_CODEC,
+                    List.of(Component.literal("hello"), Component.translatable("block.minecraft.stone").withStyle(ChatFormatting.RED))
+            ),
+            new Case<>(
+                    "resourceKey(ITEM)",
+                    VanillaCodecs.resourceKey(Registries.ITEM),
+                    ResourceKey.codec(Registries.ITEM),
+                    ResourceKey.streamCodec(Registries.ITEM),
+                    List.of(ResourceKey.create(Registries.ITEM, Identifier.withDefaultNamespace("stone")), ResourceKey.create(Registries.ITEM, Identifier.fromNamespaceAndPath("nexus", "path/to/thing")))
+            ),
+            new Case<>(
+                    "tagKey(ITEM)",
+                    VanillaCodecs.tagKey(Registries.ITEM),
+                    TagKey.hashedCodec(Registries.ITEM),
+                    TagKey.streamCodec(Registries.ITEM),
+                    List.of(ItemTags.LOGS, TagKey.create(Registries.ITEM, Identifier.fromNamespaceAndPath("nexus", "path/to/tag")))
             )
     );
     
@@ -398,6 +501,66 @@ public class ParityCases {
     public static Amount positiveAmount(int value) {
         if (value <= 0) throw new NexusCodecException("expected a positive amount, found " + value);
         return new Amount(value);
+    }
+    
+    public static CompoundTag compoundTag() {
+        CompoundTag nested = new CompoundTag();
+        nested.putBoolean("flag", true);
+        ListTag list = new ListTag();
+        list.add(StringTag.valueOf("a"));
+        list.add(StringTag.valueOf("b"));
+        CompoundTag tag = new CompoundTag();
+        tag.putByte("byte", (byte) 1);
+        tag.putShort("short", (short) 300);
+        tag.putInt("int", 100_000);
+        tag.putLong("long", 1L << 40);
+        tag.putFloat("float", 1.5F);
+        tag.putDouble("double", 0.1D);
+        tag.putString("string", "stone");
+        tag.putByteArray("bytes", new byte[]{ 1, 2 });
+        tag.putIntArray("ints", new int[]{ 1, 2 });
+        tag.putLongArray("longs", new long[]{ 1L, 2L });
+        tag.put("list", list);
+        tag.put("nested", nested);
+        return tag;
+    }
+    
+    public static void bindDefaultComponents() {
+        if (BuiltInRegistries.ITEM.wrapAsHolder(Items.AIR).areComponentsBound()) {
+            return;
+        }
+        
+        CommonHooks.markComponentClassAsValid(HolderSet.emptyNamed(BuiltInRegistries.ITEM, ItemTags.LOGS).getClass());
+        BuiltInRegistries.DATA_COMPONENT_INITIALIZERS.build(VanillaRegistries.createLookup()).forEach(DataComponentInitializers.PendingComponents::apply);
+    }
+    
+    public static List<ItemStack> itemStacks() {
+        ParityCases.bindDefaultComponents();
+        return List.of(ItemStack.EMPTY, new ItemStack(Items.DIRT, 64), ParityCases.namedSword(), ParityCases.inedibleApple());
+    }
+    
+    public static List<FluidStack> fluidStacks() {
+        ParityCases.bindDefaultComponents();
+        return List.of(FluidStack.EMPTY, new FluidStack(Fluids.WATER, 1000), ParityCases.namedLava());
+    }
+    
+    public static ItemStack namedSword() {
+        ItemStack sword = new ItemStack(Items.DIAMOND_SWORD);
+        sword.set(DataComponents.DAMAGE, 5);
+        sword.set(DataComponents.CUSTOM_NAME, Component.literal("Edge"));
+        return sword;
+    }
+    
+    public static ItemStack inedibleApple() {
+        ItemStack apple = new ItemStack(Items.APPLE);
+        apple.remove(DataComponents.FOOD);
+        return apple;
+    }
+    
+    public static FluidStack namedLava() {
+        FluidStack lava = new FluidStack(Fluids.LAVA, 250);
+        lava.set(DataComponents.CUSTOM_NAME, Component.literal("Hot"));
+        return lava;
     }
     
     private static Listing shortListing(String item) {
@@ -466,4 +629,30 @@ public class ParityCases {
     public record Node(int value, List<Node> children) { }
     
     public record Amount(int value) { }
+    
+    public record MatchedItem(ItemStack stack) {
+        
+        @Override
+        public boolean equals(@Nullable Object other) {
+            return other instanceof MatchedItem(ItemStack that) && ItemStack.matches(this.stack, that);
+        }
+        
+        @Override
+        public int hashCode() {
+            return ItemStack.hashItemAndComponents(this.stack);
+        }
+    }
+    
+    public record MatchedFluid(FluidStack stack) {
+        
+        @Override
+        public boolean equals(@Nullable Object other) {
+            return other instanceof MatchedFluid(FluidStack that) && FluidStack.matches(this.stack, that);
+        }
+        
+        @Override
+        public int hashCode() {
+            return FluidStack.hashFluidAndComponents(this.stack);
+        }
+    }
 }
