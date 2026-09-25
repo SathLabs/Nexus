@@ -1,7 +1,7 @@
 package dev.satherov.nexus.test.unit.api.codec;
 
-import dev.satherov.nexus.api.codec.CodecException;
 import dev.satherov.nexus.api.codec.CodecResult;
+import dev.satherov.nexus.api.codec.NexusCodecException;
 
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -14,7 +14,7 @@ import java.util.List;
 ///
 public class CodecResultTest {
 
-    private final CodecException exception = new CodecException("expected a number, found \"many\"");
+    private final NexusCodecException exception = new NexusCodecException("expected a number, found \"many\"");
     private final CodecResult<Integer> success = new CodecResult.Success<>(5);
     private final CodecResult<Integer> failure = new CodecResult.Failure<>(this.exception);
 
@@ -36,7 +36,7 @@ public class CodecResultTest {
 
     @Test
     public void orElseGetGivesValueWithoutCallingFallbackOnSuccess() {
-        List<CodecException> seen = new ArrayList<>();
+        List<NexusCodecException> seen = new ArrayList<>();
         Integer value = this.success.orElseGet(held -> {
             seen.add(held);
             return 7;
@@ -48,7 +48,7 @@ public class CodecResultTest {
 
     @Test
     public void orElseGetCallsFallbackWithHeldExceptionOnFailure() {
-        List<CodecException> seen = new ArrayList<>();
+        List<NexusCodecException> seen = new ArrayList<>();
         Integer value = this.failure.orElseGet(held -> {
             seen.add(held);
             return 7;
@@ -100,7 +100,7 @@ public class CodecResultTest {
 
     @Test
     public void ifFailureRunsOnlyOnFailure() {
-        List<CodecException> seen = new ArrayList<>();
+        List<NexusCodecException> seen = new ArrayList<>();
         this.success.ifFailure(seen::add);
         this.failure.ifFailure(seen::add);
 

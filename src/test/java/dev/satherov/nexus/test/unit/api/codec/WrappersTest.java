@@ -2,9 +2,9 @@ package dev.satherov.nexus.test.unit.api.codec;
 
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.CodecError;
-import dev.satherov.nexus.api.codec.CodecException;
 import dev.satherov.nexus.api.codec.CodecFormat;
 import dev.satherov.nexus.api.codec.NexusCodec;
+import dev.satherov.nexus.api.codec.NexusCodecException;
 import dev.satherov.nexus.api.codec.StructCodec;
 
 import net.minecraft.core.Holder;
@@ -120,7 +120,7 @@ public class WrappersTest {
     }
     
     @Test
-    public void streamCodecExceptionsBecomeCodecExceptions() {
+    public void streamCodecExceptionsBecomeNexusCodecExceptions() {
         FriendlyByteBuf empty = new FriendlyByteBuf(Unpooled.buffer());
         
         Assertions.assertThat(WrappersTest.errors(() -> NexusCodec.ofStream(ByteBufCodecs.VAR_INT).decode(CodecFormat.netty(empty))))
@@ -193,7 +193,7 @@ public class WrappersTest {
     }
     
     private static List<CodecError> errors(ThrowableAssert.ThrowingCallable call) {
-        return Assertions.catchThrowableOfType(CodecException.class, call).errors();
+        return Assertions.catchThrowableOfType(NexusCodecException.class, call).errors();
     }
     
     private static RegistryFriendlyByteBuf writable() {

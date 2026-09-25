@@ -1128,7 +1128,7 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// Meant to be used for the payloads of the configuration phase.
     ///
-    /// If the codec fails, the stream codec will throw a [DecoderException] or an [EncoderException] with the message of the [CodecException].
+    /// If the codec fails, the stream codec will throw a [DecoderException] or an [EncoderException] with the message of the [NexusCodecException].
     ///
     /// @param codec The codec, which needs no registries.
     ///
@@ -1148,7 +1148,7 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// @return The encoded value, or the buffer written to on the network.
     ///
-    /// @throws CodecException If the value could not be encoded, with every error that occurred during encoding.
+    /// @throws NexusCodecException If the value could not be encoded, with every error that occurred during encoding.
     ///
     <V> V encode(CodecFormat<V, ? extends A> format, T value);
     
@@ -1160,7 +1160,7 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// @return The decoded value.
     ///
-    /// @throws CodecException           If the input could not be decoded, with every error that occurred during decoding.
+    /// @throws NexusCodecException      If the input could not be decoded, with every error that occurred during decoding.
     /// @throws IllegalArgumentException If the format is a [BufferFormat] and the input is not the buffer it was built on.
     ///
     <V> T decode(CodecFormat<V, ? extends A> format, V input);
@@ -1168,7 +1168,7 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// Encodes the given value in the given format.
     ///
-    /// Returns a failure holding the same [CodecException] that [#encode(CodecFormat, Object)] would throw.
+    /// Returns a failure holding the same [NexusCodecException] that [#encode(CodecFormat, Object)] would throw.
     ///
     /// @param format The format to encode the value in.
     /// @param value  The value to encode.
@@ -1180,7 +1180,7 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// Decodes a value from the given input in the given format.
     ///
-    /// Returns a failure holding the same [CodecException] that [#decode(CodecFormat, Object)] would throw.
+    /// Returns a failure holding the same [NexusCodecException] that [#decode(CodecFormat, Object)] would throw.
     ///
     /// @param format The format the input is in.
     /// @param input  The input to decode, which is the buffer the format was built on for a [BufferFormat].
@@ -1198,14 +1198,14 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// @return The decoded value.
     ///
-    /// @throws CodecException If the buffer could not be decoded, with every error that occurred during decoding.
+    /// @throws NexusCodecException If the buffer could not be decoded, with every error that occurred during decoding.
     ///
     T decode(BufferFormat<?, ? extends A> format);
     
     ///
     /// Decodes a value from the buffer the given format was built on.
     ///
-    /// Returns a failure holding the same [CodecException] that [#decode(BufferFormat)] would throw.
+    /// Returns a failure holding the same [NexusCodecException] that [#decode(BufferFormat)] would throw.
     ///
     /// @param format The format to decode from.
     ///
@@ -1352,8 +1352,8 @@ public interface NexusCodec<T, A extends Access.Plain> {
     /// Creates the codec of the values that this codec writes and reads through the given mappings, which may refuse a value.
     /// Similar to DFU's [Codec#flatXmap(Function, Function)].
     ///
-    /// A mapping refuses a value by throwing a [CodecException], whose errors will be at the path of the value.
-    /// Any other exception a mapping throws will become a [CodecException] too.
+    /// A mapping refuses a value by throwing a [NexusCodecException], whose errors will be at the path of the value.
+    /// Any other exception a mapping throws will become a [NexusCodecException] too.
     ///
     /// @param to   The mapping from a value of this codec, called after reading.
     /// @param from The mapping to a value of this codec, called before writing.
@@ -1368,7 +1368,7 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// The check is called on every value before it's written and after it's read.
     /// If the check returns a message, the value will fail with that message at the path of the value.
-    /// Any exception the check throws will become a [CodecException] too, if it isn't one already.
+    /// Any exception the check throws will become a [NexusCodecException] too, if it isn't one already.
     ///
     /// @param check The check of a value, which returns the error message, or `null` if the value is valid.
     ///
@@ -1386,7 +1386,7 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// If this codec needs registries, it will take them from the [RegistryOps], and fail over any other ops.
     /// Fails over ops that compress maps, such as [JsonOps#COMPRESSED].
-    /// A failure is an error with the message of the [CodecException], without a partial result.
+    /// A failure is an error with the message of the [NexusCodecException], without a partial result.
     ///
     /// @return The DFU codec.
     ///
@@ -1395,7 +1395,7 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// Creates the stream codec of this codec, which writes and reads the same as the netty format of the buffer.
     ///
-    /// If this codec fails, the stream codec will throw a [DecoderException] or an [EncoderException] with the message of the [CodecException].
+    /// If this codec fails, the stream codec will throw a [DecoderException] or an [EncoderException] with the message of the [NexusCodecException].
     ///
     /// @return The stream codec.
     ///

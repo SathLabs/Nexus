@@ -4,8 +4,8 @@ import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.CodecError;
-import dev.satherov.nexus.api.codec.CodecException;
 import dev.satherov.nexus.api.codec.NexusCodec;
+import dev.satherov.nexus.api.codec.NexusCodecException;
 import dev.satherov.nexus.api.codec.StructCodec;
 
 import net.minecraft.resources.Identifier;
@@ -116,10 +116,10 @@ public class Combinators {
     private static <F, S, V> Either<F, S> readEither(Operations<V> operations, V input, Traversal<F, ?> first, Traversal<S, ?> second) {
         try {
             return Either.left(first.read(operations, input));
-        } catch (CodecException firstFailure) {
+        } catch (NexusCodecException firstFailure) {
             try {
                 return Either.right(second.read(operations, input));
-            } catch (CodecException secondFailure) {
+            } catch (NexusCodecException secondFailure) {
                 throw Combinators.joined(firstFailure.errors(), secondFailure.errors());
             }
         }
@@ -128,8 +128,8 @@ public class Combinators {
     ///
     /// Creates a failure with the first errors and then the second.
     ///
-    private static CodecException joined(List<CodecError> first, List<CodecError> second) {
-        return new CodecException(Stream.concat(first.stream(), second.stream()).toList());
+    private static NexusCodecException joined(List<CodecError> first, List<CodecError> second) {
+        return new NexusCodecException(Stream.concat(first.stream(), second.stream()).toList());
     }
     
     ///
@@ -224,8 +224,8 @@ public class Combinators {
     /// Creates the codec behind [NexusCodec#flatXmap(Function, Function)].
     ///
     /// @param codec The codec of the values to map.
-    /// @param to    The mapping from a value of the codec, which throws a [CodecException] to refuse it.
-    /// @param from  The mapping to a value of the codec, which throws a [CodecException] to refuse it.
+    /// @param to    The mapping from a value of the codec, which throws a [NexusCodecException] to refuse it.
+    /// @param from  The mapping to a value of the codec, which throws a [NexusCodecException] to refuse it.
     ///
     /// @return The codec of the mapped values.
     ///
@@ -244,7 +244,7 @@ public class Combinators {
     public static <T, A extends Access.Plain> Traversal<T, A> validate(Traversal<T, ? super A> codec, Function<? super T, @Nullable String> check) {
         Function<T, T> checked = Combinators.guarded("check", value -> {
             String error = check.apply(value);
-            if (error != null) throw new CodecException(error);
+            if (error != null) throw new NexusCodecException(error);
             return value;
         });
         
@@ -252,14 +252,14 @@ public class Combinators {
     }
     
     ///
-    /// Wraps the given function so that any exception it throws other than a [CodecException] becomes one, with the given verb in its message.
+    /// Wraps the given function so that any exception it throws other than a [NexusCodecException] becomes one, with the given verb in its message.
     ///
     private static <F, R> Function<F, R> guarded(String verb, Function<? super F, ? extends R> function) {
         return value -> {
             try {
                 return function.apply(value);
             } catch (RuntimeException failure) {
-                throw failure instanceof CodecException refused ? refused : new CodecException("could not " + verb + " the value, " + failure);
+                throw failure instanceof NexusCodecException refused ? refused : new NexusCodecException("could not " + verb + " the value, " + failure);
             }
         };
     }
@@ -381,7 +381,7 @@ public class Combinators {
             try {
                 subtype = this.subtype(id);
                 encoded = Scalars.IDENTIFIER.write(operations, id);
-            } catch (CodecException failure) {
+            } catch (NexusCodecException failure) {
                 throw Errors.prefixKey(failure, this.key);
             }
             
@@ -407,12 +407,12 @@ public class Combinators {
         @Override
         protected <V> T readFields(Operations<V> operations, V object, @Nullable Set<String> present) {
             V encoded = operations.get(object, this.key);
-            if (encoded == null) throw new CodecException(List.of(new CodecError(this.key, "missing")));
+            if (encoded == null) throw new NexusCodecException(List.of(new CodecError(this.key, "missing")));
             
             Structs.Inlinable<T, ? super A> subtype;
             try {
                 subtype = this.subtype(Scalars.IDENTIFIER.read(operations, encoded));
-            } catch (CodecException failure) {
+            } catch (NexusCodecException failure) {
                 throw Errors.prefixKey(failure, this.key);
             }
             
@@ -423,11 +423,11 @@ public class Combinators {
             
             try {
                 subtype.readFields(operations, object, null);
-            } catch (CodecException failure) {
+            } catch (NexusCodecException failure) {
                 throw Combinators.joined(failure.errors(), unknown);
             }
             
-            throw new CodecException(unknown);
+            throw new NexusCodecException(unknown);
         }
         
         ///

@@ -2,9 +2,9 @@ package dev.satherov.nexus.test.unit.api.codec;
 
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.CodecError;
-import dev.satherov.nexus.api.codec.CodecException;
 import dev.satherov.nexus.api.codec.CodecFormat;
 import dev.satherov.nexus.api.codec.NexusCodec;
+import dev.satherov.nexus.api.codec.NexusCodecException;
 import dev.satherov.nexus.api.codec.StructCodec;
 
 import net.minecraft.nbt.CompoundTag;
@@ -198,10 +198,10 @@ public class StructTest {
     public void collectsTheErrorsOfEveryFieldOnEncode() {
         Labels labels = new Labels("long", "longer");
         
-        Assertions.assertThat(Assertions.catchThrowableOfType(CodecException.class, () -> StructTest.LABELS.encode(CodecFormat.JSON, labels)).errors())
+        Assertions.assertThat(Assertions.catchThrowableOfType(NexusCodecException.class, () -> StructTest.LABELS.encode(CodecFormat.JSON, labels)).errors())
                 .extracting(CodecError::path)
                 .containsExactly("first", "second");
-        Assertions.assertThat(Assertions.catchThrowableOfType(CodecException.class, () -> StructTest.LABELS.encode(CodecFormat.NBT, labels)).errors())
+        Assertions.assertThat(Assertions.catchThrowableOfType(NexusCodecException.class, () -> StructTest.LABELS.encode(CodecFormat.NBT, labels)).errors())
                 .extracting(CodecError::path)
                 .containsExactly("first", "second");
     }
@@ -212,14 +212,14 @@ public class StructTest {
         Labels labels = new Labels("long", "longer");
         
         Assertions.assertThat(StructTest.decodeErrors(() -> StructTest.OFFER.decode(CodecFormat.netty(truncated)))).hasSize(1);
-        Assertions.assertThat(Assertions.catchThrowableOfType(CodecException.class, () -> StructTest.LABELS.encode(CodecFormat.netty(StructTest.buffer()), labels)).errors())
+        Assertions.assertThat(Assertions.catchThrowableOfType(NexusCodecException.class, () -> StructTest.LABELS.encode(CodecFormat.netty(StructTest.buffer()), labels)).errors())
                 .hasSize(1);
     }
     
     @Test
     public void failureNamesTheStructThatWasDecoded() {
         JsonElement input = JsonParser.parseString("{\"cost\":{\"item\":\"stone\",\"count\":\"many\"},\"result\":{\"item\":\"dirt\",\"count\":1}}");
-        CodecException failure = Assertions.catchThrowableOfType(CodecException.class, () -> StructTest.TRADE.decode(CodecFormat.JSON, input));
+        NexusCodecException failure = Assertions.catchThrowableOfType(NexusCodecException.class, () -> StructTest.TRADE.decode(CodecFormat.JSON, input));
         
         Assertions.assertThat(failure.getMessage().lines().findFirst())
                 .hasValueSatisfying(line -> Assertions.assertThat(line).contains("trade", "decode", "JSON").doesNotContain("offer"));
@@ -227,7 +227,7 @@ public class StructTest {
     }
     
     private static List<CodecError> decodeErrors(ThrowableAssert.ThrowingCallable call) {
-        return Assertions.catchThrowableOfType(CodecException.class, call).errors();
+        return Assertions.catchThrowableOfType(NexusCodecException.class, call).errors();
     }
     
     private static CompoundTag compound(Map<String, Tag> entries) {

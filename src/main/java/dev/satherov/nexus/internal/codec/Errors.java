@@ -3,7 +3,7 @@ package dev.satherov.nexus.internal.codec;
 import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.api.codec.CodecError;
-import dev.satherov.nexus.api.codec.CodecException;
+import dev.satherov.nexus.api.codec.NexusCodecException;
 
 import net.minecraft.nbt.CollectionTag;
 import net.minecraft.nbt.CompoundTag;
@@ -36,8 +36,8 @@ public class Errors {
     ///
     /// @return The failure, with one error at an empty path.
     ///
-    public static CodecException mismatch(String expected, @Nullable Object found) {
-        return new CodecException("expected " + expected + ", found " + Errors.describe(found));
+    public static NexusCodecException mismatch(String expected, @Nullable Object found) {
+        return new NexusCodecException("expected " + expected + ", found " + Errors.describe(found));
     }
 
     ///
@@ -49,8 +49,8 @@ public class Errors {
     ///
     /// @return The failure, with one error at an empty path.
     ///
-    public static CodecException outOfRange(long min, long max, Object found) {
-        return new CodecException(String.format(Locale.ROOT, "expected an integer in [%d, %d], found %s", min, max, Errors.describe(found)));
+    public static NexusCodecException outOfRange(long min, long max, Object found) {
+        return new NexusCodecException(String.format(Locale.ROOT, "expected an integer in [%d, %d], found %s", min, max, Errors.describe(found)));
     }
 
     ///
@@ -61,8 +61,8 @@ public class Errors {
     ///
     /// @return The failure, with one error at an empty path.
     ///
-    public static CodecException tooLong(int limit, int length) {
-        return new CodecException("expected at most " + limit + " characters, found " + length);
+    public static NexusCodecException tooLong(int limit, int length) {
+        return new NexusCodecException("expected at most " + limit + " characters, found " + length);
     }
 
     ///
@@ -73,8 +73,8 @@ public class Errors {
     ///
     /// @return The failure, with one error at an empty path.
     ///
-    public static CodecException unknownName(Collection<String> known, String found) {
-        return new CodecException("expected one of [" + String.join(", ", known) + "], found " + Errors.describe(found));
+    public static NexusCodecException unknownName(Collection<String> known, String found) {
+        return new NexusCodecException("expected one of [" + String.join(", ", known) + "], found " + Errors.describe(found));
     }
 
     ///
@@ -133,7 +133,7 @@ public class Errors {
     ///
     /// @return A new failure holding the prefixed errors.
     ///
-    public static CodecException prefixKey(CodecException failure, String key) {
+    public static NexusCodecException prefixKey(NexusCodecException failure, String key) {
         return Errors.prefix(failure, key);
     }
 
@@ -145,7 +145,7 @@ public class Errors {
     ///
     /// @return A new failure holding the prefixed errors.
     ///
-    public static CodecException prefixIndex(CodecException failure, int index) {
+    public static NexusCodecException prefixIndex(NexusCodecException failure, int index) {
         return Errors.prefix(failure, "[" + index + "]");
     }
 
@@ -159,14 +159,14 @@ public class Errors {
     ///
     /// @return A new failure holding the prefixed errors.
     ///
-    public static CodecException prefixMapKey(CodecException failure, String key) {
+    public static NexusCodecException prefixMapKey(NexusCodecException failure, String key) {
         return Errors.prefix(failure, "[" + Errors.quote(key, '\'') + "]");
     }
 
     ///
     /// Puts the given segment in front of the path of every error, with a dot between them if the path starts with a key.
     ///
-    private static CodecException prefix(CodecException failure, String segment) {
+    private static NexusCodecException prefix(NexusCodecException failure, String segment) {
         List<CodecError> prefixed = failure.errors().stream()
                 .map(error -> {
                     String separator = error.path().isEmpty() || error.path().startsWith("[") ? "" : ".";
@@ -174,7 +174,7 @@ public class Errors {
                 })
                 .toList();
 
-        return new CodecException(prefixed);
+        return new NexusCodecException(prefixed);
     }
 
     ///
@@ -186,8 +186,8 @@ public class Errors {
     ///
     /// @return The failure with the header.
     ///
-    public static CodecException encodeFailure(String codec, String format, CodecException failure) {
-        return new CodecException("Could not encode '" + codec + "' to " + format, failure.errors());
+    public static NexusCodecException encodeFailure(String codec, String format, NexusCodecException failure) {
+        return new NexusCodecException("Could not encode '" + codec + "' to " + format, failure.errors());
     }
 
     ///
@@ -199,7 +199,7 @@ public class Errors {
     ///
     /// @return The failure with the header.
     ///
-    public static CodecException decodeFailure(String codec, String format, CodecException failure) {
-        return new CodecException("Could not decode '" + codec + "' from " + format, failure.errors());
+    public static NexusCodecException decodeFailure(String codec, String format, NexusCodecException failure) {
+        return new NexusCodecException("Could not decode '" + codec + "' from " + format, failure.errors());
     }
 }

@@ -1,7 +1,7 @@
 package dev.satherov.nexus.test.unit.api.codec;
 
 import dev.satherov.nexus.api.codec.CodecError;
-import dev.satherov.nexus.api.codec.CodecException;
+import dev.satherov.nexus.api.codec.NexusCodecException;
 import dev.satherov.nexus.internal.codec.Errors;
 
 import net.minecraft.nbt.CompoundTag;
@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 ///
-/// Checks how a [CodecException] renders its errors and how [Errors] builds failures and prefixes their paths.
+/// Checks how a [NexusCodecException] renders its errors and how [Errors] builds failures and prefixes their paths.
 ///
 public class ErrorsTest {
 
@@ -28,32 +28,32 @@ public class ErrorsTest {
 
     @Test
     public void messageConstructorGivesOneErrorAtEmptyPath() {
-        Assertions.assertThat(new CodecException("missing").errors()).containsExactly(new CodecError("", "missing"));
+        Assertions.assertThat(new NexusCodecException("missing").errors()).containsExactly(new CodecError("", "missing"));
     }
 
     @Test
     public void errorsKeepTheGivenOrder() {
-        Assertions.assertThat(new CodecException(List.of(ErrorsTest.NUMBER, ErrorsTest.UNKNOWN)).errors()).containsExactly(ErrorsTest.NUMBER, ErrorsTest.UNKNOWN);
-        Assertions.assertThat(new CodecException("header", List.of(ErrorsTest.UNKNOWN, ErrorsTest.NUMBER)).errors()).containsExactly(ErrorsTest.UNKNOWN, ErrorsTest.NUMBER);
+        Assertions.assertThat(new NexusCodecException(List.of(ErrorsTest.NUMBER, ErrorsTest.UNKNOWN)).errors()).containsExactly(ErrorsTest.NUMBER, ErrorsTest.UNKNOWN);
+        Assertions.assertThat(new NexusCodecException("header", List.of(ErrorsTest.UNKNOWN, ErrorsTest.NUMBER)).errors()).containsExactly(ErrorsTest.UNKNOWN, ErrorsTest.NUMBER);
     }
 
     @Test
     public void messageRendersOneError() {
-        List<String> lines = new CodecException(List.of(ErrorsTest.NUMBER)).getMessage().lines().toList();
+        List<String> lines = new NexusCodecException(List.of(ErrorsTest.NUMBER)).getMessage().lines().toList();
 
         Assertions.assertThat(lines).singleElement().asString().contains("count", "expected a number, found \"many\"");
     }
 
     @Test
     public void messageRendersTopLevelErrorAsItsMessage() {
-        List<String> lines = new CodecException("expected a number, found \"many\"").getMessage().lines().toList();
+        List<String> lines = new NexusCodecException("expected a number, found \"many\"").getMessage().lines().toList();
 
         Assertions.assertThat(lines).singleElement().asString().contains("expected a number, found \"many\"");
     }
 
     @Test
     public void messageRendersOneLinePerError() {
-        List<String> lines = new CodecException(List.of(ErrorsTest.NUMBER, ErrorsTest.UNKNOWN)).getMessage().lines().toList();
+        List<String> lines = new NexusCodecException(List.of(ErrorsTest.NUMBER, ErrorsTest.UNKNOWN)).getMessage().lines().toList();
 
         Assertions.assertThat(lines).hasSize(2);
         Assertions.assertThat(lines.get(0)).contains("count", "expected a number, found \"many\"");
@@ -62,7 +62,7 @@ public class ErrorsTest {
 
     @Test
     public void decodeFailureFirstLineHasCodecDirectionAndFormat() {
-        CodecException failure = Errors.decodeFailure("recipe", "JSON", new CodecException(List.of(ErrorsTest.NUMBER, ErrorsTest.UNKNOWN)));
+        NexusCodecException failure = Errors.decodeFailure("recipe", "JSON", new NexusCodecException(List.of(ErrorsTest.NUMBER, ErrorsTest.UNKNOWN)));
         List<String> lines = failure.getMessage().lines().toList();
 
         Assertions.assertThat(lines).hasSize(3);
@@ -73,7 +73,7 @@ public class ErrorsTest {
 
     @Test
     public void encodeFailureFirstLineHasCodecDirectionAndFormat() {
-        CodecException failure = Errors.encodeFailure("recipe", "netty", new CodecException(List.of(ErrorsTest.NUMBER)));
+        NexusCodecException failure = Errors.encodeFailure("recipe", "netty", new NexusCodecException(List.of(ErrorsTest.NUMBER)));
         List<String> lines = failure.getMessage().lines().toList();
 
         Assertions.assertThat(lines).hasSize(2);
@@ -83,7 +83,7 @@ public class ErrorsTest {
 
     @Test
     public void entryFailuresKeepErrorsWithoutCodecInPath() {
-        CodecException inner = new CodecException(List.of(ErrorsTest.NUMBER, ErrorsTest.UNKNOWN));
+        NexusCodecException inner = new NexusCodecException(List.of(ErrorsTest.NUMBER, ErrorsTest.UNKNOWN));
 
         Assertions.assertThat(Errors.encodeFailure("recipe", "NBT", inner).errors()).containsExactly(ErrorsTest.NUMBER, ErrorsTest.UNKNOWN);
         Assertions.assertThat(Errors.decodeFailure("recipe", "NBT", inner).errors()).containsExactly(ErrorsTest.NUMBER, ErrorsTest.UNKNOWN);
@@ -115,10 +115,10 @@ public class ErrorsTest {
 
     @Test
     public void nestedPrefixesBuildFullPath() {
-        CodecException leaf = new CodecException("expected a number, found \"many\"");
-        CodecException entries = Errors.prefixKey(Errors.prefixIndex(Errors.prefixKey(leaf, "cost"), 2), "entries");
-        CodecException prices = Errors.prefixKey(Errors.prefixMapKey(leaf, "stone"), "prices");
-        CodecException deep = Errors.prefixKey(Errors.prefixMapKey(entries, "stone"), "recipes");
+        NexusCodecException leaf = new NexusCodecException("expected a number, found \"many\"");
+        NexusCodecException entries = Errors.prefixKey(Errors.prefixIndex(Errors.prefixKey(leaf, "cost"), 2), "entries");
+        NexusCodecException prices = Errors.prefixKey(Errors.prefixMapKey(leaf, "stone"), "prices");
+        NexusCodecException deep = Errors.prefixKey(Errors.prefixMapKey(entries, "stone"), "recipes");
 
         Assertions.assertThat(ErrorsTest.path(entries)).isEqualTo("entries[2].cost");
         Assertions.assertThat(ErrorsTest.path(prices)).isEqualTo("prices['stone']");
@@ -127,7 +127,7 @@ public class ErrorsTest {
 
     @Test
     public void prefixReachesEveryErrorAndKeepsMessages() {
-        CodecException prefixed = Errors.prefixIndex(new CodecException(List.of(ErrorsTest.NUMBER, ErrorsTest.UNKNOWN)), 4);
+        NexusCodecException prefixed = Errors.prefixIndex(new NexusCodecException(List.of(ErrorsTest.NUMBER, ErrorsTest.UNKNOWN)), 4);
 
         Assertions.assertThat(prefixed.errors()).containsExactly(
                 new CodecError("[4].count", "expected a number, found \"many\""),
@@ -137,7 +137,7 @@ public class ErrorsTest {
 
     @Test
     public void prefixLeavesArgumentUnchanged() {
-        CodecException original = new CodecException(List.of(ErrorsTest.NUMBER));
+        NexusCodecException original = new NexusCodecException(List.of(ErrorsTest.NUMBER));
         Errors.prefixKey(original, "entry");
         Errors.prefixIndex(original, 1);
         Errors.prefixMapKey(original, "stone");
@@ -152,7 +152,7 @@ public class ErrorsTest {
 
     @Test
     public void unknownNameListsKnownNames() {
-        CodecException failure = Errors.unknownName(List.of("fire", "ice"), "water");
+        NexusCodecException failure = Errors.unknownName(List.of("fire", "ice"), "water");
 
         Assertions.assertThat(failure.errors()).containsExactly(new CodecError("", "expected one of [fire, ice], found \"water\""));
     }
@@ -216,7 +216,7 @@ public class ErrorsTest {
 
     @Test
     public void lineBreaksInValuesAndKeysKeepOneLinePerError() {
-        CodecException inner = new CodecException(List.of(
+        NexusCodecException inner = new NexusCodecException(List.of(
                 Errors.prefixMapKey(Errors.unknownName(List.of("fire", "ice"), "wa\nter"), "x\ny").errors().getFirst(),
                 ErrorsTest.NUMBER
         ));
@@ -225,11 +225,11 @@ public class ErrorsTest {
         Assertions.assertThat(Errors.decodeFailure("recipe", "JSON", inner).getMessage().lines()).hasSize(3);
     }
 
-    private static CodecException at(String path) {
-        return new CodecException(List.of(new CodecError(path, "missing")));
+    private static NexusCodecException at(String path) {
+        return new NexusCodecException(List.of(new CodecError(path, "missing")));
     }
 
-    private static String path(CodecException failure) {
+    private static String path(NexusCodecException failure) {
         return failure.errors().getFirst().path();
     }
 }

@@ -4,9 +4,9 @@ import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.BufferFormat;
-import dev.satherov.nexus.api.codec.CodecException;
 import dev.satherov.nexus.api.codec.CodecFormat;
 import dev.satherov.nexus.api.codec.NexusCodec;
+import dev.satherov.nexus.api.codec.NexusCodecException;
 import dev.satherov.nexus.api.codec.StructCodec;
 
 import net.minecraft.core.Registry;
@@ -69,12 +69,12 @@ public class VanillaAdapters {
     private static final RegistryOps.RegistryInfoLookup WITHOUT_REGISTRIES = new RegistryOps.RegistryInfoLookup() {
         
         ///
-        /// Throws a [CodecException] since the ops have no registries.
+        /// Throws a [NexusCodecException] since the ops have no registries.
         ///
         @Override
         @Contract("_ -> fail")
         public <T> Optional<RegistryOps.RegistryInfo<T>> lookup(ResourceKey<? extends Registry<? extends T>> registry) {
-            throw new CodecException("could not access the registry '" + registry.identifier() + "' without registry ops");
+            throw new NexusCodecException("could not access the registry '" + registry.identifier() + "' without registry ops");
         }
     };
     
@@ -159,7 +159,7 @@ public class VanillaAdapters {
     ///
     /// @param codec The codec to view.
     ///
-    /// @return The DFU codec, which fails with the message of a [CodecException] and without a partial result.
+    /// @return The DFU codec, which fails with the message of a [NexusCodecException] and without a partial result.
     ///
     public static <T> Codec<T> asDfu(NexusCodec<T, ?> codec) {
         NexusCodec<T, ? super Access.Registries> viewed = VanillaAdapters.onAnyFormat(codec);
@@ -172,7 +172,7 @@ public class VanillaAdapters {
             public <V> DataResult<Pair<T, V>> decode(DynamicOps<V> ops, @Nullable V input) {
                 try {
                     return DataResult.success(Pair.of(VanillaAdapters.decode(viewed, ops, input), ops.empty()));
-                } catch (CodecException failure) {
+                } catch (NexusCodecException failure) {
                     return DataResult.error(failure::getMessage);
                 }
             }
@@ -184,7 +184,7 @@ public class VanillaAdapters {
             public <V> DataResult<V> encode(T input, DynamicOps<V> ops, V prefix) {
                 try {
                     return ops.mergeToPrimitive(prefix, VanillaAdapters.toOps(ops, VanillaAdapters.encodeFor(viewed, ops, input)));
-                } catch (CodecException failure) {
+                } catch (NexusCodecException failure) {
                     return DataResult.error(failure::getMessage);
                 }
             }
@@ -196,7 +196,7 @@ public class VanillaAdapters {
     ///
     /// @param struct The struct to view.
     ///
-    /// @return The map codec, which fails with the message of a [CodecException] and without a partial result.
+    /// @return The map codec, which fails with the message of a [NexusCodecException] and without a partial result.
     ///
     public static <T> MapCodec<T> asMapCodec(Structs.Inlinable<T, ?> struct) {
         NexusCodec<T, ? super Access.Registries> viewed = VanillaAdapters.onAnyFormat(struct);
@@ -219,7 +219,7 @@ public class VanillaAdapters {
                     // JavaOps reads a null value the same as a missing key, and its maps can't hold one.
                     V object = ops.createMap(input.entries().filter(entry -> entry.getSecond() != null));
                     return DataResult.success(VanillaAdapters.decode(viewed, ops, object));
-                } catch (CodecException failure) {
+                } catch (NexusCodecException failure) {
                     return DataResult.error(failure::getMessage);
                 }
             }
@@ -232,7 +232,7 @@ public class VanillaAdapters {
                 Object object;
                 try {
                     object = VanillaAdapters.encodeFor(viewed, ops, input);
-                } catch (CodecException failure) {
+                } catch (NexusCodecException failure) {
                     return prefix.withErrorsFrom(DataResult.error(failure::getMessage));
                 }
                 
@@ -255,7 +255,7 @@ public class VanillaAdapters {
     /// Encodes the given value with the given codec in NBT over the values of NBT, and in json over any other values, into a tag or a json element.
     ///
     private static <T> Object encodeFor(NexusCodec<T, ? super Access.Registries> codec, DynamicOps<?> ops, T value) {
-        if (ops.compressMaps()) throw new CodecException(VanillaAdapters.COMPRESSED);
+        if (ops.compressMaps()) throw new NexusCodecException(VanillaAdapters.COMPRESSED);
         RegistryOps.RegistryInfoLookup registries = VanillaAdapters.registriesOf(ops);
         if (ops.empty() instanceof Tag) {
             return codec.encode(new NbtOperations<Access.Registries>(false, registries), value);
@@ -306,7 +306,7 @@ public class VanillaAdapters {
     /// Runs the json or NBT format directly if the ops are over its values, and converts to json otherwise.
     ///
     private static <T, V> T decode(NexusCodec<T, ? super Access.Registries> codec, DynamicOps<V> ops, @Nullable V input) {
-        if (ops.compressMaps()) throw new CodecException(VanillaAdapters.COMPRESSED);
+        if (ops.compressMaps()) throw new NexusCodecException(VanillaAdapters.COMPRESSED);
         RegistryOps.RegistryInfoLookup registries = VanillaAdapters.registriesOf(ops);
         // JsonOps hands a json null inside a list or a map over as null, so the empty value of the format stands in for it.
         return switch (ops.empty()) {
@@ -358,7 +358,7 @@ public class VanillaAdapters {
             public T decode(B buffer) {
                 try {
                     return codec.decode(formatOf.apply(buffer));
-                } catch (CodecException failure) {
+                } catch (NexusCodecException failure) {
                     throw new DecoderException(failure.getMessage(), failure);
                 }
             }
@@ -370,7 +370,7 @@ public class VanillaAdapters {
             public void encode(B buffer, T value) {
                 try {
                     codec.encode(formatOf.apply(buffer), value);
-                } catch (CodecException failure) {
+                } catch (NexusCodecException failure) {
                     throw new EncoderException(failure.getMessage(), failure);
                 }
             }
@@ -449,14 +449,14 @@ public class VanillaAdapters {
         @Override
         protected <V> V write(Operations<V> operations, T value) {
             if (!operations.isPositional()) {
-                return this.dfu().encodeStart(this.opsOf(operations), value).getOrThrow(CodecException::new);
+                return this.dfu().encodeStart(this.opsOf(operations), value).getOrThrow(NexusCodecException::new);
             }
             
             V buffer = operations.emptyObject();
             try {
                 this.stream.encode((FriendlyByteBuf) buffer, value);
             } catch (RuntimeException failure) {
-                throw failure instanceof CodecException refused ? refused : new CodecException("could not write to the buffer, " + failure);
+                throw failure instanceof NexusCodecException refused ? refused : new NexusCodecException("could not write to the buffer, " + failure);
             }
             
             return buffer;
@@ -468,13 +468,13 @@ public class VanillaAdapters {
         @Override
         protected <V> T read(Operations<V> operations, V input) {
             if (!operations.isPositional()) {
-                return this.dfu().parse(this.opsOf(operations), input).getOrThrow(CodecException::new);
+                return this.dfu().parse(this.opsOf(operations), input).getOrThrow(NexusCodecException::new);
             }
             
             try {
                 return this.stream.decode((FriendlyByteBuf) input);
             } catch (RuntimeException failure) {
-                throw failure instanceof CodecException refused ? refused : new CodecException("could not read from the buffer, " + failure);
+                throw failure instanceof NexusCodecException refused ? refused : new NexusCodecException("could not read from the buffer, " + failure);
             }
         }
         
@@ -483,7 +483,7 @@ public class VanillaAdapters {
         ///
         private Codec<T> dfu() {
             Codec<T> dfu = this.codec;
-            if (dfu == null) throw new CodecException("could not use a stream codec outside of netty");
+            if (dfu == null) throw new NexusCodecException("could not use a stream codec outside of netty");
             return dfu;
         }
         

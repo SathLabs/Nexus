@@ -80,11 +80,11 @@ public interface MapKey<K, A extends Access.Plain> {
     /// Creates the key of the values of the given codec, with the given string form.
     ///
     /// `fromString` should read back every string that `toString` writes.
-    /// If either of them throws anything other than a [CodecException], the key will fail with the message of what it threw.
+    /// If either of them throws anything other than a [NexusCodecException], the key will fail with the message of what it threw.
     ///
     /// @param codec      The codec of the key on the network.
     /// @param toString   The writer of the string form of a key.
-    /// @param fromString The reader of a key from its string form, which throws a [CodecException] if it can't read the string.
+    /// @param fromString The reader of a key from its string form, which throws a [NexusCodecException] if it can't read the string.
     ///
     /// @return The key.
     ///

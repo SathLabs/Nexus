@@ -1,9 +1,9 @@
 package dev.satherov.nexus.test.unit.api.codec;
 
 import dev.satherov.nexus.api.codec.Access;
-import dev.satherov.nexus.api.codec.CodecException;
 import dev.satherov.nexus.api.codec.CodecFormat;
 import dev.satherov.nexus.api.codec.NexusCodec;
+import dev.satherov.nexus.api.codec.NexusCodecException;
 import dev.satherov.nexus.api.codec.StructCodec;
 
 import net.minecraft.core.Holder;
@@ -207,10 +207,10 @@ public class ViewsTest {
     }
     
     @Test
-    public void dfuViewFailsWithTheMessageOfTheCodecException() {
+    public void dfuViewFailsWithTheMessageOfTheNexusCodecException() {
         NexusCodec<Integer, Access.Plain> codec = NexusCodec.INT.validate(value -> value < 0 ? "negative" : null);
         DataResult<JsonElement> encoded = codec.asDfu().encodeStart(JsonOps.INSTANCE, -1);
-        CodecException failure = Assertions.catchThrowableOfType(CodecException.class, () -> codec.encode(CodecFormat.JSON, -1));
+        NexusCodecException failure = Assertions.catchThrowableOfType(NexusCodecException.class, () -> codec.encode(CodecFormat.JSON, -1));
         
         Assertions.assertThat(ViewsTest.errorOf(encoded)).isEqualTo(failure.getMessage());
         Assertions.assertThat(encoded.hasResultOrPartial()).isFalse();
@@ -307,12 +307,12 @@ public class ViewsTest {
                 .isInstanceOf(EncoderException.class)
                 .hasMessageContaining("Could not encode")
                 .hasMessageContaining("negative")
-                .hasCauseInstanceOf(CodecException.class);
+                .hasCauseInstanceOf(NexusCodecException.class);
         Assertions.assertThatThrownBy(() -> stream.decode(ViewsTest.readable(0xFF, 0xFF, 0xFF, 0xFF)))
                 .isInstanceOf(DecoderException.class)
                 .hasMessageContaining("Could not decode")
                 .hasMessageContaining("negative")
-                .hasCauseInstanceOf(CodecException.class);
+                .hasCauseInstanceOf(NexusCodecException.class);
     }
     
     @Test

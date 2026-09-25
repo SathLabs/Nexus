@@ -86,7 +86,7 @@ public interface StructCodec<T, A extends Access.Plain> extends NexusCodec<T, A>
     ///
     /// If this struct needs registries, it will take them from the [RegistryOps], and fail over any other ops.
     /// Fails over ops that compress maps, such as [JsonOps#COMPRESSED].
-    /// A failure is an error with the message of the [CodecException], without a partial result.
+    /// A failure is an error with the message of the [NexusCodecException], without a partial result.
     ///
     /// @return The map codec, whose keys are the keys of this struct.
     ///

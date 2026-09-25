@@ -4,9 +4,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.api.codec.Access;
-import dev.satherov.nexus.api.codec.CodecException;
 import dev.satherov.nexus.api.codec.MapKey;
 import dev.satherov.nexus.api.codec.NexusCodec;
+import dev.satherov.nexus.api.codec.NexusCodecException;
 import dev.satherov.nexus.api.codec.StructCodec;
 
 import net.minecraft.core.Holder;
@@ -396,7 +396,7 @@ public class ParityCases {
     }
     
     public static Amount positiveAmount(int value) {
-        if (value <= 0) throw new CodecException("expected a positive amount, found " + value);
+        if (value <= 0) throw new NexusCodecException("expected a positive amount, found " + value);
         return new Amount(value);
     }
     

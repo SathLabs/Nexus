@@ -2,8 +2,8 @@ package dev.satherov.nexus.internal.codec;
 
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.BufferFormat;
-import dev.satherov.nexus.api.codec.CodecException;
 import dev.satherov.nexus.api.codec.CodecFormat;
+import dev.satherov.nexus.api.codec.NexusCodecException;
 
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.RegistryAccess;
@@ -28,7 +28,7 @@ import java.util.Set;
 /// The netty format over a buffer, which encodes and decodes values in the layout of [ByteBufCodecs].
 ///
 /// Every read consumes from the buffer handed to it, which is the buffer of this format.
-/// A buffer that ends before a value does, or that has no room left for one, throws a [CodecException].
+/// A buffer that ends before a value does, or that has no room left for one, throws a [NexusCodecException].
 ///
 /// @param buffer         The buffer this format reads from and appends to.
 /// @param registryAccess The registry access of the buffer, or `null` if the format is plain.
@@ -188,7 +188,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     ///
     /// Reads a VarInt of at most five bytes.
     ///
-    /// @throws CodecException If the VarInt runs past its fifth byte.
+    /// @throws NexusCodecException If the VarInt runs past its fifth byte.
     ///
     @Override
     public int asVarInt(B input) {
@@ -201,7 +201,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
             }
         }
 
-        throw new CodecException("expected a VarInt, found more than " + VarInt.MAX_VARINT_SIZE + " bytes");
+        throw new NexusCodecException("expected a VarInt, found more than " + VarInt.MAX_VARINT_SIZE + " bytes");
     }
 
     ///
@@ -233,7 +233,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     ///
     /// Reads a VarLong of at most ten bytes.
     ///
-    /// @throws CodecException If the VarLong runs past its tenth byte.
+    /// @throws NexusCodecException If the VarLong runs past its tenth byte.
     ///
     @Override
     public long asVarLong(B input) {
@@ -246,7 +246,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
             }
         }
 
-        throw new CodecException("expected a VarLong, found more than " + NettyOperations.MAX_VARLONG_SIZE + " bytes");
+        throw new NexusCodecException("expected a VarLong, found more than " + NettyOperations.MAX_VARLONG_SIZE + " bytes");
     }
 
     ///
@@ -286,7 +286,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     ///
     /// Appends the number of UTF-8 bytes of the given string as a VarInt, and then the bytes themselves.
     ///
-    /// @throws CodecException If the string has more than `limit` characters.
+    /// @throws NexusCodecException If the string has more than `limit` characters.
     ///
     @Override
     public B ofString(String value, int limit) {
@@ -301,14 +301,14 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     /// Checks that the buffer has room for the given number of bytes, with the expected kind in the failure message.
     ///
     private B requireWritable(int bytes, String expected) {
-        if (this.buffer.maxWritableBytes() < bytes) throw new CodecException("expected room for " + expected + ", found a full buffer");
+        if (this.buffer.maxWritableBytes() < bytes) throw new NexusCodecException("expected room for " + expected + ", found a full buffer");
         return this.buffer;
     }
 
     ///
     /// Reads a string written by [#ofString(String, int)].
     ///
-    /// @throws CodecException If the string has more than `limit` characters.
+    /// @throws NexusCodecException If the string has more than `limit` characters.
     ///
     @Override
     public String asString(B input, int limit) {
@@ -323,7 +323,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     /// Checks that the given buffer has the given number of bytes left, with the expected kind in the failure message.
     ///
     private B requireReadable(B input, int bytes, String expected) {
-        if (input.readableBytes() < bytes) throw new CodecException("expected " + expected + ", found the end of the buffer");
+        if (input.readableBytes() < bytes) throw new NexusCodecException("expected " + expected + ", found the end of the buffer");
         return input;
     }
 
@@ -374,7 +374,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     ///
     /// Appends the given number of elements as a VarInt.
     ///
-    /// @throws CodecException If the count is above the limit.
+    /// @throws NexusCodecException If the count is above the limit.
     ///
     @Override
     public void writeCount(int count, int limit) {

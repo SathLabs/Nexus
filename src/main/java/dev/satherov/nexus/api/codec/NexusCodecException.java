@@ -9,7 +9,7 @@ import java.util.stream.Collectors;
 ///
 /// An exception that holds every error found during an encode or decode.
 ///
-public final class CodecException extends RuntimeException {
+public final class NexusCodecException extends RuntimeException {
 
     ///
     /// The first line of the message, or `null` if there is none.
@@ -28,7 +28,7 @@ public final class CodecException extends RuntimeException {
     ///
     /// @param message The message of the error.
     ///
-    public CodecException(String message) {
+    public NexusCodecException(String message) {
         this(List.of(new CodecError("", message)));
     }
 
@@ -37,7 +37,7 @@ public final class CodecException extends RuntimeException {
     ///
     /// @param errors The errors, in the order the message should list them.
     ///
-    public CodecException(List<CodecError> errors) {
+    public NexusCodecException(List<CodecError> errors) {
         this.header = null;
         this.errors = List.copyOf(errors);
     }
@@ -48,7 +48,7 @@ public final class CodecException extends RuntimeException {
     /// @param header The first line of the message, such as `Could not decode 'recipe' from JSON`.
     /// @param errors The errors, in the order the message should list them.
     ///
-    public CodecException(String header, List<CodecError> errors) {
+    public NexusCodecException(String header, List<CodecError> errors) {
         this.header = header;
         this.errors = List.copyOf(errors);
     }
@@ -72,12 +72,12 @@ public final class CodecException extends RuntimeException {
     public String getMessage() {
         if (this.header == null) {
             return this.errors.stream()
-                    .map(CodecException::render)
+                    .map(NexusCodecException::render)
                     .collect(Collectors.joining("\n"));
         }
 
         return this.errors.stream()
-                .map(CodecException::render)
+                .map(NexusCodecException::render)
                 .collect(Collectors.joining("\n  ", this.header + ":\n  ", ""));
     }
 

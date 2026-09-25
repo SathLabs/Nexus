@@ -4,8 +4,8 @@ import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.CodecError;
-import dev.satherov.nexus.api.codec.CodecException;
 import dev.satherov.nexus.api.codec.NexusCodec;
+import dev.satherov.nexus.api.codec.NexusCodecException;
 
 import net.neoforged.neoforge.registries.NeoForgeRegistries;
 import net.neoforged.neoforge.registries.holdersets.HolderSetType;
@@ -161,10 +161,10 @@ public class HolderCodecs {
     ///
     private static <T> ResourceKey<T> keyOf(Operations<?> operations, ResourceKey<? extends Registry<T>> registry, Holder<T> holder) {
         if (!holder.canSerializeIn(HolderCodecs.infoOf(operations, registry).owner())) {
-            throw new CodecException("expected a holder of the registry '" + registry.identifier() + "', found one of other registries");
+            throw new NexusCodecException("expected a holder of the registry '" + registry.identifier() + "', found one of other registries");
         }
         
-        return holder.unwrapKey().orElseThrow(() -> new CodecException("expected a holder of the registry '" + registry.identifier() + "', found a direct holder"));
+        return holder.unwrapKey().orElseThrow(() -> new NexusCodecException("expected a holder of the registry '" + registry.identifier() + "', found a direct holder"));
     }
     
     ///
@@ -192,7 +192,7 @@ public class HolderCodecs {
     private static <T> int idOf(Operations<?> operations, ResourceKey<? extends Registry<T>> registry, Holder<T> holder) {
         int id = HolderCodecs.syncedRegistryOf(operations, registry).getId(holder.value());
         if (id == -1) {
-            throw new CodecException("expected an element of the registry '" + registry.identifier() + "', found an unregistered value");
+            throw new NexusCodecException("expected an element of the registry '" + registry.identifier() + "', found an unregistered value");
         }
         
         return id;
@@ -215,7 +215,7 @@ public class HolderCodecs {
         Optional<Registry<T>> found = access != null ? access.lookup(registry) : Optional.empty();
         Registry<T> synced = found.orElseThrow(() -> HolderCodecs.inaccessible(registry));
         if (BuiltInRegistries.REGISTRY.containsKey(registry.identifier()) && !synced.doesSync()) {
-            throw new CodecException("could not use the ids of the registry '" + registry.identifier() + "' since it isn't synced");
+            throw new NexusCodecException("could not use the ids of the registry '" + registry.identifier() + "' since it isn't synced");
         }
         
         return synced;
@@ -224,8 +224,8 @@ public class HolderCodecs {
     ///
     /// Creates the failure for a registry that the format doesn't have.
     ///
-    private static CodecException inaccessible(ResourceKey<?> registry) {
-        return new CodecException("could not access the registry '" + registry.identifier() + "'");
+    private static NexusCodecException inaccessible(ResourceKey<?> registry) {
+        return new NexusCodecException("could not access the registry '" + registry.identifier() + "'");
     }
     
     ///
@@ -299,12 +299,12 @@ public class HolderCodecs {
             }
             
             if (!value.canSerializeIn(HolderCodecs.infoOf(operations, this.registry).owner())) {
-                throw new CodecException("expected a holder set of the registry '" + this.registry.identifier() + "', found one of other registries");
+                throw new NexusCodecException("expected a holder set of the registry '" + this.registry.identifier() + "', found one of other registries");
             }
             
             if (value instanceof ICustomHolderSet<T> set) {
                 HolderSetTraversal.requireRegistered(set);
-                return this.custom.encodeStart(HolderSetTraversal.registryOps(operations, this.registry), set).getOrThrow(CodecException::new);
+                return this.custom.encodeStart(HolderSetTraversal.registryOps(operations, this.registry), set).getOrThrow(NexusCodecException::new);
             }
             
             return value.unwrap().map(
@@ -344,19 +344,19 @@ public class HolderCodecs {
         ///
         private static void requireRegistered(ICustomHolderSet<?> set) {
             if (NeoForgeRegistries.HOLDER_SET_TYPES.getKey(set.type()) == null) {
-                throw new CodecException("expected a holder set of a registered type, found an unregistered type");
+                throw new NexusCodecException("expected a holder set of a registered type, found an unregistered type");
             }
         }
         
         ///
-        /// Writes the content of the given custom set with the given stream codec of its type, with anything other than a [CodecException] turned into one.
+        /// Writes the content of the given custom set with the given stream codec of its type, with anything other than a [NexusCodecException] turned into one.
         ///
         private static <T, S extends ICustomHolderSet<T>> void writeCustom(StreamCodec<RegistryFriendlyByteBuf, S> codec, RegistryFriendlyByteBuf buffer, ICustomHolderSet<T> set) {
             try {
                 //noinspection unchecked The stream codec is the one of the set's own type.
                 codec.encode(buffer, (S) set);
             } catch (RuntimeException failure) {
-                throw failure instanceof CodecException refused ? refused : new CodecException("could not write the custom holder set, " + failure);
+                throw failure instanceof NexusCodecException refused ? refused : new NexusCodecException("could not write the custom holder set, " + failure);
             }
         }
         
@@ -393,12 +393,12 @@ public class HolderCodecs {
         ///
         private <V> HolderSet<T> readObject(Operations<V> operations, V object) {
             V encoded = operations.get(object, HolderSetTraversal.TYPE_KEY);
-            if (encoded == null) throw new CodecException(List.of(new CodecError(HolderSetTraversal.TYPE_KEY, "missing")));
+            if (encoded == null) throw new NexusCodecException(List.of(new CodecError(HolderSetTraversal.TYPE_KEY, "missing")));
             
             HolderSetType type;
             try {
                 type = HolderSetTraversal.typeOf(Scalars.IDENTIFIER.read(operations, encoded));
-            } catch (CodecException failure) {
+            } catch (NexusCodecException failure) {
                 throw Errors.prefixKey(failure, HolderSetTraversal.TYPE_KEY);
             }
             
@@ -414,10 +414,10 @@ public class HolderCodecs {
                         .map(key -> new CodecError(key, "unknown key"))
                         .toList();
                 
-                if (!unknown.isEmpty()) throw new CodecException(unknown);
+                if (!unknown.isEmpty()) throw new NexusCodecException(unknown);
             }
             
-            return codec.codec().parse(ops, object).getOrThrow(CodecException::new);
+            return codec.codec().parse(ops, object).getOrThrow(NexusCodecException::new);
         }
         
         ///
@@ -455,7 +455,7 @@ public class HolderCodecs {
         }
         
         ///
-        /// Reads a custom set with the stream codec of the type with the given id, with anything other than a [CodecException] turned into one.
+        /// Reads a custom set with the stream codec of the type with the given id, with anything other than a [NexusCodecException] turned into one.
         ///
         private <V> HolderSet<T> readCustom(V input, int type) {
             HolderSetType found = NeoForgeRegistries.HOLDER_SET_TYPES.byId(type);
@@ -464,7 +464,7 @@ public class HolderCodecs {
             try {
                 return found.makeStreamCodec(this.registry).decode(buffer);
             } catch (RuntimeException failure) {
-                throw failure instanceof CodecException refused ? refused : new CodecException("could not read the custom holder set, " + failure);
+                throw failure instanceof NexusCodecException refused ? refused : new NexusCodecException("could not read the custom holder set, " + failure);
             }
         }
         

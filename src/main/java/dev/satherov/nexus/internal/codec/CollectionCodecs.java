@@ -4,10 +4,10 @@ import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.CodecError;
-import dev.satherov.nexus.api.codec.CodecException;
 import dev.satherov.nexus.api.codec.CodecFormat;
 import dev.satherov.nexus.api.codec.MapKey;
 import dev.satherov.nexus.api.codec.NexusCodec;
+import dev.satherov.nexus.api.codec.NexusCodecException;
 
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.resources.Identifier;
@@ -181,14 +181,14 @@ public class CollectionCodecs {
     ///
     /// Creates a failure for a collection with more entries than the given limit.
     ///
-    private static CodecException tooMany(int limit, int count) {
-        return new CodecException("expected at most " + limit + " entries, found " + count);
+    private static NexusCodecException tooMany(int limit, int count) {
+        return new NexusCodecException("expected at most " + limit + " entries, found " + count);
     }
     
     ///
     /// Adds the errors of the given failure to the given list, creating the list if it is `null`.
     ///
-    private static List<CodecError> collect(@Nullable List<CodecError> errors, CodecException failure) {
+    private static List<CodecError> collect(@Nullable List<CodecError> errors, NexusCodecException failure) {
         List<CodecError> collected = Objects.requireNonNullElseGet(errors, ArrayList::new);
         collected.addAll(failure.errors());
         return collected;
@@ -210,24 +210,24 @@ public class CollectionCodecs {
     ) implements MapKey<K, A> {
         
         ///
-        /// Writes the string form of the given key, with anything other than a [CodecException] that the printer throws turned into one.
+        /// Writes the string form of the given key, with anything other than a [NexusCodecException] that the printer throws turned into one.
         ///
         private String print(K key) {
             try {
                 return this.printer.apply(key);
             } catch (RuntimeException failure) {
-                throw failure instanceof CodecException refused ? refused : new CodecException("could not write the key, " + failure);
+                throw failure instanceof NexusCodecException refused ? refused : new NexusCodecException("could not write the key, " + failure);
             }
         }
         
         ///
-        /// Reads a key from the given string form, with anything other than a [CodecException] that the parser throws turned into one.
+        /// Reads a key from the given string form, with anything other than a [NexusCodecException] that the parser throws turned into one.
         ///
         private K parse(String text) {
             try {
                 return this.parser.apply(text);
             } catch (RuntimeException failure) {
-                throw failure instanceof CodecException refused ? refused : new CodecException("could not read the key, " + failure);
+                throw failure instanceof NexusCodecException refused ? refused : new NexusCodecException("could not read the key, " + failure);
             }
         }
     }
@@ -292,14 +292,14 @@ public class CollectionCodecs {
             for (T element : value) {
                 try {
                     elements.add(this.codec.write(operations, element));
-                } catch (CodecException failure) {
+                } catch (NexusCodecException failure) {
                     errors = CollectionCodecs.collect(errors, Errors.prefixIndex(failure, index));
                 }
                 
                 index++;
             }
             
-            if (errors != null) throw new CodecException(errors);
+            if (errors != null) throw new NexusCodecException(errors);
             return operations.ofList(elements);
         }
         
@@ -326,12 +326,12 @@ public class CollectionCodecs {
             for (int i = 0; i < elements.size(); i++) {
                 try {
                     CollectionTraversal.add(collection, this.codec.read(operations, elements.get(i)));
-                } catch (CodecException failure) {
+                } catch (NexusCodecException failure) {
                     errors = CollectionCodecs.collect(errors, Errors.prefixIndex(failure, i));
                 }
             }
             
-            if (errors != null) throw new CodecException(errors);
+            if (errors != null) throw new NexusCodecException(errors);
             return collection;
         }
         
@@ -339,7 +339,7 @@ public class CollectionCodecs {
         /// Adds the given element to the given collection, and fails if the collection does not add it.
         ///
         private static <T> void add(Collection<T> collection, T element) {
-            if (!collection.add(element)) throw new CodecException("duplicate element");
+            if (!collection.add(element)) throw new NexusCodecException("duplicate element");
         }
     }
     
@@ -408,14 +408,14 @@ public class CollectionCodecs {
                 try {
                     name = this.key.print(entry.getKey());
                     operations.put(object, name, this.value.write(operations, entry.getValue()));
-                } catch (CodecException failure) {
+                } catch (NexusCodecException failure) {
                     errors = CollectionCodecs.collect(errors, name == null ? Errors.prefixIndex(failure, index) : Errors.prefixMapKey(failure, name));
                 }
                 
                 index++;
             }
             
-            if (errors != null) throw new CodecException(errors);
+            if (errors != null) throw new NexusCodecException(errors);
             return object;
         }
         
@@ -443,12 +443,12 @@ public class CollectionCodecs {
                 try {
                     //noinspection DataFlowIssue The name is one of the keys of the object.
                     MapTraversal.put(map, this.key.parse(name), this.value.read(operations, operations.get(input, name)));
-                } catch (CodecException failure) {
+                } catch (NexusCodecException failure) {
                     errors = CollectionCodecs.collect(errors, Errors.prefixMapKey(failure, name));
                 }
             }
             
-            if (errors != null) throw new CodecException(errors);
+            if (errors != null) throw new NexusCodecException(errors);
             return map;
         }
         
@@ -456,7 +456,7 @@ public class CollectionCodecs {
         /// Puts the given value under the given key of the given map, and fails if the map already holds the key.
         ///
         private static <K, T> void put(Map<K, T> map, K key, T value) {
-            if (map.putIfAbsent(key, value) != null) throw new CodecException("duplicate key");
+            if (map.putIfAbsent(key, value) != null) throw new NexusCodecException("duplicate key");
         }
     }
 }

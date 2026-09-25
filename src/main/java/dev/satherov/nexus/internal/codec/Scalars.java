@@ -3,8 +3,8 @@ package dev.satherov.nexus.internal.codec;
 import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.api.codec.Access;
-import dev.satherov.nexus.api.codec.CodecException;
 import dev.satherov.nexus.api.codec.NexusCodec;
+import dev.satherov.nexus.api.codec.NexusCodecException;
 
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.network.FriendlyByteBuf;
@@ -288,7 +288,7 @@ public class Scalars {
             int[] parts;
             try {
                 parts = operations.asIntArray(input);
-            } catch (CodecException _) {
+            } catch (NexusCodecException _) {
                 return Scalars.parseUuid(operations, input);
             }
             
@@ -383,7 +383,7 @@ public class Scalars {
         String text;
         try {
             text = operations.asString(input, FriendlyByteBuf.MAX_STRING_LENGTH);
-        } catch (CodecException _) {
+        } catch (NexusCodecException _) {
             throw Errors.mismatch("a list of 4 ints or a UUID string", input);
         }
         

@@ -1,8 +1,8 @@
 package dev.satherov.nexus.internal.codec;
 
 import dev.satherov.nexus.api.codec.Access;
-import dev.satherov.nexus.api.codec.CodecException;
 import dev.satherov.nexus.api.codec.CodecFormat;
+import dev.satherov.nexus.api.codec.NexusCodecException;
 
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.RegistryAccess;
@@ -95,7 +95,7 @@ public record JsonOperations<A extends Access.Plain>(
     ///
     /// Decodes a json boolean.
     ///
-    /// @throws CodecException If the input is not a json boolean.
+    /// @throws NexusCodecException If the input is not a json boolean.
     ///
     @Override
     public boolean asBoolean(JsonElement input) {
@@ -285,7 +285,7 @@ public record JsonOperations<A extends Access.Plain>(
     ///
     /// Encodes the given string as a json string.
     ///
-    /// @throws CodecException If the string has more than `limit` characters.
+    /// @throws NexusCodecException If the string has more than `limit` characters.
     ///
     @Override
     public JsonElement ofString(String value, int limit) {
@@ -296,7 +296,7 @@ public record JsonOperations<A extends Access.Plain>(
     ///
     /// Decodes a json string.
     ///
-    /// @throws CodecException If the input is not a json string, or if it has more than `limit` characters.
+    /// @throws NexusCodecException If the input is not a json string, or if it has more than `limit` characters.
     ///
     @Override
     public String asString(JsonElement input, int limit) {
@@ -322,7 +322,7 @@ public record JsonOperations<A extends Access.Plain>(
     ///
     /// Decodes a json array of numbers that each hold an integer in the range of an int.
     ///
-    /// @throws CodecException If the input is not a json array.
+    /// @throws NexusCodecException If the input is not a json array.
     ///
     @Override
     public int[] asIntArray(JsonElement input) {
@@ -348,7 +348,7 @@ public record JsonOperations<A extends Access.Plain>(
     ///
     /// Decodes the elements of a json array, as a view of the array.
     ///
-    /// @throws CodecException If the input is not a json array.
+    /// @throws NexusCodecException If the input is not a json array.
     ///
     @Override
     public List<JsonElement> asList(JsonElement input) {
@@ -394,7 +394,7 @@ public record JsonOperations<A extends Access.Plain>(
     ///
     /// Gets the member of the given json object under the given key.
     ///
-    /// @throws CodecException If the object is not a json object.
+    /// @throws NexusCodecException If the object is not a json object.
     ///
     @Override
     public @Nullable JsonElement get(JsonElement object, String key) {
@@ -405,7 +405,7 @@ public record JsonOperations<A extends Access.Plain>(
     ///
     /// Gets the keys of all members of the given json object.
     ///
-    /// @throws CodecException If the object is not a json object.
+    /// @throws NexusCodecException If the object is not a json object.
     ///
     @Override
     public Set<String> keys(JsonElement object) {

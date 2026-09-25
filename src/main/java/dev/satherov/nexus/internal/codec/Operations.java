@@ -1,7 +1,7 @@
 package dev.satherov.nexus.internal.codec;
 
-import dev.satherov.nexus.api.codec.CodecException;
 import dev.satherov.nexus.api.codec.CodecFormat;
+import dev.satherov.nexus.api.codec.NexusCodecException;
 
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.RegistryOps;
@@ -17,7 +17,7 @@ import java.util.Set;
 ///
 /// A format as a codec uses it, with one method that encodes and one that decodes each kind of value.
 ///
-/// A read that finds the wrong thing throws a [CodecException] with one error at an empty path.
+/// A read that finds the wrong thing throws a [NexusCodecException] with one error at an empty path.
 /// An integer read also refuses a number that is not integral or outside the range of its type.
 ///
 /// On the positional format every encode appends to the buffer and returns it, and every decode consumes from it.
@@ -245,7 +245,7 @@ public interface Operations<V> {
     ///
     /// @return The encoded string.
     ///
-    /// @throws CodecException If the string has more than `limit` characters.
+    /// @throws NexusCodecException If the string has more than `limit` characters.
     ///
     V ofString(String value, int limit);
 
@@ -257,7 +257,7 @@ public interface Operations<V> {
     ///
     /// @return The decoded string.
     ///
-    /// @throws CodecException If the string has more than `limit` characters.
+    /// @throws NexusCodecException If the string has more than `limit` characters.
     ///
     String asString(V input, int limit);
 
@@ -307,7 +307,7 @@ public interface Operations<V> {
     /// @param count The number of elements.
     /// @param limit The maximum number of elements.
     ///
-    /// @throws CodecException                If the count is above the limit.
+    /// @throws NexusCodecException           If the count is above the limit.
     /// @throws UnsupportedOperationException If the format is keyed.
     ///
     void writeCount(int count, int limit);
@@ -319,7 +319,7 @@ public interface Operations<V> {
     ///
     /// @return The number of elements.
     ///
-    /// @throws CodecException                If the count is negative or above the limit.
+    /// @throws NexusCodecException           If the count is negative or above the limit.
     /// @throws UnsupportedOperationException If the format is keyed.
     ///
     int readCount(int limit);

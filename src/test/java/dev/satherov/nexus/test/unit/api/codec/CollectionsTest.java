@@ -2,10 +2,10 @@ package dev.satherov.nexus.test.unit.api.codec;
 
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.CodecError;
-import dev.satherov.nexus.api.codec.CodecException;
 import dev.satherov.nexus.api.codec.CodecFormat;
 import dev.satherov.nexus.api.codec.MapKey;
 import dev.satherov.nexus.api.codec.NexusCodec;
+import dev.satherov.nexus.api.codec.NexusCodecException;
 import dev.satherov.nexus.api.codec.StructCodec;
 
 import net.minecraft.nbt.ByteTag;
@@ -186,11 +186,11 @@ public class CollectionsTest {
         NexusCodec<List<Integer>, Access.Plain> list = NexusCodec.INT.list(2);
         NexusCodec<Map<String, Integer>, Access.Plain> map = NexusCodec.mapOf(MapKey.STRING, NexusCodec.INT, 1);
         
-        Assertions.assertThatThrownBy(() -> list.encode(CodecFormat.JSON, List.of(1, 2, 3))).isInstanceOf(CodecException.class);
-        Assertions.assertThatThrownBy(() -> list.encode(CodecFormat.NBT, List.of(1, 2, 3))).isInstanceOf(CodecException.class);
-        Assertions.assertThatThrownBy(() -> list.encode(CodecFormat.netty(CollectionsTest.buffer()), List.of(1, 2, 3))).isInstanceOf(CodecException.class);
-        Assertions.assertThatThrownBy(() -> map.encode(CodecFormat.JSON, ImmutableMap.of("a", 1, "b", 2))).isInstanceOf(CodecException.class);
-        Assertions.assertThatThrownBy(() -> map.encode(CodecFormat.netty(CollectionsTest.buffer()), ImmutableMap.of("a", 1, "b", 2))).isInstanceOf(CodecException.class);
+        Assertions.assertThatThrownBy(() -> list.encode(CodecFormat.JSON, List.of(1, 2, 3))).isInstanceOf(NexusCodecException.class);
+        Assertions.assertThatThrownBy(() -> list.encode(CodecFormat.NBT, List.of(1, 2, 3))).isInstanceOf(NexusCodecException.class);
+        Assertions.assertThatThrownBy(() -> list.encode(CodecFormat.netty(CollectionsTest.buffer()), List.of(1, 2, 3))).isInstanceOf(NexusCodecException.class);
+        Assertions.assertThatThrownBy(() -> map.encode(CodecFormat.JSON, ImmutableMap.of("a", 1, "b", 2))).isInstanceOf(NexusCodecException.class);
+        Assertions.assertThatThrownBy(() -> map.encode(CodecFormat.netty(CollectionsTest.buffer()), ImmutableMap.of("a", 1, "b", 2))).isInstanceOf(NexusCodecException.class);
     }
     
     @Test
@@ -286,7 +286,7 @@ public class CollectionsTest {
     }
     
     @Test
-    public void reportsAnyOtherExceptionOfTheReaderAsCodecException() {
+    public void reportsAnyOtherExceptionOfTheReaderAsNexusCodecException() {
         MapKey<String, Access.Plain> key = MapKey.of(NexusCodec.STRING, Function.identity(), text -> {
             throw new IllegalStateException("no key in " + text);
         });
@@ -409,7 +409,7 @@ public class CollectionsTest {
     }
     
     private static Integer parseSlot(String text) {
-        if (!text.startsWith("slot")) throw new CodecException("expected a slot");
+        if (!text.startsWith("slot")) throw new NexusCodecException("expected a slot");
         return Integer.parseInt(text.substring(4));
     }
     
@@ -431,7 +431,7 @@ public class CollectionsTest {
     }
     
     private static List<CodecError> errors(ThrowableAssert.ThrowingCallable call) {
-        return Assertions.catchThrowableOfType(CodecException.class, call).errors();
+        return Assertions.catchThrowableOfType(NexusCodecException.class, call).errors();
     }
     
     private static ListTag list(Tag... elements) {

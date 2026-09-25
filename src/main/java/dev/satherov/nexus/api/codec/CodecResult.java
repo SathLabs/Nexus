@@ -40,10 +40,10 @@ public sealed interface CodecResult<T> {
     ///
     /// @return The value, or what the fallback returned if this result is a failure.
     ///
-    default T orElseGet(Function<? super CodecException, ? extends T> fallback) {
+    default T orElseGet(Function<? super NexusCodecException, ? extends T> fallback) {
         return switch (this) {
             case CodecResult.Success(T value) -> value;
-            case CodecResult.Failure(CodecException failure) -> fallback.apply(failure);
+            case CodecResult.Failure(NexusCodecException failure) -> fallback.apply(failure);
         };
     }
 
@@ -52,12 +52,12 @@ public sealed interface CodecResult<T> {
     ///
     /// @return The value.
     ///
-    /// @throws CodecException If this result is a failure.
+    /// @throws NexusCodecException If this result is a failure.
     ///
     default T orElseThrow() {
         return switch (this) {
             case CodecResult.Success(T value) -> value;
-            case CodecResult.Failure(CodecException failure) -> throw failure;
+            case CodecResult.Failure(NexusCodecException failure) -> throw failure;
         };
     }
 
@@ -71,7 +71,7 @@ public sealed interface CodecResult<T> {
     default <R> CodecResult<R> map(Function<? super T, ? extends R> mapper) {
         return switch (this) {
             case CodecResult.Success(T value) -> new CodecResult.Success<>(mapper.apply(value));
-            case CodecResult.Failure(CodecException failure) -> new CodecResult.Failure<>(failure);
+            case CodecResult.Failure(NexusCodecException failure) -> new CodecResult.Failure<>(failure);
         };
     }
 
@@ -95,8 +95,8 @@ public sealed interface CodecResult<T> {
     ///
     /// @param action The action to run with the failure.
     ///
-    default void ifFailure(Consumer<? super CodecException> action) {
-        if (this instanceof CodecResult.Failure(CodecException failure)) {
+    default void ifFailure(Consumer<? super NexusCodecException> action) {
+        if (this instanceof CodecResult.Failure(NexusCodecException failure)) {
             action.accept(failure);
         }
     }
@@ -115,5 +115,5 @@ public sealed interface CodecResult<T> {
     /// @param failure The exception that holds every error found.
     /// @param <T>     The type of the value the encode or decode would have returned.
     ///
-    record Failure<T>(CodecException failure) implements CodecResult<T> { }
+    record Failure<T>(NexusCodecException failure) implements CodecResult<T> { }
 }

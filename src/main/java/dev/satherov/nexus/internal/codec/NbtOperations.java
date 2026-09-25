@@ -1,8 +1,8 @@
 package dev.satherov.nexus.internal.codec;
 
 import dev.satherov.nexus.api.codec.Access;
-import dev.satherov.nexus.api.codec.CodecException;
 import dev.satherov.nexus.api.codec.CodecFormat;
+import dev.satherov.nexus.api.codec.NexusCodecException;
 
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.RegistryAccess;
@@ -266,7 +266,7 @@ public record NbtOperations<A extends Access.Plain>(
     ///
     /// Encodes the given string as a string tag.
     ///
-    /// @throws CodecException If the string has more than `limit` characters.
+    /// @throws NexusCodecException If the string has more than `limit` characters.
     ///
     @Override
     public Tag ofString(String value, int limit) {
@@ -277,7 +277,7 @@ public record NbtOperations<A extends Access.Plain>(
     ///
     /// Decodes a string tag.
     ///
-    /// @throws CodecException If the input is not a string tag, or if it has more than `limit` characters.
+    /// @throws NexusCodecException If the input is not a string tag, or if it has more than `limit` characters.
     ///
     @Override
     public String asString(Tag input, int limit) {
@@ -297,7 +297,7 @@ public record NbtOperations<A extends Access.Plain>(
     ///
     /// Decodes a copy of the ints of an int array tag, or the elements of any other collection tag as ints.
     ///
-    /// @throws CodecException If the input is not a collection tag.
+    /// @throws NexusCodecException If the input is not a collection tag.
     ///
     @Override
     public int[] asIntArray(Tag input) {
@@ -329,7 +329,7 @@ public record NbtOperations<A extends Access.Plain>(
     ///
     /// The view creates the tag of an element each time it is read.
     ///
-    /// @throws CodecException If the input is not a collection tag.
+    /// @throws NexusCodecException If the input is not a collection tag.
     ///
     @Override
     public List<Tag> asList(Tag input) {
@@ -395,7 +395,7 @@ public record NbtOperations<A extends Access.Plain>(
     ///
     /// Gets the tag under the given key of the given compound tag.
     ///
-    /// @throws CodecException If the object is not a compound tag.
+    /// @throws NexusCodecException If the object is not a compound tag.
     ///
     @Override
     public @Nullable Tag get(Tag object, String key) {
@@ -406,7 +406,7 @@ public record NbtOperations<A extends Access.Plain>(
     ///
     /// Gets all keys of the given compound tag.
     ///
-    /// @throws CodecException If the object is not a compound tag.
+    /// @throws NexusCodecException If the object is not a compound tag.
     ///
     @Override
     public Set<String> keys(Tag object) {

@@ -5,10 +5,10 @@ import lombok.RequiredArgsConstructor;
 
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.BufferFormat;
-import dev.satherov.nexus.api.codec.CodecException;
 import dev.satherov.nexus.api.codec.CodecFormat;
 import dev.satherov.nexus.api.codec.CodecResult;
 import dev.satherov.nexus.api.codec.NexusCodec;
+import dev.satherov.nexus.api.codec.NexusCodecException;
 import dev.satherov.nexus.api.codec.StructField;
 
 import net.minecraft.core.component.DataComponentType;
@@ -50,7 +50,7 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     public <V> V encode(CodecFormat<V, ? extends A> format, T value) {
         try {
             return this.write(Operations.of(format), value);
-        } catch (CodecException failure) {
+        } catch (NexusCodecException failure) {
             throw Errors.encodeFailure(this.name, format.name(), failure);
         }
     }
@@ -66,7 +66,7 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
         
         try {
             return this.read(Operations.of(format), input);
-        } catch (CodecException failure) {
+        } catch (NexusCodecException failure) {
             throw Errors.decodeFailure(this.name, format.name(), failure);
         }
     }
@@ -78,7 +78,7 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     public <V> CodecResult<V> tryEncode(CodecFormat<V, ? extends A> format, T value) {
         try {
             return new CodecResult.Success<>(this.encode(format, value));
-        } catch (CodecException failure) {
+        } catch (NexusCodecException failure) {
             return new CodecResult.Failure<>(failure);
         }
     }
@@ -90,7 +90,7 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     public <V> CodecResult<T> tryDecode(CodecFormat<V, ? extends A> format, V input) {
         try {
             return new CodecResult.Success<>(this.decode(format, input));
-        } catch (CodecException failure) {
+        } catch (NexusCodecException failure) {
             return new CodecResult.Failure<>(failure);
         }
     }
@@ -117,7 +117,7 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     public CodecResult<T> tryDecode(BufferFormat<?, ? extends A> format) {
         try {
             return new CodecResult.Success<>(this.decode(format));
-        } catch (CodecException failure) {
+        } catch (NexusCodecException failure) {
             return new CodecResult.Failure<>(failure);
         }
     }
@@ -242,7 +242,7 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     ///
     /// @return The written value, or the buffer on the network.
     ///
-    /// @throws CodecException If the value could not be written, with every error at its path below this codec.
+    /// @throws NexusCodecException If the value could not be written, with every error at its path below this codec.
     ///
     protected abstract <V> V write(Operations<V> operations, T value);
     
@@ -254,7 +254,7 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     ///
     /// @return The value read.
     ///
-    /// @throws CodecException If the input could not be read, with every error at its path below this codec.
+    /// @throws NexusCodecException If the input could not be read, with every error at its path below this codec.
     ///
     protected abstract <V> T read(Operations<V> operations, V input);
 }

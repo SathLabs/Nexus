@@ -2,10 +2,10 @@ package dev.satherov.nexus.test.unit.api.codec;
 
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.BufferFormat;
-import dev.satherov.nexus.api.codec.CodecException;
 import dev.satherov.nexus.api.codec.CodecFormat;
 import dev.satherov.nexus.api.codec.CodecResult;
 import dev.satherov.nexus.api.codec.NexusCodec;
+import dev.satherov.nexus.api.codec.NexusCodecException;
 
 import net.minecraft.nbt.ByteTag;
 import net.minecraft.nbt.CompoundTag;
@@ -56,7 +56,7 @@ public class ScalarsTest {
     @Test
     public void boolRefusesJsonNumber() {
         Assertions.assertThatThrownBy(() -> NexusCodec.BOOL.decode(CodecFormat.JSON, JsonParser.parseString("1")))
-                .isInstanceOf(CodecException.class)
+                .isInstanceOf(NexusCodecException.class)
                 .hasMessageContaining("found 1");
     }
     
@@ -70,7 +70,7 @@ public class ScalarsTest {
     @Test
     public void byteRefusesNumberOutOfRange() {
         Assertions.assertThatThrownBy(() -> NexusCodec.BYTE.decode(CodecFormat.JSON, JsonParser.parseString("300")))
-                .isInstanceOf(CodecException.class)
+                .isInstanceOf(NexusCodecException.class)
                 .hasMessageContainingAll("-128", "127", "300");
     }
     
@@ -84,7 +84,7 @@ public class ScalarsTest {
     @Test
     public void shortRefusesNumberOutOfRange() {
         Assertions.assertThatThrownBy(() -> NexusCodec.SHORT.decode(CodecFormat.NBT, IntTag.valueOf(40000)))
-                .isInstanceOf(CodecException.class)
+                .isInstanceOf(NexusCodecException.class)
                 .hasMessageContainingAll("-32768", "32767", "40000");
     }
     
@@ -98,24 +98,24 @@ public class ScalarsTest {
     @Test
     public void intRefusesNonIntegralNumber() {
         Assertions.assertThatThrownBy(() -> NexusCodec.INT.decode(CodecFormat.JSON, JsonParser.parseString("2.5")))
-                .isInstanceOf(CodecException.class)
+                .isInstanceOf(NexusCodecException.class)
                 .hasMessageContaining("2.5");
     }
     
     @Test
     public void intRefusesNumberOutOfRange() {
         Assertions.assertThatThrownBy(() -> NexusCodec.INT.decode(CodecFormat.NBT, LongTag.valueOf(1L << 40)))
-                .isInstanceOf(CodecException.class)
+                .isInstanceOf(NexusCodecException.class)
                 .hasMessageContainingAll("-2147483648", "2147483647", "1099511627776");
     }
     
     @Test
     public void intRefusesString() {
         Assertions.assertThatThrownBy(() -> NexusCodec.INT.decode(CodecFormat.JSON, JsonParser.parseString("\"5\"")))
-                .isInstanceOf(CodecException.class)
+                .isInstanceOf(NexusCodecException.class)
                 .hasMessageContaining("\"5\"");
         Assertions.assertThatThrownBy(() -> NexusCodec.INT.decode(CodecFormat.NBT, StringTag.valueOf("5")))
-                .isInstanceOf(CodecException.class)
+                .isInstanceOf(NexusCodecException.class)
                 .hasMessageContaining("\"5\"");
     }
     
@@ -137,7 +137,7 @@ public class ScalarsTest {
     @Test
     public void longRefusesNonIntegralNumber() {
         Assertions.assertThatThrownBy(() -> NexusCodec.LONG.decode(CodecFormat.NBT, DoubleTag.valueOf(1.25D)))
-                .isInstanceOf(CodecException.class)
+                .isInstanceOf(NexusCodecException.class)
                 .hasMessageContaining("1.25");
     }
     
@@ -173,7 +173,7 @@ public class ScalarsTest {
     @Test
     public void stringRefusesNumber() {
         Assertions.assertThatThrownBy(() -> NexusCodec.STRING.decode(CodecFormat.JSON, JsonParser.parseString("5")))
-                .isInstanceOf(CodecException.class)
+                .isInstanceOf(NexusCodecException.class)
                 .hasMessageContaining("found 5");
     }
     
@@ -182,10 +182,10 @@ public class ScalarsTest {
         String text = "a".repeat(32768);
         
         Assertions.assertThatThrownBy(() -> NexusCodec.STRING.decode(CodecFormat.JSON, new JsonPrimitive(text)))
-                .isInstanceOf(CodecException.class)
+                .isInstanceOf(NexusCodecException.class)
                 .hasMessageContainingAll("32767", "32768");
         Assertions.assertThatThrownBy(() -> NexusCodec.STRING.encode(CodecFormat.NBT, text))
-                .isInstanceOf(CodecException.class)
+                .isInstanceOf(NexusCodecException.class)
                 .hasMessageContainingAll("32767", "32768");
     }
     
@@ -199,13 +199,13 @@ public class ScalarsTest {
     @Test
     public void stringWithLimitRefusesLongerString() {
         Assertions.assertThatThrownBy(() -> NexusCodec.string(3).decode(CodecFormat.JSON, JsonParser.parseString("\"abcd\"")))
-                .isInstanceOf(CodecException.class)
+                .isInstanceOf(NexusCodecException.class)
                 .hasMessageContainingAll("3", "4");
         Assertions.assertThatThrownBy(() -> NexusCodec.string(3).encode(CodecFormat.JSON, "abcd"))
-                .isInstanceOf(CodecException.class)
+                .isInstanceOf(NexusCodecException.class)
                 .hasMessageContainingAll("3", "4");
         Assertions.assertThatThrownBy(() -> NexusCodec.string(3).decode(CodecFormat.netty(ScalarsTest.buffer(0x04, 'a', 'b', 'c', 'd'))))
-                .isInstanceOf(CodecException.class);
+                .isInstanceOf(NexusCodecException.class);
     }
     
     @Test
@@ -213,7 +213,7 @@ public class ScalarsTest {
         ScalarsTest.assertJson(NexusCodec.string(0), "", "\"\"");
         ScalarsTest.assertNetty(NexusCodec.string(0), "", 0x00);
         Assertions.assertThatThrownBy(() -> NexusCodec.string(0).decode(CodecFormat.JSON, JsonParser.parseString("\"a\"")))
-                .isInstanceOf(CodecException.class);
+                .isInstanceOf(NexusCodecException.class);
     }
     
     @Test
@@ -238,7 +238,7 @@ public class ScalarsTest {
     @Test
     public void identifierRefusesInvalidString() {
         Assertions.assertThatThrownBy(() -> NexusCodec.IDENTIFIER.decode(CodecFormat.JSON, JsonParser.parseString("\"Not Valid\"")))
-                .isInstanceOf(CodecException.class)
+                .isInstanceOf(NexusCodecException.class)
                 .hasMessageContaining("\"Not Valid\"");
     }
     
@@ -258,14 +258,14 @@ public class ScalarsTest {
     @Test
     public void uuidRefusesWrongLengthAndInvalidString() {
         Assertions.assertThatThrownBy(() -> NexusCodec.UUID.decode(CodecFormat.JSON, JsonParser.parseString("[1,2,3]")))
-                .isInstanceOf(CodecException.class);
+                .isInstanceOf(NexusCodecException.class);
         Assertions.assertThatThrownBy(() -> NexusCodec.UUID.decode(CodecFormat.NBT, new IntArrayTag(new int[]{ 1, 2, 3, 4, 5 })))
-                .isInstanceOf(CodecException.class);
+                .isInstanceOf(NexusCodecException.class);
         Assertions.assertThatThrownBy(() -> NexusCodec.UUID.decode(CodecFormat.JSON, JsonParser.parseString("\"not-a-uuid\"")))
-                .isInstanceOf(CodecException.class)
+                .isInstanceOf(NexusCodecException.class)
                 .hasMessageContaining("\"not-a-uuid\"");
         Assertions.assertThatThrownBy(() -> NexusCodec.UUID.decode(CodecFormat.JSON, JsonParser.parseString("5")))
-                .isInstanceOf(CodecException.class);
+                .isInstanceOf(NexusCodecException.class);
     }
     
     @Test
@@ -290,14 +290,14 @@ public class ScalarsTest {
     @Test
     public void enumOfRefusesUnknownNameListingConstants() {
         Assertions.assertThatThrownBy(() -> NexusCodec.enumOf(ParityCases.Weight.class).decode(CodecFormat.JSON, JsonParser.parseString("\"FEATHER\"")))
-                .isInstanceOf(CodecException.class)
+                .isInstanceOf(NexusCodecException.class)
                 .hasMessageContainingAll("light", "heavy", "\"FEATHER\"");
     }
     
     @Test
     public void enumOfRefusesUnknownOrdinal() {
         Assertions.assertThatThrownBy(() -> NexusCodec.enumOf(ParityCases.Weight.class).decode(CodecFormat.netty(ScalarsTest.buffer(0x02))))
-                .isInstanceOf(CodecException.class);
+                .isInstanceOf(NexusCodecException.class);
     }
     
     @Test
@@ -331,28 +331,28 @@ public class ScalarsTest {
     @Test
     public void unitRefusesNonObject() {
         Assertions.assertThatThrownBy(() -> NexusCodec.unit("constant").decode(CodecFormat.JSON, JsonParser.parseString("5")))
-                .isInstanceOf(CodecException.class);
+                .isInstanceOf(NexusCodecException.class);
         Assertions.assertThatThrownBy(() -> NexusCodec.unit("constant").decode(CodecFormat.NBT, IntTag.valueOf(5)))
-                .isInstanceOf(CodecException.class);
+                .isInstanceOf(NexusCodecException.class);
     }
     
     @Test
     public void decodeFailureNamesCodecDirectionAndFormat() {
-        CodecException failure = Assertions.catchThrowableOfType(CodecException.class, () -> NexusCodec.INT.decode(CodecFormat.JSON, JsonParser.parseString("true")));
+        NexusCodecException failure = Assertions.catchThrowableOfType(NexusCodecException.class, () -> NexusCodec.INT.decode(CodecFormat.JSON, JsonParser.parseString("true")));
         
         Assertions.assertThat(failure.getMessage().lines().findFirst()).hasValueSatisfying(line -> Assertions.assertThat(line).contains("INT", "decode", "JSON"));
     }
     
     @Test
     public void encodeFailureNamesCodecDirectionAndFormat() {
-        CodecException failure = Assertions.catchThrowableOfType(CodecException.class, () -> NexusCodec.string(3).encode(CodecFormat.NBT, "abcd"));
+        NexusCodecException failure = Assertions.catchThrowableOfType(NexusCodecException.class, () -> NexusCodec.string(3).encode(CodecFormat.NBT, "abcd"));
         
         Assertions.assertThat(failure.getMessage().lines().findFirst()).hasValueSatisfying(line -> Assertions.assertThat(line).contains("encode", "NBT"));
     }
     
     @Test
     public void nettyFailureNamesFormat() {
-        CodecException failure = Assertions.catchThrowableOfType(CodecException.class, () -> NexusCodec.INT.decode(CodecFormat.netty(ScalarsTest.buffer(0x00, 0x01))));
+        NexusCodecException failure = Assertions.catchThrowableOfType(NexusCodecException.class, () -> NexusCodec.INT.decode(CodecFormat.netty(ScalarsTest.buffer(0x00, 0x01))));
         
         Assertions.assertThat(failure.getMessage().lines().findFirst()).hasValueSatisfying(line -> Assertions.assertThat(line).contains("INT", "decode", "netty"));
     }
@@ -360,9 +360,9 @@ public class ScalarsTest {
     @Test
     public void tryDecodeHoldsTheExceptionDecodeThrows() {
         JsonPrimitive input = new JsonPrimitive(2.5D);
-        CodecException thrown = Assertions.catchThrowableOfType(CodecException.class, () -> NexusCodec.INT.decode(CodecFormat.JSON, input));
+        NexusCodecException thrown = Assertions.catchThrowableOfType(NexusCodecException.class, () -> NexusCodec.INT.decode(CodecFormat.JSON, input));
         
-        if (!(NexusCodec.INT.tryDecode(CodecFormat.JSON, input) instanceof CodecResult.Failure<Integer>(CodecException failure))) {
+        if (!(NexusCodec.INT.tryDecode(CodecFormat.JSON, input) instanceof CodecResult.Failure<Integer>(NexusCodecException failure))) {
             throw new AssertionError("tryDecode did not return a failure");
         }
         
@@ -372,9 +372,9 @@ public class ScalarsTest {
     
     @Test
     public void tryEncodeHoldsTheExceptionEncodeThrows() {
-        CodecException thrown = Assertions.catchThrowableOfType(CodecException.class, () -> NexusCodec.string(3).encode(CodecFormat.JSON, "abcd"));
+        NexusCodecException thrown = Assertions.catchThrowableOfType(NexusCodecException.class, () -> NexusCodec.string(3).encode(CodecFormat.JSON, "abcd"));
         
-        if (!(NexusCodec.string(3).tryEncode(CodecFormat.JSON, "abcd") instanceof CodecResult.Failure<?>(CodecException failure))) {
+        if (!(NexusCodec.string(3).tryEncode(CodecFormat.JSON, "abcd") instanceof CodecResult.Failure<?>(NexusCodecException failure))) {
             throw new AssertionError("tryEncode did not return a failure");
         }
         

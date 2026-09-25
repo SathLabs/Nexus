@@ -2,9 +2,9 @@ package dev.satherov.nexus.test.unit.api.codec;
 
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.CodecError;
-import dev.satherov.nexus.api.codec.CodecException;
 import dev.satherov.nexus.api.codec.CodecFormat;
 import dev.satherov.nexus.api.codec.NexusCodec;
+import dev.satherov.nexus.api.codec.NexusCodecException;
 import dev.satherov.nexus.api.codec.StructCodec;
 
 import net.minecraft.nbt.CompoundTag;
@@ -192,7 +192,7 @@ public class FieldsTest {
     }
     
     private static List<CodecError> errors(ThrowableAssert.ThrowingCallable call) {
-        return Assertions.catchThrowableOfType(CodecException.class, call).errors();
+        return Assertions.catchThrowableOfType(NexusCodecException.class, call).errors();
     }
     
     private static CompoundTag item(String item) {

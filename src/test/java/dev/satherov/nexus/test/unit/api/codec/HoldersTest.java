@@ -2,9 +2,9 @@ package dev.satherov.nexus.test.unit.api.codec;
 
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.CodecError;
-import dev.satherov.nexus.api.codec.CodecException;
 import dev.satherov.nexus.api.codec.CodecFormat;
 import dev.satherov.nexus.api.codec.NexusCodec;
+import dev.satherov.nexus.api.codec.NexusCodecException;
 import dev.satherov.nexus.api.codec.StructCodec;
 
 import net.neoforged.neoforge.network.connection.ConnectionType;
@@ -121,7 +121,7 @@ public class HoldersTest {
         RegistryFriendlyByteBuf buffer = HoldersTest.readable(0xFF, 0xFF, 0x03);
         
         Assertions.assertThatThrownBy(() -> HoldersTest.ITEM.decode(CodecFormat.netty(buffer)))
-                .isInstanceOf(CodecException.class)
+                .isInstanceOf(NexusCodecException.class)
                 .hasMessageContainingAll("65535", "minecraft:item");
     }
     
@@ -129,8 +129,8 @@ public class HoldersTest {
     public void holderRefusesDirectHolderInJsonAndNbt() {
         Holder<Item> direct = Holder.direct(Items.STONE);
         
-        Assertions.assertThatThrownBy(() -> HoldersTest.ITEM.encode(HoldersTest.JSON, direct)).isInstanceOf(CodecException.class);
-        Assertions.assertThatThrownBy(() -> HoldersTest.ITEM.encode(HoldersTest.NBT, direct)).isInstanceOf(CodecException.class);
+        Assertions.assertThatThrownBy(() -> HoldersTest.ITEM.encode(HoldersTest.JSON, direct)).isInstanceOf(NexusCodecException.class);
+        Assertions.assertThatThrownBy(() -> HoldersTest.ITEM.encode(HoldersTest.NBT, direct)).isInstanceOf(NexusCodecException.class);
     }
     
     @Test
@@ -138,7 +138,7 @@ public class HoldersTest {
         NexusCodec<Holder<Biome>, Access.Registries> biome = NexusCodec.holder(Registries.BIOME);
         
         Assertions.assertThatThrownBy(() -> biome.decode(HoldersTest.JSON, JsonParser.parseString("\"minecraft:plains\"")))
-                .isInstanceOf(CodecException.class)
+                .isInstanceOf(NexusCodecException.class)
                 .hasMessageContaining("minecraft:worldgen/biome");
     }
     
@@ -149,7 +149,7 @@ public class HoldersTest {
         Assertions.assertThatThrownBy(() -> ByteBufCodecs.holderRegistry(Registries.GAME_EVENT).encode(HoldersTest.writable(ConnectionType.OTHER), GameEvent.STEP))
                 .hasMessageContaining("minecraft:game_event");
         Assertions.assertThatThrownBy(() -> codec.encode(CodecFormat.netty(HoldersTest.writable(ConnectionType.OTHER)), GameEvent.STEP))
-                .isInstanceOf(CodecException.class)
+                .isInstanceOf(NexusCodecException.class)
                 .hasMessageContaining("minecraft:game_event");
     }
     
@@ -183,7 +183,7 @@ public class HoldersTest {
         
         HoldersTest.assertJson(words, Holder.direct("Not an identifier"), "\"Not an identifier\"");
         Assertions.assertThatThrownBy(() -> words.decode(HoldersTest.JSON, JsonParser.parseString("\"nexus:word\"")))
-                .isInstanceOf(CodecException.class)
+                .isInstanceOf(NexusCodecException.class)
                 .hasMessageContaining("nexus:words");
     }
     
@@ -219,10 +219,10 @@ public class HoldersTest {
         RegistryFriendlyByteBuf buffer = HoldersTest.readable(0x00, 0x0A, "nexus:nope");
         
         Assertions.assertThatThrownBy(() -> HoldersTest.ITEMS.decode(HoldersTest.JSON, JsonParser.parseString("\"#nexus:nope\"")))
-                .isInstanceOf(CodecException.class)
+                .isInstanceOf(NexusCodecException.class)
                 .hasMessageContainingAll("\"#nexus:nope\"", "minecraft:item");
         Assertions.assertThatThrownBy(() -> HoldersTest.ITEMS.decode(CodecFormat.netty(buffer)))
-                .isInstanceOf(CodecException.class)
+                .isInstanceOf(NexusCodecException.class)
                 .hasMessageContainingAll("nexus:nope", "minecraft:item");
     }
     
@@ -365,7 +365,7 @@ public class HoldersTest {
     }
     
     private static List<CodecError> errors(ThrowableAssert.ThrowingCallable call) {
-        return Assertions.catchThrowableOfType(CodecException.class, call).errors();
+        return Assertions.catchThrowableOfType(NexusCodecException.class, call).errors();
     }
     
     private static RegistryFriendlyByteBuf writable(ConnectionType connection) {

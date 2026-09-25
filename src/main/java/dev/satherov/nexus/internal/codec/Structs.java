@@ -4,8 +4,8 @@ import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.CodecError;
-import dev.satherov.nexus.api.codec.CodecException;
 import dev.satherov.nexus.api.codec.NexusCodec;
+import dev.satherov.nexus.api.codec.NexusCodecException;
 import dev.satherov.nexus.api.codec.StructCodec;
 import dev.satherov.nexus.api.codec.StructField;
 
@@ -433,7 +433,7 @@ public class Structs {
             } else if (!value.equals(this.fallback)) {
                 try {
                     operations.put(object, this.name, this.codec.write(operations, value));
-                } catch (CodecException failure) {
+                } catch (NexusCodecException failure) {
                     throw Errors.prefixKey(failure, this.name);
                 }
             }
@@ -454,13 +454,13 @@ public class Structs {
             
             V value = operations.get(input, this.name);
             if (value == null) {
-                if (this.fallback == null) throw new CodecException(List.of(new CodecError(this.name, "missing")));
+                if (this.fallback == null) throw new NexusCodecException(List.of(new CodecError(this.name, "missing")));
                 return this.fallback;
             }
             
             try {
                 return this.codec.read(operations, value);
-            } catch (CodecException failure) {
+            } catch (NexusCodecException failure) {
                 throw Errors.prefixKey(failure, this.name);
             }
         }
@@ -529,7 +529,7 @@ public class Structs {
         /// @param object     The object to write into.
         /// @param value      The value whose fields to write.
         ///
-        /// @throws CodecException If a field could not be written, with the errors of every field that failed at its key.
+        /// @throws NexusCodecException If a field could not be written, with the errors of every field that failed at its key.
         ///
         protected abstract <V> void writeFields(Operations<V> operations, V object, T value);
         
@@ -542,7 +542,7 @@ public class Structs {
         ///
         /// @return The value read.
         ///
-        /// @throws CodecException If a field could not be read or a key is unknown, with every error at its key.
+        /// @throws NexusCodecException If a field could not be read or a key is unknown, with every error at its key.
         ///
         protected abstract <V> T readFields(Operations<V> operations, V object, @Nullable Set<String> present);
     }
@@ -647,12 +647,12 @@ public class Structs {
             for (BoundField<T, ?, ?> field : this.fields) {
                 try {
                     field.write(operations, object, value);
-                } catch (CodecException failure) {
+                } catch (NexusCodecException failure) {
                     errors = Struct.collect(errors, failure.errors());
                 }
             }
             
-            if (errors != null) throw new CodecException(errors);
+            if (errors != null) throw new NexusCodecException(errors);
         }
         
         ///
@@ -684,7 +684,7 @@ public class Structs {
             for (int i = 0; i < values.length; i++) {
                 try {
                     values[i] = this.fields.get(i).read(operations, object);
-                } catch (CodecException failure) {
+                } catch (NexusCodecException failure) {
                     errors = Struct.collect(errors, failure.errors());
                 }
             }
@@ -697,7 +697,7 @@ public class Structs {
                 errors = Struct.collect(errors, unknown);
             }
             
-            if (errors != null) throw new CodecException(errors);
+            if (errors != null) throw new NexusCodecException(errors);
             return this.constructor.apply(values);
         }
         

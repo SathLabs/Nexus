@@ -2,9 +2,9 @@ package dev.satherov.nexus.test.unit.api.codec;
 
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.CodecError;
-import dev.satherov.nexus.api.codec.CodecException;
 import dev.satherov.nexus.api.codec.CodecFormat;
 import dev.satherov.nexus.api.codec.NexusCodec;
+import dev.satherov.nexus.api.codec.NexusCodecException;
 import dev.satherov.nexus.api.codec.StructCodec;
 
 import net.minecraft.nbt.CompoundTag;
@@ -251,7 +251,7 @@ public class CombinatorsTest {
                     Assertions.assertThat(error.path()).isEqualTo("type");
                     Assertions.assertThat(error.message()).contains("nexus:circle", "nexus:square");
                 });
-        Assertions.assertThatThrownBy(() -> circles.encode(CodecFormat.netty(CombinatorsTest.buffer()), square)).isInstanceOf(CodecException.class);
+        Assertions.assertThatThrownBy(() -> circles.encode(CodecFormat.netty(CombinatorsTest.buffer()), square)).isInstanceOf(NexusCodecException.class);
     }
     
     @Test
@@ -345,7 +345,7 @@ public class CombinatorsTest {
     @Test
     public void recursiveCodecReportsThePathThroughEveryLevel() {
         JsonElement input = JsonParser.parseString("{\"value\":1,\"children\":[{\"value\":2,\"children\":[]},{\"value\":3,\"children\":[{\"value\":\"four\",\"children\":[]}]}]}");
-        CodecException failure = Assertions.catchThrowableOfType(CodecException.class, () -> CombinatorsTest.TREE.decode(CodecFormat.JSON, input));
+        NexusCodecException failure = Assertions.catchThrowableOfType(NexusCodecException.class, () -> CombinatorsTest.TREE.decode(CodecFormat.JSON, input));
         
         Assertions.assertThat(failure.errors()).extracting(CodecError::path).containsExactly("children[1].children[0].value");
         Assertions.assertThat(failure.getMessage().lines().findFirst())
@@ -382,7 +382,7 @@ public class CombinatorsTest {
     @Test
     public void flatXmapRefusesToEncode() {
         NexusCodec<ParityCases.Amount, Access.Plain> readOnly = NexusCodec.INT.flatXmap(ParityCases.Amount::new, amount -> {
-            throw new CodecException("read only");
+            throw new NexusCodecException("read only");
         });
         
         Assertions.assertThat(CombinatorsTest.errors(() -> readOnly.encode(CodecFormat.JSON, new ParityCases.Amount(1)))).containsExactly(new CodecError("", "read only"));
@@ -428,7 +428,7 @@ public class CombinatorsTest {
     }
     
     private static List<CodecError> errors(ThrowableAssert.ThrowingCallable call) {
-        return Assertions.catchThrowableOfType(CodecException.class, call).errors();
+        return Assertions.catchThrowableOfType(NexusCodecException.class, call).errors();
     }
     
     private static CompoundTag compound(Map<String, Tag> entries) {
