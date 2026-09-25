@@ -23,6 +23,8 @@ import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.RegistryOps;
 
+import com.mojang.serialization.DynamicOps;
+
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Contract;
 import org.jspecify.annotations.Nullable;
@@ -82,6 +84,14 @@ public record NbtOperations<A extends Access.Plain>(
     @Override
     public @Nullable RegistryAccess registryAccess() {
         return null;
+    }
+
+    ///
+    /// Will always return [NbtOps#INSTANCE].
+    ///
+    @Override
+    public DynamicOps<Tag> dynamicOps() {
+        return NbtOps.INSTANCE;
     }
 
     ///

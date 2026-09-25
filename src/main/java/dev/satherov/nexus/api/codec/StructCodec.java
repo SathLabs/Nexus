@@ -1,9 +1,17 @@
 package dev.satherov.nexus.api.codec;
 
+import dev.satherov.nexus.internal.codec.VanillaAdapters;
+
+import net.minecraft.nbt.NbtOps;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.resources.RegistryOps;
+import net.minecraft.world.item.crafting.Recipe;
+import net.minecraft.world.item.crafting.RecipeSerializer;
 
+import com.mojang.serialization.JsonOps;
 import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 import org.jetbrains.annotations.ApiStatus;
 
@@ -20,6 +28,20 @@ import java.util.function.Function;
 ///
 @ApiStatus.NonExtendable
 public interface StructCodec<T, A extends Access.Plain> extends NexusCodec<T, A> {
+    
+    ///
+    /// Creates a recipe serializer with the map codec and the stream codec of the given struct.
+    ///
+    /// @param codec The codec of the recipe.
+    ///
+    /// @return The recipe serializer.
+    ///
+    /// @see #asMapCodec()
+    /// @see #asStream()
+    ///
+    static <R extends Recipe<?>> RecipeSerializer<R> recipeSerializer(StructCodec<R, ? super Access.Registries> codec) {
+        return VanillaAdapters.recipeSerializer(codec);
+    }
     
     ///
     /// Creates a field that merges the fields of this struct into the struct that holds it.
@@ -52,4 +74,21 @@ public interface StructCodec<T, A extends Access.Plain> extends NexusCodec<T, A>
     /// @return The codec of this struct or its short form.
     ///
     <S> NexusCodec<T, A> orShort(NexusCodec<S, ? super A> shortForm, Function<? super S, ? extends T> fromShort, Function<? super T, Optional<S>> toShort);
+    
+    ///
+    /// Creates the map codec of this struct, with the fields of this struct as its entries.
+    /// Similar to the [MapCodec] of DFU's [RecordCodecBuilder#mapCodec(Function)].
+    ///
+    /// Meant to be used for vanilla code that takes a [MapCodec], such as a dispatch of DFU.
+    ///
+    /// Over the ops of json or NBT values, such as [JsonOps], [NbtOps], and [RegistryOps] over them, it writes and reads the values of the ops directly.
+    /// Over any other ops, it converts the values to and from json, with json null as the empty value of the ops.
+    ///
+    /// If this struct needs registries, it will take them from the [RegistryOps], and fail over any other ops.
+    /// Fails over ops that compress maps, such as [JsonOps#COMPRESSED].
+    /// A failure is an error with the message of the [CodecException], without a partial result.
+    ///
+    /// @return The map codec, whose keys are the keys of this struct.
+    ///
+    MapCodec<T> asMapCodec();
 }

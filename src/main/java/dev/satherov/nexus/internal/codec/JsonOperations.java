@@ -12,6 +12,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
+import com.mojang.serialization.DynamicOps;
 import com.mojang.serialization.JsonOps;
 
 import org.jetbrains.annotations.ApiStatus;
@@ -73,6 +74,14 @@ public record JsonOperations<A extends Access.Plain>(
     @Override
     public @Nullable RegistryAccess registryAccess() {
         return null;
+    }
+
+    ///
+    /// Will always return [JsonOps#INSTANCE].
+    ///
+    @Override
+    public DynamicOps<JsonElement> dynamicOps() {
+        return JsonOps.INSTANCE;
     }
 
     ///

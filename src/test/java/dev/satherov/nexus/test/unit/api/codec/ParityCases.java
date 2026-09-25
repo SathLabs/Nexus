@@ -69,7 +69,7 @@ public class ParityCases {
             Listing::new
     );
     
-    private static final MapCodec<Listing> LISTING_DFU = RecordCodecBuilder.mapCodec(instance -> instance.group(
+    public static final MapCodec<Listing> LISTING_DFU = RecordCodecBuilder.mapCodec(instance -> instance.group(
             Codec.STRING.fieldOf("item").forGetter(Listing::item),
             Codec.INT.optionalFieldOf("count", 1).forGetter(Listing::count),
             Codec.STRING.optionalFieldOf("label").forGetter(Listing::label)
@@ -364,6 +364,27 @@ public class ParityCases {
                             HolderSet.direct(List.of(ParityCases.STONE, ParityCases.DIRT)),
                             BuiltInRegistries.ITEM.getOrThrow(ItemTags.WOODEN_TOOL_MATERIALS)
                     )
+            ),
+            new Case<>(
+                    "ofDfu(listing)",
+                    NexusCodec.ofDfu(ParityCases.LISTING_DFU.codec()),
+                    ParityCases.LISTING_DFU.codec(),
+                    ByteBufCodecs.fromCodec(ParityCases.LISTING_DFU.codec()),
+                    List.of(new Listing("stone", 1, Optional.empty()), new Listing("dirt", 64, Optional.of("cheap")))
+            ),
+            new Case<>(
+                    "ofDfu(RegistryFixedCodec(ITEM))",
+                    NexusCodec.ofDfu(RegistryFixedCodec.create(Registries.ITEM), Access.Registries.class),
+                    RegistryFixedCodec.create(Registries.ITEM),
+                    ByteBufCodecs.fromCodecWithRegistries(RegistryFixedCodec.create(Registries.ITEM)),
+                    List.of(ParityCases.STONE, ParityCases.DIRT)
+            ),
+            new Case<>(
+                    "ofVanilla(listing)",
+                    NexusCodec.ofVanilla(ParityCases.LISTING_DFU.codec(), ParityCases.LISTING_STREAM),
+                    ParityCases.LISTING_DFU.codec(),
+                    ParityCases.LISTING_STREAM,
+                    List.of(new Listing("stone", 1, Optional.empty()), new Listing("dirt", 64, Optional.of("cheap")))
             )
     );
     

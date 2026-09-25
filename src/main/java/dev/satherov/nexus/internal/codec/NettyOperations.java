@@ -13,6 +13,7 @@ import net.minecraft.network.VarLong;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.resources.RegistryOps;
 
+import com.mojang.serialization.DynamicOps;
 import io.netty.buffer.ByteBufUtil;
 
 import org.jetbrains.annotations.ApiStatus;
@@ -96,6 +97,15 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
         }
 
         return new RegistryOps.HolderLookupAdapter(this.registryAccess);
+    }
+
+    ///
+    /// Throws an [UnsupportedOperationException] since the netty format has no DFU ops.
+    ///
+    @Override
+    @Contract("-> fail")
+    public DynamicOps<B> dynamicOps() {
+        throw new UnsupportedOperationException("Netty has no DFU ops");
     }
 
     ///

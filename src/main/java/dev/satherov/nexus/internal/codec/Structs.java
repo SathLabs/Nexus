@@ -23,6 +23,8 @@ import com.mojang.datafixers.util.Function6;
 import com.mojang.datafixers.util.Function7;
 import com.mojang.datafixers.util.Function8;
 import com.mojang.datafixers.util.Function9;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
@@ -495,6 +497,22 @@ public class Structs {
         @Override
         public <S> NexusCodec<T, A> orShort(NexusCodec<S, ? super A> shortForm, Function<? super S, ? extends T> fromShort, Function<? super T, Optional<S>> toShort) {
             return Combinators.orShort(this, shortForm, fromShort, toShort);
+        }
+        
+        ///
+        /// Creates the codec of the map codec view of this struct, which is a [MapCodec.MapCodecCodec] the same as a record codec of DFU.
+        ///
+        @Override
+        public Codec<T> asDfu() {
+            return this.asMapCodec().codec();
+        }
+        
+        ///
+        /// Creates the map codec of this struct, which runs the json or NBT format over the values of the ops.
+        ///
+        @Override
+        public MapCodec<T> asMapCodec() {
+            return VanillaAdapters.asMapCodec(this);
         }
         
         ///

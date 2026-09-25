@@ -6,6 +6,8 @@ import dev.satherov.nexus.api.codec.CodecFormat;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.RegistryOps;
 
+import com.mojang.serialization.DynamicOps;
+
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
 
@@ -63,6 +65,15 @@ public interface Operations<V> {
     /// @return The registry access, or `null` on every other format.
     ///
     @Nullable RegistryAccess registryAccess();
+
+    ///
+    /// The DFU ops over the values of the format, without registries.
+    ///
+    /// @return The DFU ops of the format.
+    ///
+    /// @throws UnsupportedOperationException If the format is positional.
+    ///
+    DynamicOps<V> dynamicOps();
 
     ///
     /// Encodes the given boolean.

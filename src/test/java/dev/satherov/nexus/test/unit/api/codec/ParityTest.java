@@ -8,9 +8,11 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.RegistryOps;
 
 import com.google.gson.JsonElement;
+import com.mojang.serialization.Codec;
 import com.mojang.serialization.JsonOps;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
@@ -24,7 +26,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 import java.util.stream.Stream;
 
 ///
-/// Checks that every parity case writes the same JSON, NBT, and bytes as its DFU and vanilla twins, and that each side decodes the other's output.
+/// Checks that every parity case and its DFU and stream codec views write the same JSON, NBT, and bytes as its DFU and vanilla twins,
+/// and that each side decodes the other's output.
 ///
 public class ParityTest {
     
@@ -74,6 +77,42 @@ public class ParityTest {
         Assertions.assertThat(parity.stream().decode(nexus)).isEqualTo(value);
         Assertions.assertThat(nexus.readableBytes()).isZero();
         Assertions.assertThat(parity.codec().decode(CodecFormat.netty(vanilla))).isEqualTo(value);
+        Assertions.assertThat(vanilla.readableBytes()).isZero();
+    }
+    
+    @ParameterizedTest(name = "{0} [{index}]")
+    @MethodSource("samples")
+    public <T> void dfuViewMatchesDfuInJson(ParityCases.Case<T> parity, T value) {
+        Codec<T> view = parity.codec().asDfu();
+        JsonElement dfu = parity.dfu().encodeStart(ParityTest.JSON_OPS, value).getOrThrow();
+        T dfuRoundTrip = parity.dfu().parse(ParityTest.JSON_OPS, dfu).getOrThrow();
+        
+        Assertions.assertThat(view.encodeStart(ParityTest.JSON_OPS, value).getOrThrow().toString()).isEqualTo(dfu.toString());
+        Assertions.assertThat(view.parse(ParityTest.JSON_OPS, dfu).getOrThrow()).isEqualTo(dfuRoundTrip);
+    }
+    
+    @ParameterizedTest(name = "{0} [{index}]")
+    @MethodSource("samples")
+    public <T> void dfuViewMatchesDfuInNbt(ParityCases.Case<T> parity, T value) {
+        Codec<T> view = parity.codec().asDfu();
+        Tag dfu = parity.dfu().encodeStart(ParityTest.NBT_OPS, value).getOrThrow();
+        T dfuRoundTrip = parity.dfu().parse(ParityTest.NBT_OPS, dfu).getOrThrow();
+        
+        Assertions.assertThat(view.encodeStart(ParityTest.NBT_OPS, value).getOrThrow()).isEqualTo(dfu);
+        Assertions.assertThat(view.parse(ParityTest.NBT_OPS, dfu).getOrThrow()).isEqualTo(dfuRoundTrip);
+    }
+    
+    @ParameterizedTest(name = "{0} [{index}]")
+    @MethodSource("samples")
+    public <T> void streamViewMatchesStreamCodec(ParityCases.Case<T> parity, T value) {
+        StreamCodec<RegistryFriendlyByteBuf, T> view = parity.codec().asStream();
+        RegistryFriendlyByteBuf nexus = new RegistryFriendlyByteBuf(Unpooled.buffer(), ParityTest.REGISTRIES);
+        RegistryFriendlyByteBuf vanilla = new RegistryFriendlyByteBuf(Unpooled.buffer(), ParityTest.REGISTRIES);
+        view.encode(nexus, value);
+        parity.stream().encode(vanilla, value);
+        
+        Assertions.assertThat(ByteBufUtil.getBytes(nexus)).isEqualTo(ByteBufUtil.getBytes(vanilla));
+        Assertions.assertThat(view.decode(vanilla)).isEqualTo(value);
         Assertions.assertThat(vanilla.readableBytes()).isZero();
     }
 }

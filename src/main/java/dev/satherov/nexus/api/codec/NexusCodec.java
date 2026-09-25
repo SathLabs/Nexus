@@ -5,16 +5,22 @@ import dev.satherov.nexus.internal.codec.Combinators;
 import dev.satherov.nexus.internal.codec.HolderCodecs;
 import dev.satherov.nexus.internal.codec.Scalars;
 import dev.satherov.nexus.internal.codec.Structs;
+import dev.satherov.nexus.internal.codec.VanillaAdapters;
 
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryCodecs;
+import net.minecraft.core.component.DataComponentType;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.RegistryFileCodec;
 import net.minecraft.resources.RegistryFixedCodec;
+import net.minecraft.resources.RegistryOps;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.ExtraCodecs;
 import net.minecraft.util.StringRepresentable;
@@ -35,7 +41,10 @@ import com.mojang.datafixers.util.Function7;
 import com.mojang.datafixers.util.Function8;
 import com.mojang.datafixers.util.Function9;
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.JsonOps;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import io.netty.handler.codec.DecoderException;
+import io.netty.handler.codec.EncoderException;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Range;
@@ -148,7 +157,7 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// Creates a codec of a string of at most the given number of characters, in the same form as vanilla.
     ///
-    /// Fails if the string is longer than that, naming the limit and the length it found.
+    /// Fails if the string is longer than that, and the failure quotes the limit and the length it found.
     ///
     /// @param limit The maximum number of characters of the string.
     ///
@@ -949,7 +958,7 @@ public interface NexusCodec<T, A extends Access.Plain> {
     /// In JSON and NBT, it writes the identifier of a reference holder and fails on a direct holder.
     /// On the network, it writes the id of the holder's value as a VarInt, the same as [ByteBufCodecs#holderRegistry(ResourceKey)].
     ///
-    /// Fails if an identifier or an id is not in the registry, naming it and the registry.
+    /// Fails if an identifier or an id is not in the registry, and the failure quotes it and the registry.
     /// Fails if the format's registries don't have the registry, if the holder belongs to other registries, or on the network if the registry is a built-in one that isn't synced.
     ///
     /// @param registry The key of the registry.
@@ -968,7 +977,7 @@ public interface NexusCodec<T, A extends Access.Plain> {
     /// It reads a string that is a valid identifier as a reference holder, and anything else as the value of a direct holder.
     /// On the network, it writes the id of a reference holder's value plus one, or `0` and then the value of a direct holder, the same as [ByteBufCodecs#holder(ResourceKey, StreamCodec)].
     ///
-    /// Fails if an identifier or an id is not in the registry, naming it and the registry.
+    /// Fails if an identifier or an id is not in the registry, and the failure quotes it and the registry.
     /// Fails on a reference holder if the format's registries don't have the registry, if the holder belongs to other registries, or on the network if the registry is a built-in one that isn't synced.
     ///
     /// @param registry The key of the registry.
@@ -993,7 +1002,7 @@ public interface NexusCodec<T, A extends Access.Plain> {
     /// On the network, it writes the same as [ByteBufCodecs#holderSet(ResourceKey)].
     /// A custom set is only written as one if the buffer is for a connection to NeoForge, and as its holders otherwise.
     ///
-    /// Fails if an identifier, an id, or a tag is not in the registry, naming it and the registry.
+    /// Fails if an identifier, an id, or a tag is not in the registry, and the failure quotes it and the registry.
     /// In JSON and NBT, a failure of a list holds the errors of every holder that failed, each at its index.
     ///
     /// A custom set fails at `type` if the key is missing or its type is unknown, and with NeoForge's messages for anything else inside it.
@@ -1005,6 +1014,130 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     static <T> NexusCodec<HolderSet<T>, Access.Registries> holderSet(ResourceKey<? extends Registry<T>> registry) {
         return HolderCodecs.holderSet(registry);
+    }
+    
+    ///
+    /// Creates a codec that runs the given DFU codec.
+    ///
+    /// In JSON and NBT, it runs the DFU codec over [JsonOps] and [NbtOps].
+    /// On the network, it writes the NBT of the DFU codec, the same as [ByteBufCodecs#fromCodec(Codec)].
+    ///
+    /// If the DFU codec returns an error, it will fail with the message of that error.
+    ///
+    /// @param codec The DFU codec.
+    ///
+    /// @return The codec that runs the DFU codec.
+    ///
+    /// @see #ofDfu(Codec, Class)
+    ///
+    static <T> NexusCodec<T, Access.Plain> ofDfu(Codec<T> codec) {
+        return VanillaAdapters.ofDfu(codec);
+    }
+    
+    ///
+    /// Creates a codec that runs the given DFU codec with the registries of the format.
+    ///
+    /// In JSON and NBT, it runs the DFU codec over [RegistryOps] with the registries of the format.
+    /// On the network, it writes the NBT of the DFU codec, the same as [ByteBufCodecs#fromCodecWithRegistries(Codec)].
+    ///
+    /// If the DFU codec returns an error, it will fail with the message of that error.
+    ///
+    /// @param codec  The DFU codec, which may need registry ops.
+    /// @param access The access of the codec, which is always `Access.Registries.class`.
+    ///
+    /// @return The codec that runs the DFU codec.
+    ///
+    /// @see #ofDfu(Codec)
+    ///
+    static <T> NexusCodec<T, Access.Registries> ofDfu(Codec<T> codec, Class<Access.Registries> access) {
+        return VanillaAdapters.ofRegistryDfu(codec);
+    }
+    
+    ///
+    /// Creates a codec that runs the given stream codec on the network.
+    ///
+    /// Fails to encode and decode in JSON and NBT.
+    /// If the stream codec throws, it will fail with the message of that exception.
+    ///
+    /// @param codec The stream codec.
+    ///
+    /// @return The codec that runs the stream codec.
+    ///
+    /// @see #ofStream(StreamCodec, Class)
+    ///
+    static <T> NexusCodec<T, Access.Plain> ofStream(StreamCodec<? super FriendlyByteBuf, T> codec) {
+        return VanillaAdapters.ofStream(codec);
+    }
+    
+    ///
+    /// Creates a codec that runs the given stream codec on the network, with the registries of the buffer.
+    ///
+    /// Fails to encode and decode in JSON and NBT.
+    /// If the stream codec throws, it will fail with the message of that exception.
+    ///
+    /// @param codec  The stream codec, which may need a [RegistryFriendlyByteBuf].
+    /// @param access The access of the codec, which is always `Access.Registries.class`.
+    ///
+    /// @return The codec that runs the stream codec.
+    ///
+    /// @see #ofStream(StreamCodec)
+    ///
+    static <T> NexusCodec<T, Access.Registries> ofStream(StreamCodec<? super RegistryFriendlyByteBuf, T> codec, Class<Access.Registries> access) {
+        return VanillaAdapters.ofRegistryStream(codec);
+    }
+    
+    ///
+    /// Creates a codec that runs the given DFU codec in JSON and NBT and the given stream codec on the network.
+    ///
+    /// In JSON and NBT, it runs the DFU codec over [JsonOps] and [NbtOps].
+    ///
+    /// If the DFU codec returns an error or the stream codec throws, it will fail with the message of that error or exception.
+    ///
+    /// @param codec  The DFU codec.
+    /// @param stream The stream codec.
+    ///
+    /// @return The codec that runs both.
+    ///
+    /// @see #ofVanilla(Codec, StreamCodec, Class)
+    ///
+    static <T> NexusCodec<T, Access.Plain> ofVanilla(Codec<T> codec, StreamCodec<? super FriendlyByteBuf, T> stream) {
+        return VanillaAdapters.ofVanilla(codec, stream);
+    }
+    
+    ///
+    /// Creates a codec that runs the given DFU codec in JSON and NBT and the given stream codec on the network, with the registries of the format.
+    ///
+    /// In JSON and NBT, it runs the DFU codec over [RegistryOps] with the registries of the format.
+    ///
+    /// If the DFU codec returns an error or the stream codec throws, it will fail with the message of that error or exception.
+    ///
+    /// @param codec  The DFU codec, which may need registry ops.
+    /// @param stream The stream codec, which may need a [RegistryFriendlyByteBuf].
+    /// @param access The access of the codec, which is always `Access.Registries.class`.
+    ///
+    /// @return The codec that runs both.
+    ///
+    /// @see #ofVanilla(Codec, StreamCodec)
+    ///
+    static <T> NexusCodec<T, Access.Registries> ofVanilla(Codec<T> codec, StreamCodec<? super RegistryFriendlyByteBuf, T> stream, Class<Access.Registries> access) {
+        return VanillaAdapters.ofRegistryVanilla(codec, stream);
+    }
+    
+    ///
+    /// Creates the stream codec of the given codec over a buffer without registries.
+    ///
+    /// Meant to be used for the payloads of the configuration phase.
+    ///
+    /// If the codec fails, the stream codec will throw a [DecoderException] or an [EncoderException] with the message of the [CodecException].
+    ///
+    /// @param codec The codec, which needs no registries.
+    ///
+    /// @return The stream codec.
+    ///
+    /// @see #asStream()
+    ///
+    static <T> StreamCodec<FriendlyByteBuf, T> plainStream(NexusCodec<T, Access.Plain> codec) {
+        return VanillaAdapters.plainStream(codec);
     }
     
     ///
@@ -1242,4 +1375,41 @@ public interface NexusCodec<T, A extends Access.Plain> {
     /// @return The codec of the checked values.
     ///
     NexusCodec<T, A> validate(Function<? super T, @Nullable String> check);
+    
+    ///
+    /// Creates the DFU codec of this codec.
+    ///
+    /// If this codec is a [StructCodec], it will be the codec of [StructCodec#asMapCodec()], the same as a record codec of DFU.
+    ///
+    /// Over the ops of json or NBT values, such as [JsonOps], [NbtOps], and [RegistryOps] over them, it writes and reads the values of the ops directly.
+    /// Over any other ops, it converts the values to and from json, with json null as the empty value of the ops.
+    ///
+    /// If this codec needs registries, it will take them from the [RegistryOps], and fail over any other ops.
+    /// Fails over ops that compress maps, such as [JsonOps#COMPRESSED].
+    /// A failure is an error with the message of the [CodecException], without a partial result.
+    ///
+    /// @return The DFU codec.
+    ///
+    Codec<T> asDfu();
+    
+    ///
+    /// Creates the stream codec of this codec, which writes and reads the same as the netty format of the buffer.
+    ///
+    /// If this codec fails, the stream codec will throw a [DecoderException] or an [EncoderException] with the message of the [CodecException].
+    ///
+    /// @return The stream codec.
+    ///
+    /// @see #plainStream(NexusCodec)
+    ///
+    StreamCodec<RegistryFriendlyByteBuf, T> asStream();
+    
+    ///
+    /// Creates a data component type that is saved with the DFU codec of this codec and synced with its stream codec.
+    ///
+    /// @return The data component type.
+    ///
+    /// @see #asDfu()
+    /// @see #asStream()
+    ///
+    DataComponentType<T> asDataComponentType();
 }

@@ -17,7 +17,6 @@ import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -32,8 +31,6 @@ import net.minecraft.tags.TagKey;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import com.mojang.serialization.Codec;
-import com.mojang.serialization.DynamicOps;
-import com.mojang.serialization.JsonOps;
 import com.mojang.serialization.MapCodec;
 
 import org.jetbrains.annotations.ApiStatus;
@@ -181,7 +178,7 @@ public class HolderCodecs {
     }
     
     ///
-    /// Gets the given registry in the registries of the given format, and fails naming it if the format doesn't have it.
+    /// Gets the given registry in the registries of the given format, and fails with its identifier if the format doesn't have it.
     ///
     private static <T> RegistryOps.RegistryInfo<T> infoOf(Operations<?> operations, ResourceKey<? extends Registry<T>> registry) {
         RegistryOps.RegistryInfoLookup registries = operations.registries();
@@ -211,7 +208,7 @@ public class HolderCodecs {
     }
     
     ///
-    /// Gets the given registry in the registry access of the given netty format, and fails naming it if it's missing or a built-in registry that isn't synced.
+    /// Gets the given registry in the registry access of the given netty format, and fails with its identifier if it's missing or a built-in registry that isn't synced.
     ///
     private static <T> Registry<T> syncedRegistryOf(Operations<?> operations, ResourceKey<? extends Registry<T>> registry) {
         RegistryAccess access = operations.registryAccess();
@@ -487,9 +484,7 @@ public class HolderCodecs {
         private static <V> RegistryOps<V> registryOps(Operations<V> operations, ResourceKey<?> registry) {
             RegistryOps.RegistryInfoLookup registries = operations.registries();
             if (registries == null) throw HolderCodecs.inaccessible(registry);
-            //noinspection unchecked The json and NBT formats are over the value types of JsonOps and NbtOps.
-            DynamicOps<V> ops = (DynamicOps<V>) (operations instanceof JsonOperations<?> ? JsonOps.INSTANCE : NbtOps.INSTANCE);
-            return RegistryOps.create(ops, registries);
+            return RegistryOps.create(operations.dynamicOps(), registries);
         }
     }
 }

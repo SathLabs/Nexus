@@ -11,7 +11,12 @@ import dev.satherov.nexus.api.codec.CodecResult;
 import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.codec.StructField;
 
+import net.minecraft.core.component.DataComponentType;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
+
+import com.mojang.serialization.Codec;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
@@ -203,6 +208,30 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     @Override
     public NexusCodec<T, A> validate(Function<? super T, @Nullable String> check) {
         return Combinators.validate(this, check);
+    }
+    
+    ///
+    /// Creates the DFU codec of this codec, which runs the json or NBT format over the values of the ops.
+    ///
+    @Override
+    public Codec<T> asDfu() {
+        return VanillaAdapters.asDfu(this);
+    }
+    
+    ///
+    /// Creates the stream codec of this codec over the netty format of a registry buffer.
+    ///
+    @Override
+    public StreamCodec<RegistryFriendlyByteBuf, T> asStream() {
+        return VanillaAdapters.asStream(this);
+    }
+    
+    ///
+    /// Creates a data component type with the DFU codec and the stream codec of this codec.
+    ///
+    @Override
+    public DataComponentType<T> asDataComponentType() {
+        return VanillaAdapters.asDataComponentType(this);
     }
     
     ///
