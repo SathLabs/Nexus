@@ -2,12 +2,20 @@ package dev.satherov.nexus.api.codec;
 
 import dev.satherov.nexus.internal.codec.CollectionCodecs;
 import dev.satherov.nexus.internal.codec.Combinators;
+import dev.satherov.nexus.internal.codec.HolderCodecs;
 import dev.satherov.nexus.internal.codec.Scalars;
 import dev.satherov.nexus.internal.codec.Structs;
 
+import net.minecraft.core.Holder;
+import net.minecraft.core.HolderSet;
+import net.minecraft.core.Registry;
+import net.minecraft.core.RegistryCodecs;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.Identifier;
+import net.minecraft.resources.RegistryFileCodec;
+import net.minecraft.resources.RegistryFixedCodec;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.ExtraCodecs;
 import net.minecraft.util.StringRepresentable;
 
@@ -932,6 +940,71 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     static <T, A extends Access.Plain> NexusCodec<T, A> recursive(String name, Function<NexusCodec<T, A>, NexusCodec<T, A>> definition) {
         return Combinators.recursive(name, definition);
+    }
+    
+    ///
+    /// Creates the codec of a holder of the given registry.
+    /// Similar to vanilla's [RegistryFixedCodec].
+    ///
+    /// In JSON and NBT, it writes the identifier of a reference holder and fails on a direct holder.
+    /// On the network, it writes the id of the holder's value as a VarInt, the same as [ByteBufCodecs#holderRegistry(ResourceKey)].
+    ///
+    /// Fails if an identifier or an id is not in the registry, naming it and the registry.
+    /// Fails if the format's registries don't have the registry, if the holder belongs to other registries, or on the network if the registry is a built-in one that isn't synced.
+    ///
+    /// @param registry The key of the registry.
+    ///
+    /// @return The codec of the holder, which decodes into a reference holder.
+    ///
+    static <T> NexusCodec<Holder<T>, Access.Registries> holder(ResourceKey<? extends Registry<T>> registry) {
+        return HolderCodecs.holder(registry);
+    }
+    
+    ///
+    /// Creates the codec of a holder of the given registry, which writes a direct holder inline with the given codec.
+    /// Similar to vanilla's [RegistryFileCodec].
+    ///
+    /// In JSON and NBT, it writes a reference holder as its identifier and a direct holder as its value.
+    /// It reads a string that is a valid identifier as a reference holder, and anything else as the value of a direct holder.
+    /// On the network, it writes the id of a reference holder's value plus one, or `0` and then the value of a direct holder, the same as [ByteBufCodecs#holder(ResourceKey, StreamCodec)].
+    ///
+    /// Fails if an identifier or an id is not in the registry, naming it and the registry.
+    /// Fails on a reference holder if the format's registries don't have the registry, if the holder belongs to other registries, or on the network if the registry is a built-in one that isn't synced.
+    ///
+    /// @param registry The key of the registry.
+    /// @param element  The codec of the value of a direct holder.
+    ///
+    /// @return The codec of the holder.
+    ///
+    static <T> NexusCodec<Holder<T>, Access.Registries> holderOrInline(ResourceKey<? extends Registry<T>> registry, NexusCodec<T, ? super Access.Registries> element) {
+        return HolderCodecs.holderOrInline(registry, element);
+    }
+    
+    ///
+    /// Creates the codec of a set of holders of the given registry.
+    /// Similar to vanilla's [RegistryCodecs#homogeneousList(ResourceKey)].
+    ///
+    /// In JSON and NBT, it writes:
+    /// - A tag as its identifier after a `#`.
+    /// - A set of one holder as the identifier of the holder.
+    /// - Any other set of holders as a list of their identifiers.
+    /// - One of NeoForge's custom sets as an object with the identifier of its type under `type`, with the codec of that type.
+    ///
+    /// On the network, it writes the same as [ByteBufCodecs#holderSet(ResourceKey)].
+    /// A custom set is only written as one if the buffer is for a connection to NeoForge, and as its holders otherwise.
+    ///
+    /// Fails if an identifier, an id, or a tag is not in the registry, naming it and the registry.
+    /// In JSON and NBT, a failure of a list holds the errors of every holder that failed, each at its index.
+    ///
+    /// A custom set fails at `type` if the key is missing or its type is unknown, and with NeoForge's messages for anything else inside it.
+    /// A strict format refuses unknown keys at the top level of a custom set only.
+    ///
+    /// @param registry The key of the registry.
+    ///
+    /// @return The codec of the set.
+    ///
+    static <T> NexusCodec<HolderSet<T>, Access.Registries> holderSet(ResourceKey<? extends Registry<T>> registry) {
+        return HolderCodecs.holderSet(registry);
     }
     
     ///

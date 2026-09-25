@@ -9,14 +9,26 @@ import dev.satherov.nexus.api.codec.MapKey;
 import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.codec.StructCodec;
 
+import net.minecraft.core.Holder;
+import net.minecraft.core.HolderSet;
+import net.minecraft.core.RegistryCodecs;
 import net.minecraft.core.UUIDUtil;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.Identifier;
+import net.minecraft.resources.RegistryFileCodec;
+import net.minecraft.resources.RegistryFixedCodec;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.tags.ItemTags;
 import net.minecraft.util.ExtraCodecs;
 import net.minecraft.util.StringRepresentable;
 import net.minecraft.util.Unit;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -45,6 +57,9 @@ public class ParityCases {
     
     public static final Identifier CIRCLE = Identifier.fromNamespaceAndPath("nexus", "circle");
     public static final Identifier SQUARE = Identifier.fromNamespaceAndPath("nexus", "square");
+    
+    private static final Holder<Item> STONE = BuiltInRegistries.ITEM.wrapAsHolder(Items.STONE);
+    private static final Holder<Item> DIRT = BuiltInRegistries.ITEM.wrapAsHolder(Items.DIRT);
     
     private static final StructCodec<Listing, Access.Plain> LISTING = NexusCodec.struct(
             "listing",
@@ -113,6 +128,13 @@ public class ParityCases {
     
     private static final StreamCodec<ByteBuf, Node> TREE_STREAM = StreamCodec.recursive(
             self -> StreamCodec.composite(ByteBufCodecs.INT, Node::value, self.apply(ByteBufCodecs.list()), Node::children, Node::new)
+    );
+    
+    private static final StructCodec<SoundEvent, Access.Plain> SOUND_EVENT = NexusCodec.struct(
+            "sound_event",
+            NexusCodec.IDENTIFIER.field("sound_id", SoundEvent::location),
+            NexusCodec.FLOAT.optionalField("range", SoundEvent::fixedRange),
+            SoundEvent::new
     );
     
     public static final List<Case<?>> ALL = List.of(
@@ -312,6 +334,36 @@ public class ParityCases {
                     Codec.INT.validate(value -> value < 0 ? DataResult.error(() -> "negative") : DataResult.success(value)),
                     ByteBufCodecs.INT,
                     List.of(0, 5, Integer.MAX_VALUE)
+            ),
+            new Case<>(
+                    "holder(ITEM)",
+                    NexusCodec.holder(Registries.ITEM),
+                    RegistryFixedCodec.create(Registries.ITEM),
+                    ByteBufCodecs.holderRegistry(Registries.ITEM),
+                    List.of(ParityCases.STONE, ParityCases.DIRT)
+            ),
+            new Case<>(
+                    "holderOrInline(SOUND_EVENT)",
+                    NexusCodec.holderOrInline(Registries.SOUND_EVENT, ParityCases.SOUND_EVENT),
+                    RegistryFileCodec.create(Registries.SOUND_EVENT, SoundEvent.DIRECT_CODEC),
+                    ByteBufCodecs.holder(Registries.SOUND_EVENT, SoundEvent.DIRECT_STREAM_CODEC),
+                    List.of(
+                            BuiltInRegistries.SOUND_EVENT.wrapAsHolder(SoundEvents.ANVIL_LAND),
+                            Holder.direct(new SoundEvent(Identifier.fromNamespaceAndPath("nexus", "boom"), Optional.empty())),
+                            Holder.direct(new SoundEvent(Identifier.fromNamespaceAndPath("nexus", "boom"), Optional.of(16.0F)))
+                    )
+            ),
+            new Case<>(
+                    "holderSet(ITEM)",
+                    NexusCodec.holderSet(Registries.ITEM),
+                    RegistryCodecs.homogeneousList(Registries.ITEM),
+                    ByteBufCodecs.holderSet(Registries.ITEM),
+                    List.of(
+                            HolderSet.direct(List.of()),
+                            HolderSet.direct(List.of(ParityCases.STONE)),
+                            HolderSet.direct(List.of(ParityCases.STONE, ParityCases.DIRT)),
+                            BuiltInRegistries.ITEM.getOrThrow(ItemTags.WOODEN_TOOL_MATERIALS)
+                    )
             )
     );
     
