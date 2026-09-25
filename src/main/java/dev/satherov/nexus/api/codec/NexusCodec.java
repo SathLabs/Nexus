@@ -1260,6 +1260,18 @@ public interface NexusCodec<T, A extends Access.Plain> {
     <Z> StructField<Z, Optional<T>, A> optionalField(String name, Function<Z, Optional<T>> getter);
     
     ///
+    /// Creates a keyed codec of the value of this codec under the given key, with the given fallback if the key is missing.
+    ///
+    /// @param key      The key the value is stored under.
+    /// @param fallback The value to read if the key is missing.
+    ///
+    /// @return The keyed codec.
+    ///
+    default KeyedCodec<T, A> keyed(String key, T fallback) {
+        return new KeyedCodec<>(this, key, fallback);
+    }
+    
+    ///
     /// Creates the codec of a list of at most the given number of values of this codec.
     /// Similar to DFU's [Codec#sizeLimitedListOf(int)].
     ///
