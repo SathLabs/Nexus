@@ -1,5 +1,6 @@
 package dev.satherov.nexus.api.codec;
 
+import dev.satherov.nexus.internal.codec.CollectionCodecs;
 import dev.satherov.nexus.internal.codec.Scalars;
 import dev.satherov.nexus.internal.codec.Structs;
 
@@ -28,10 +29,14 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Range;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.IntFunction;
 
 ///
 /// A codec that encodes values of one type into JSON, NBT, and network buffers and decodes them back.
@@ -180,6 +185,51 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     static <T> NexusCodec<T, Access.Plain> unit(T value) {
         return Scalars.unit(value);
+    }
+    
+    ///
+    /// Creates the codec of a map of at most the given number of entries, with the given key and the values of the given codec.
+    /// Similar to DFU's [Codec#unboundedMap(Codec, Codec)].
+    ///
+    /// In JSON and NBT, it writes an object with every value under the string form of its key.
+    /// On the network, it writes the number of entries as a VarInt and then every key and its value, the same as [ByteBufCodecs#map(IntFunction, StreamCodec, StreamCodec, int)].
+    ///
+    /// Fails if the map has more than `limit` entries, before any entry is decoded, or if two decoded keys are equal.
+    /// In JSON and NBT, a failure holds the errors of every entry that failed, each at its key.
+    ///
+    /// @param key   The key of the entries.
+    /// @param value The codec of the values.
+    /// @param limit The maximum number of entries of the map.
+    ///
+    /// @return The codec of the map, which decodes into a map that keeps the order of its entries in JSON and on the network.
+    ///
+    /// @throws IllegalArgumentException If the limit is negative.
+    ///
+    static <K, V, A extends Access.Plain> NexusCodec<Map<K, V>, A> mapOf(
+            MapKey<K, ? super A> key,
+            NexusCodec<V, ? super A> value,
+            @Range(from = 0, to = Integer.MAX_VALUE) int limit
+    ) {
+        return CollectionCodecs.map(key, value, limit);
+    }
+    
+    ///
+    /// Creates the codec of a map of at most 32767 entries, with the given key and the values of the given codec.
+    /// Similar to DFU's [Codec#unboundedMap(Codec, Codec)].
+    ///
+    /// In JSON and NBT, it writes an object with every value under the string form of its key.
+    /// On the network, it writes the number of entries as a VarInt and then every key and its value, the same as [ByteBufCodecs#map(IntFunction, StreamCodec, StreamCodec, int)].
+    ///
+    /// Fails if the map has more than 32767 entries, before any entry is decoded, or if two decoded keys are equal.
+    /// In JSON and NBT, a failure holds the errors of every entry that failed, each at its key.
+    ///
+    /// @param key   The key of the entries.
+    /// @param value The codec of the values.
+    ///
+    /// @return The codec of the map, which decodes into a map that keeps the order of its entries in JSON and on the network.
+    ///
+    static <K, V, A extends Access.Plain> NexusCodec<Map<K, V>, A> mapOf(MapKey<K, ? super A> key, NexusCodec<V, ? super A> value) {
+        return CollectionCodecs.map(key, value, CollectionCodecs.LIMIT);
     }
     
     ///
@@ -934,4 +984,68 @@ public interface NexusCodec<T, A extends Access.Plain> {
     /// @return The field of the struct.
     ///
     <Z> StructField<Z, Optional<T>, A> optionalField(String name, Function<Z, Optional<T>> getter);
+    
+    ///
+    /// Creates the codec of a list of at most the given number of values of this codec.
+    /// Similar to DFU's [Codec#sizeLimitedListOf(int)].
+    ///
+    /// In JSON and NBT, it writes a list of the values.
+    /// On the network, it writes the number of values as a VarInt and then every value, the same as [ByteBufCodecs#list(int)].
+    ///
+    /// Fails if the list has more than `limit` values, before any value is decoded.
+    /// In JSON and NBT, a failure holds the errors of every value that failed, each at its index.
+    ///
+    /// @param limit The maximum number of values of the list.
+    ///
+    /// @return The codec of the list.
+    ///
+    /// @throws IllegalArgumentException If the limit is negative.
+    ///
+    NexusCodec<List<T>, A> list(@Range(from = 0, to = Integer.MAX_VALUE) int limit);
+    
+    ///
+    /// Creates the codec of a list of at most 32767 values of this codec.
+    /// Similar to DFU's [Codec#listOf()].
+    ///
+    /// In JSON and NBT, it writes a list of the values.
+    /// On the network, it writes the number of values as a VarInt and then every value, the same as [ByteBufCodecs#list(int)].
+    ///
+    /// Fails if the list has more than 32767 values, before any value is decoded.
+    /// In JSON and NBT, a failure holds the errors of every value that failed, each at its index.
+    ///
+    /// @return The codec of the list.
+    ///
+    NexusCodec<List<T>, A> list();
+    
+    ///
+    /// Creates the codec of a set of at most the given number of values of this codec.
+    /// Similar to DFU's [Codec#sizeLimitedListOf(int)] turned into a set.
+    ///
+    /// In JSON and NBT, it writes a list of the values, in the order of the set.
+    /// On the network, it writes the number of values as a VarInt and then every value, the same as [ByteBufCodecs#collection(IntFunction, StreamCodec, int)].
+    ///
+    /// Fails if the set has more than `limit` values, before any value is decoded, or if a decoded value is equal to an earlier one.
+    /// In JSON and NBT, a failure holds the errors of every value that failed, each at its index.
+    ///
+    /// @param limit The maximum number of values of the set.
+    ///
+    /// @return The codec of the set, which decodes into a set that keeps the order of its values.
+    ///
+    /// @throws IllegalArgumentException If the limit is negative.
+    ///
+    NexusCodec<Set<T>, A> set(@Range(from = 0, to = Integer.MAX_VALUE) int limit);
+    
+    ///
+    /// Creates the codec of a set of at most 32767 values of this codec.
+    /// Similar to DFU's [Codec#listOf()] turned into a set.
+    ///
+    /// In JSON and NBT, it writes a list of the values, in the order of the set.
+    /// On the network, it writes the number of values as a VarInt and then every value, the same as [ByteBufCodecs#collection(IntFunction, StreamCodec, int)].
+    ///
+    /// Fails if the set has more than 32767 values, before any value is decoded, or if a decoded value is equal to an earlier one.
+    /// In JSON and NBT, a failure holds the errors of every value that failed, each at its index.
+    ///
+    /// @return The codec of the set, which decodes into a set that keeps the order of its values.
+    ///
+    NexusCodec<Set<T>, A> set();
 }

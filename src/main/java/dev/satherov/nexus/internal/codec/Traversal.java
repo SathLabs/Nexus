@@ -15,7 +15,9 @@ import net.minecraft.network.FriendlyByteBuf;
 
 import org.jetbrains.annotations.ApiStatus;
 
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 
 ///
@@ -136,6 +138,38 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     @Override
     public <Z> StructField<Z, Optional<T>, A> optionalField(String name, Function<Z, Optional<T>> getter) {
         return new Structs.BoundField<>(Structs.optional(this), name, getter, Optional.empty());
+    }
+    
+    ///
+    /// Creates the codec of a list of at most the given number of values of this codec.
+    ///
+    @Override
+    public NexusCodec<List<T>, A> list(int limit) {
+        return CollectionCodecs.list(this, limit);
+    }
+    
+    ///
+    /// Creates the codec of a list of at most 32767 values of this codec.
+    ///
+    @Override
+    public NexusCodec<List<T>, A> list() {
+        return CollectionCodecs.list(this, CollectionCodecs.LIMIT);
+    }
+    
+    ///
+    /// Creates the codec of a set of at most the given number of values of this codec.
+    ///
+    @Override
+    public NexusCodec<Set<T>, A> set(int limit) {
+        return CollectionCodecs.set(this, limit);
+    }
+    
+    ///
+    /// Creates the codec of a set of at most 32767 values of this codec.
+    ///
+    @Override
+    public NexusCodec<Set<T>, A> set() {
+        return CollectionCodecs.set(this, CollectionCodecs.LIMIT);
     }
     
     ///

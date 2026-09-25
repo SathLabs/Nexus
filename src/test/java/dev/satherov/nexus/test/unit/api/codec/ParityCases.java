@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.api.codec.Access;
+import dev.satherov.nexus.api.codec.MapKey;
 import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.codec.StructCodec;
 
@@ -15,14 +16,20 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.util.StringRepresentable;
 import net.minecraft.util.Unit;
 
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import io.netty.buffer.ByteBuf;
 
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 ///
@@ -128,6 +135,64 @@ public class ParityCases {
                     ).apply(instance, Offer::new)),
                     StreamCodec.composite(ParityCases.LISTING_STREAM, Offer::listing, ByteBufCodecs.INT, Offer::price, Offer::new),
                     List.of(new Offer(new Listing("stone", 1, Optional.empty()), 5), new Offer(new Listing("gold", 3, Optional.of("shiny")), 100))
+            ),
+            new Case<>("INT.list()", NexusCodec.INT.list(), Codec.INT.listOf(), ByteBufCodecs.INT.apply(ByteBufCodecs.list()), List.of(List.of(), List.of(1, -1, 300, 1))),
+            new Case<>(
+                    "STRING.list(3)",
+                    NexusCodec.STRING.list(3),
+                    Codec.STRING.sizeLimitedListOf(3),
+                    ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(3)),
+                    List.of(List.of(), List.of("stone", "dirt", "café"))
+            ),
+            new Case<>(
+                    "listing.list()",
+                    ParityCases.LISTING.list(),
+                    ParityCases.LISTING_DFU.codec().listOf(),
+                    ParityCases.LISTING_STREAM.apply(ByteBufCodecs.list()),
+                    List.of(List.of(new Listing("stone", 1, Optional.empty()), new Listing("dirt", 64, Optional.of("cheap"))))
+            ),
+            new Case<>(
+                    "UUID.set()",
+                    NexusCodec.UUID.set(),
+                    UUIDUtil.CODEC_LINKED_SET,
+                    ByteBufCodecs.collection(LinkedHashSet::new, UUIDUtil.STREAM_CODEC),
+                    List.of(Set.of(), ImmutableSet.of(new UUID(0L, 1L), UUID.fromString("f81d4fae-7dec-11d0-a765-00a0c91e6bf6")))
+            ),
+            new Case<>(
+                    "mapOf(STRING, INT)",
+                    NexusCodec.mapOf(MapKey.STRING, NexusCodec.INT),
+                    Codec.unboundedMap(Codec.STRING, Codec.INT),
+                    ByteBufCodecs.map(LinkedHashMap::new, ByteBufCodecs.STRING_UTF8, ByteBufCodecs.INT),
+                    List.of(Map.of(), ImmutableMap.of("stone", 1, "dirt", 64, "", 0))
+            ),
+            new Case<>(
+                    "mapOf(IDENTIFIER, STRING)",
+                    NexusCodec.mapOf(MapKey.IDENTIFIER, NexusCodec.STRING),
+                    Codec.unboundedMap(Identifier.CODEC, Codec.STRING),
+                    ByteBufCodecs.map(LinkedHashMap::new, Identifier.STREAM_CODEC, ByteBufCodecs.STRING_UTF8),
+                    List.of(ImmutableMap.of(Identifier.withDefaultNamespace("stone"), "rock", Identifier.fromNamespaceAndPath("nexus", "path/to/thing"), "thing"))
+            ),
+            new Case<>(
+                    "mapOf(enumOf(Weight), INT)",
+                    NexusCodec.mapOf(MapKey.enumOf(Weight.class), NexusCodec.INT),
+                    Codec.unboundedMap(StringRepresentable.fromEnum(Weight::values), Codec.INT),
+                    ByteBufCodecs.map(LinkedHashMap::new, ByteBufCodecs.idMapper(ordinal -> Weight.values()[ordinal], Weight::ordinal), ByteBufCodecs.INT),
+                    List.of(ImmutableMap.of(Weight.ANVIL, 100, Weight.FEATHER, 1))
+            ),
+            new Case<>(
+                    "struct(bundle)",
+                    NexusCodec.struct(
+                            "bundle",
+                            NexusCodec.STRING.field("name", Bundle::name),
+                            NexusCodec.INT.list().field("counts", Bundle::counts),
+                            Bundle::new
+                    ),
+                    RecordCodecBuilder.create(instance -> instance.group(
+                            Codec.STRING.fieldOf("name").forGetter(Bundle::name),
+                            Codec.INT.listOf().fieldOf("counts").forGetter(Bundle::counts)
+                    ).apply(instance, Bundle::new)),
+                    StreamCodec.composite(ByteBufCodecs.STRING_UTF8, Bundle::name, ByteBufCodecs.INT.apply(ByteBufCodecs.list()), Bundle::counts, Bundle::new),
+                    List.of(new Bundle("empty", List.of()), new Bundle("full", List.of(1, 2, 3)))
             )
     );
     
@@ -167,4 +232,6 @@ public class ParityCases {
     public record Listing(String item, int count, Optional<String> label) { }
     
     public record Offer(Listing listing, int price) { }
+    
+    public record Bundle(String name, List<Integer> counts) { }
 }

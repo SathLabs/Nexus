@@ -27,6 +27,7 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Contract;
 import org.jspecify.annotations.Nullable;
 
+import java.util.AbstractList;
 import java.util.List;
 import java.util.Set;
 
@@ -314,7 +315,9 @@ public record NbtOperations<A extends Access.Plain>(
     }
 
     ///
-    /// Decodes the elements of any collection tag, which are the list tag itself or a copy of the elements of an array tag.
+    /// Decodes the elements of any collection tag, which are the list tag itself or a view of the elements of an array tag.
+    ///
+    /// The view creates the tag of an element each time it is read.
     ///
     /// @throws CodecException If the input is not a collection tag.
     ///
@@ -322,7 +325,24 @@ public record NbtOperations<A extends Access.Plain>(
     public List<Tag> asList(Tag input) {
         return switch (input) {
             case ListTag list -> list;
-            case CollectionTag collection -> collection.stream().toList();
+            case CollectionTag collection -> new AbstractList<>() {
+
+                ///
+                /// Creates the tag of the element at the given index of the array tag.
+                ///
+                @Override
+                public Tag get(int index) {
+                    return collection.get(index);
+                }
+
+                ///
+                /// The number of elements of the array tag.
+                ///
+                @Override
+                public int size() {
+                    return collection.size();
+                }
+            };
             default -> throw Errors.mismatch("a list", input);
         };
     }
