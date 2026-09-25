@@ -14,6 +14,7 @@ import dev.satherov.nexus.api.codec.StructField;
 import net.minecraft.network.FriendlyByteBuf;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 import java.util.Optional;
@@ -170,6 +171,38 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     @Override
     public NexusCodec<Set<T>, A> set() {
         return CollectionCodecs.set(this, CollectionCodecs.LIMIT);
+    }
+    
+    ///
+    /// Creates the codec of a list of at most 32767 values of this codec, which writes a single value bare.
+    ///
+    @Override
+    public NexusCodec<List<T>, A> oneOrMany() {
+        return Combinators.oneOrMany(this);
+    }
+    
+    ///
+    /// Creates the codec of the values of this codec, mapped both ways.
+    ///
+    @Override
+    public <R> NexusCodec<R, A> xmap(Function<? super T, ? extends R> to, Function<? super R, ? extends T> from) {
+        return Combinators.xmap(this, to, from);
+    }
+    
+    ///
+    /// Creates the codec of the values of this codec, mapped both ways by functions that may refuse a value.
+    ///
+    @Override
+    public <R> NexusCodec<R, A> flatXmap(Function<? super T, ? extends R> to, Function<? super R, ? extends T> from) {
+        return Combinators.flatXmap(this, to, from);
+    }
+    
+    ///
+    /// Creates the codec of the values of this codec that fails on every value the check refuses.
+    ///
+    @Override
+    public NexusCodec<T, A> validate(Function<? super T, @Nullable String> check) {
+        return Combinators.validate(this, check);
     }
     
     ///

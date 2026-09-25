@@ -1,14 +1,17 @@
 package dev.satherov.nexus.api.codec;
 
 import dev.satherov.nexus.internal.codec.CollectionCodecs;
+import dev.satherov.nexus.internal.codec.Combinators;
 import dev.satherov.nexus.internal.codec.Scalars;
 import dev.satherov.nexus.internal.codec.Structs;
 
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.ExtraCodecs;
 import net.minecraft.util.StringRepresentable;
 
+import com.mojang.datafixers.util.Either;
 import com.mojang.datafixers.util.Function10;
 import com.mojang.datafixers.util.Function11;
 import com.mojang.datafixers.util.Function12;
@@ -28,6 +31,7 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Range;
+import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 import java.util.Map;
@@ -37,6 +41,7 @@ import java.util.UUID;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.IntFunction;
+import java.util.function.UnaryOperator;
 
 ///
 /// A codec that encodes values of one type into JSON, NBT, and network buffers and decodes them back.
@@ -867,6 +872,69 @@ public interface NexusCodec<T, A extends Access.Plain> {
     }
     
     ///
+    /// Creates the codec of a value that is one of two types, with the codec of each.
+    /// Similar to DFU's [Codec#either(Codec, Codec)].
+    ///
+    /// In JSON and NBT, it writes the value with the codec of its side, and reads with the left codec and then the right if the left fails.
+    /// On the network, it writes a boolean that is `true` for the left side and then the value, the same as [ByteBufCodecs#either(StreamCodec, StreamCodec)].
+    ///
+    /// In JSON and NBT, if neither codec can read the input, the failure will hold the errors of both, the left ones first.
+    ///
+    /// @param left  The codec of the left side.
+    /// @param right The codec of the right side.
+    ///
+    /// @return The codec of the value of either side.
+    ///
+    static <L, R, A extends Access.Plain> NexusCodec<Either<L, R>, A> either(NexusCodec<L, ? super A> left, NexusCodec<R, ? super A> right) {
+        return Combinators.either(left, right);
+    }
+    
+    ///
+    /// Creates the codec of a struct that is one of the given subtypes, picked by the identifier under the given key.
+    /// Similar to DFU's [Codec#dispatch(String, Function, Function)] on [Identifier#CODEC].
+    ///
+    /// In JSON and NBT, the fields of the subtype are in the same object as the identifier, and their errors are at their own keys.
+    /// On the network, it writes the identifier and then the fields of the subtype, the same as [StreamCodec#dispatch(Function, Function)] on [Identifier#STREAM_CODEC].
+    ///
+    /// Fails if the key is missing, or if its identifier is not one of the subtypes, listing the identifiers of all subtypes.
+    /// Fails to encode a value whose identifier is not one of the subtypes.
+    /// A strict format refuses every key other than the key, the keys of the subtype it picked, and the keys of a struct it's inlined into.
+    ///
+    /// @param key      The key of the identifier in JSON and NBT.
+    /// @param keyOf    The getter of the identifier of the subtype a value belongs to.
+    /// @param subtypes The codec of every subtype, by its identifier.
+    ///
+    /// @return The codec of the struct, which can also be inlined into another struct.
+    ///
+    /// @throws IllegalArgumentException If a subtype has the key, counting the keys of the struct of an inline field.
+    ///
+    static <T, A extends Access.Plain> StructCodec<T, A> dispatch(
+            String key,
+            Function<? super T, Identifier> keyOf,
+            Map<Identifier, ? extends StructCodec<? extends T, ? super A>> subtypes
+    ) {
+        return Combinators.dispatch(key, keyOf, subtypes);
+    }
+    
+    ///
+    /// Creates a codec that may refer to itself through the parameter of the given definition, such as the codec of a tree.
+    /// Similar to DFU's [Codec#recursive(String, Function)] and vanilla's [StreamCodec#recursive(UnaryOperator)].
+    ///
+    /// It writes and reads the same as the codec the definition returns.
+    /// The definition is called once, the first time the codec is used.
+    ///
+    /// If encode or decode is called on the returned codec, the given name will be on the first line of a failure.
+    ///
+    /// @param name       The name of the codec, used in the failure message.
+    /// @param definition The definition of the codec, called with the codec itself.
+    ///
+    /// @return The codec.
+    ///
+    static <T, A extends Access.Plain> NexusCodec<T, A> recursive(String name, Function<NexusCodec<T, A>, NexusCodec<T, A>> definition) {
+        return Combinators.recursive(name, definition);
+    }
+    
+    ///
     /// Encodes the given value in the given format.
     ///
     /// @param format The format to encode the value in.
@@ -1048,4 +1116,57 @@ public interface NexusCodec<T, A extends Access.Plain> {
     /// @return The codec of the set, which decodes into a set that keeps the order of its values.
     ///
     NexusCodec<Set<T>, A> set();
+    
+    ///
+    /// Creates the codec of a list of at most 32767 values of this codec, which writes a single value bare.
+    /// Similar to vanilla's [ExtraCodecs#compactListCodec(Codec)].
+    ///
+    /// In JSON and NBT, it writes a list of one value as the bare value and any other list as a list.
+    /// It reads a list, and a bare value as a list of one if the input can't be read as a list.
+    /// On the network, it always writes the list, the same as [ByteBufCodecs#list(int)].
+    ///
+    /// In JSON and NBT, if the input can be read neither as a list nor as a value, the failure will hold the errors of both.
+    ///
+    /// @return The codec of the list.
+    ///
+    NexusCodec<List<T>, A> oneOrMany();
+    
+    ///
+    /// Creates the codec of the values that this codec writes and reads through the given mappings.
+    /// Similar to DFU's [Codec#xmap(Function, Function)].
+    ///
+    /// @param to   The mapping from a value of this codec, called after reading.
+    /// @param from The mapping to a value of this codec, called before writing.
+    ///
+    /// @return The codec of the mapped values.
+    ///
+    <R> NexusCodec<R, A> xmap(Function<? super T, ? extends R> to, Function<? super R, ? extends T> from);
+    
+    ///
+    /// Creates the codec of the values that this codec writes and reads through the given mappings, which may refuse a value.
+    /// Similar to DFU's [Codec#flatXmap(Function, Function)].
+    ///
+    /// A mapping refuses a value by throwing a [CodecException], whose errors will be at the path of the value.
+    /// Any other exception a mapping throws will become a [CodecException] too.
+    ///
+    /// @param to   The mapping from a value of this codec, called after reading.
+    /// @param from The mapping to a value of this codec, called before writing.
+    ///
+    /// @return The codec of the mapped values.
+    ///
+    <R> NexusCodec<R, A> flatXmap(Function<? super T, ? extends R> to, Function<? super R, ? extends T> from);
+    
+    ///
+    /// Creates the codec of the values of this codec that the given check accepts.
+    /// Similar to DFU's [Codec#validate(Function)].
+    ///
+    /// The check is called on every value before it's written and after it's read.
+    /// If the check returns a message, the value will fail with that message at the path of the value.
+    /// Any exception the check throws will become a [CodecException] too, if it isn't one already.
+    ///
+    /// @param check The check of a value, which returns the error message, or `null` if the value is valid.
+    ///
+    /// @return The codec of the checked values.
+    ///
+    NexusCodec<T, A> validate(Function<? super T, @Nullable String> check);
 }

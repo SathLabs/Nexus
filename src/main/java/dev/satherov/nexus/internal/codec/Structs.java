@@ -5,6 +5,7 @@ import lombok.experimental.UtilityClass;
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.CodecError;
 import dev.satherov.nexus.api.codec.CodecException;
+import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.codec.StructCodec;
 import dev.satherov.nexus.api.codec.StructField;
 
@@ -36,7 +37,7 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 
 ///
-/// Utility for the struct codecs, with the struct over its fields, the bound field record, and the sixteen constructor adapters.
+/// Utility for the struct codecs, with the inlinable struct, the struct over its fields, the bound field record, and the sixteen constructor adapters.
 ///
 @UtilityClass
 @ApiStatus.Internal
@@ -402,7 +403,7 @@ public class Structs {
             String name,
             Function<Z, T> getter,
             @Nullable T fallback,
-            @Nullable Struct<T, ?> inlined
+            @Nullable Inlinable<T, ?> inlined
     ) implements StructField<Z, T, A> {
         
         ///
@@ -422,7 +423,7 @@ public class Structs {
         ///
         private <V> void write(Operations<V> operations, V object, Z owner) {
             T value = this.getter.apply(owner);
-            Struct<T, ?> nested = this.inlined();
+            Inlinable<T, ?> nested = this.inlined();
             if (operations.isPositional()) {
                 this.codec.write(operations, value);
             } else if (nested != null) {
@@ -444,7 +445,7 @@ public class Structs {
                 return this.codec.read(operations, input);
             }
             
-            Struct<T, ?> nested = this.inlined();
+            Inlinable<T, ?> nested = this.inlined();
             if (nested != null) {
                 return nested.readFields(operations, input, null);
             }
@@ -464,6 +465,71 @@ public class Structs {
     }
     
     ///
+    /// A codec of a struct whose fields can be merged into the object of the struct that holds it.
+    ///
+    /// @param <T> The type of the struct.
+    /// @param <A> The access a format has to offer to be used with this codec.
+    ///
+    public abstract static class Inlinable<T, A extends Access.Plain> extends Traversal<T, A> implements StructCodec<T, A> {
+        
+        ///
+        /// Creates the codec of a struct with the given name.
+        ///
+        /// @param name The name of the struct, used in the failure message.
+        ///
+        protected Inlinable(String name) {
+            super(name);
+        }
+        
+        ///
+        /// Creates a field with an empty name that merges this struct into its owner.
+        ///
+        @Override
+        public <Z> StructField<Z, T, A> inline(Function<Z, T> getter) {
+            return new BoundField<>(this, "", getter, null, this);
+        }
+        
+        ///
+        /// Creates the codec of this struct or its short form.
+        ///
+        @Override
+        public <S> NexusCodec<T, A> orShort(NexusCodec<S, ? super A> shortForm, Function<? super S, ? extends T> fromShort, Function<? super T, Optional<S>> toShort) {
+            return Combinators.orShort(this, shortForm, fromShort, toShort);
+        }
+        
+        ///
+        /// Every key this struct may write, including the keys of the structs of its inline fields.
+        ///
+        /// @return Every key this struct may write.
+        ///
+        protected abstract Set<String> keys();
+        
+        ///
+        /// Writes every field of the given value under its key into the given object.
+        ///
+        /// @param operations The operations of the keyed format to write in.
+        /// @param object     The object to write into.
+        /// @param value      The value whose fields to write.
+        ///
+        /// @throws CodecException If a field could not be written, with the errors of every field that failed at its key.
+        ///
+        protected abstract <V> void writeFields(Operations<V> operations, V object, T value);
+        
+        ///
+        /// Reads every field from the given object.
+        ///
+        /// @param operations The operations of the keyed format to read from.
+        /// @param object     The object to read from.
+        /// @param present    The keys of the object to refuse the unknown ones of, or `null` if this struct is inline or the format isn't strict.
+        ///
+        /// @return The value read.
+        ///
+        /// @throws CodecException If a field could not be read or a key is unknown, with every error at its key.
+        ///
+        protected abstract <V> T readFields(Operations<V> operations, V object, @Nullable Set<String> present);
+    }
+    
+    ///
     /// A codec of a struct over its fields, which decodes their values into an array and calls the constructor once.
     ///
     /// On the network, it writes the fields in order and nothing else.
@@ -472,7 +538,7 @@ public class Structs {
     /// @param <T> The type of the struct.
     /// @param <A> The access a format has to offer to be used with this codec.
     ///
-    public static final class Struct<T, A extends Access.Plain> extends Traversal<T, A> implements StructCodec<T, A> {
+    public static final class Struct<T, A extends Access.Plain> extends Inlinable<T, A> {
         
         ///
         /// The constructor of the struct, called with the value of every field, in order.
@@ -514,8 +580,8 @@ public class Structs {
                     throw new IllegalArgumentException("Struct '" + name + "' has a field that no codec created");
                 }
                 
-                Struct<?, ?> nested = binding.inlined();
-                for (String key : nested == null ? Set.of(binding.name()) : nested.keys) {
+                Inlinable<?, ?> nested = binding.inlined();
+                for (String key : nested == null ? Set.of(binding.name()) : nested.keys()) {
                     if (!keys.add(key)) {
                         throw new IllegalArgumentException("Struct '" + name + "' has the key '" + key + "' twice");
                     }
@@ -529,11 +595,11 @@ public class Structs {
         }
         
         ///
-        /// Creates a field with an empty name that merges this struct into its owner.
+        /// The keys of every field, including the keys of the structs of inline fields.
         ///
         @Override
-        public <Z> StructField<Z, T, A> inline(Function<Z, T> getter) {
-            return new BoundField<>(this, "", getter, null, this);
+        protected Set<String> keys() {
+            return this.keys;
         }
         
         ///
@@ -557,7 +623,8 @@ public class Structs {
         ///
         /// Writes every field under its key into the given object and throws once with the errors of every field that failed.
         ///
-        private <V> void writeFields(Operations<V> operations, V object, T value) {
+        @Override
+        protected <V> void writeFields(Operations<V> operations, V object, T value) {
             List<CodecError> errors = null;
             for (BoundField<T, ?, ?> field : this.fields) {
                 try {
@@ -592,7 +659,8 @@ public class Structs {
         ///
         /// Reads every field from the given object, refuses those of the given keys this struct doesn't have, and throws once with every error.
         ///
-        private <V> T readFields(Operations<V> operations, V object, @Nullable Set<String> present) {
+        @Override
+        protected <V> T readFields(Operations<V> operations, V object, @Nullable Set<String> present) {
             Object[] values = new Object[this.fields.size()];
             List<CodecError> errors = null;
             for (int i = 0; i < values.length; i++) {

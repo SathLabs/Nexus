@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.api.codec.Access;
+import dev.satherov.nexus.api.codec.CodecException;
 import dev.satherov.nexus.api.codec.MapKey;
 import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.codec.StructCodec;
@@ -13,12 +14,15 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.ExtraCodecs;
 import net.minecraft.util.StringRepresentable;
 import net.minecraft.util.Unit;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.mojang.datafixers.util.Either;
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import io.netty.buffer.ByteBuf;
@@ -31,12 +35,16 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 
 ///
 /// The parity fixture, every Nexus codec next to its DFU codec, its vanilla stream codec, and the values to compare them on.
 ///
 @UtilityClass
 public class ParityCases {
+    
+    public static final Identifier CIRCLE = Identifier.fromNamespaceAndPath("nexus", "circle");
+    public static final Identifier SQUARE = Identifier.fromNamespaceAndPath("nexus", "square");
     
     private static final StructCodec<Listing, Access.Plain> LISTING = NexusCodec.struct(
             "listing",
@@ -60,6 +68,51 @@ public class ParityCases {
             ByteBufCodecs.optional(ByteBufCodecs.STRING_UTF8),
             Listing::label,
             Listing::new
+    );
+    
+    private static final StructCodec<Shape, Access.Plain> SHAPE = NexusCodec.dispatch(
+            "type",
+            ParityCases::typeOf,
+            Map.of(
+                    ParityCases.CIRCLE,
+                    NexusCodec.struct("circle", NexusCodec.INT.field("radius", Circle::radius), Circle::new),
+                    ParityCases.SQUARE,
+                    NexusCodec.struct("square", NexusCodec.INT.field("side", Square::side), Square::new)
+            )
+    );
+    
+    private static final Map<Identifier, MapCodec<? extends Shape>> SHAPES_DFU = Map.of(
+            ParityCases.CIRCLE,
+            Codec.INT.fieldOf("radius").xmap(Circle::new, Circle::radius),
+            ParityCases.SQUARE,
+            Codec.INT.fieldOf("side").xmap(Square::new, Square::side)
+    );
+    
+    private static final StreamCodec<ByteBuf, Shape> SHAPE_STREAM = Identifier.STREAM_CODEC.dispatch(
+            ParityCases::typeOf,
+            Map.<Identifier, StreamCodec<ByteBuf, ? extends Shape>>of(
+                    ParityCases.CIRCLE,
+                    ByteBufCodecs.INT.map(Circle::new, Circle::radius),
+                    ParityCases.SQUARE,
+                    ByteBufCodecs.INT.map(Square::new, Square::side)
+            )::get
+    );
+    
+    private static final NexusCodec<Node, Access.Plain> TREE = NexusCodec.recursive(
+            "node",
+            self -> NexusCodec.struct("node", NexusCodec.INT.field("value", Node::value), self.list().field("children", Node::children), Node::new)
+    );
+    
+    private static final Codec<Node> TREE_DFU = Codec.recursive(
+            "node",
+            self -> RecordCodecBuilder.create(instance -> instance.group(
+                    Codec.INT.fieldOf("value").forGetter(Node::value),
+                    self.listOf().fieldOf("children").forGetter(Node::children)
+            ).apply(instance, Node::new))
+    );
+    
+    private static final StreamCodec<ByteBuf, Node> TREE_STREAM = StreamCodec.recursive(
+            self -> StreamCodec.composite(ByteBufCodecs.INT, Node::value, self.apply(ByteBufCodecs.list()), Node::children, Node::new)
     );
     
     public static final List<Case<?>> ALL = List.of(
@@ -193,8 +246,102 @@ public class ParityCases {
                     ).apply(instance, Bundle::new)),
                     StreamCodec.composite(ByteBufCodecs.STRING_UTF8, Bundle::name, ByteBufCodecs.INT.apply(ByteBufCodecs.list()), Bundle::counts, Bundle::new),
                     List.of(new Bundle("empty", List.of()), new Bundle("full", List.of(1, 2, 3)))
+            ),
+            new Case<>(
+                    "either(INT, STRING)",
+                    NexusCodec.either(NexusCodec.INT, NexusCodec.STRING),
+                    Codec.either(Codec.INT, Codec.STRING),
+                    ByteBufCodecs.either(ByteBufCodecs.INT, ByteBufCodecs.STRING_UTF8),
+                    List.of(Either.left(5), Either.left(-1), Either.right("five"), Either.right(""))
+            ),
+            new Case<>(
+                    "STRING.oneOrMany()",
+                    NexusCodec.STRING.oneOrMany(),
+                    ExtraCodecs.compactListCodec(Codec.STRING),
+                    ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list()),
+                    List.of(List.of(), List.of("stone"), List.of("stone", "dirt"))
+            ),
+            new Case<>(
+                    "listing.orShort(STRING)",
+                    ParityCases.LISTING.orShort(NexusCodec.STRING, ParityCases::shortListing, ParityCases::shortFormOf),
+                    Codec.either(Codec.STRING, ParityCases.LISTING_DFU.codec()).xmap(ParityCases::fromEither, ParityCases::toEither),
+                    ByteBufCodecs.either(ByteBufCodecs.STRING_UTF8, ParityCases.LISTING_STREAM).map(ParityCases::fromEither, ParityCases::toEither),
+                    List.of(new Listing("stone", 1, Optional.empty()), new Listing("dirt", 64, Optional.of("cheap")), new Listing("clay", 1, Optional.of("")))
+            ),
+            new Case<>(
+                    "dispatch(type)",
+                    ParityCases.SHAPE,
+                    Identifier.CODEC.dispatch("type", ParityCases::typeOf, ParityCases.SHAPES_DFU::get),
+                    ParityCases.SHAPE_STREAM,
+                    List.of(new Circle(3), new Square(4))
+            ),
+            new Case<>(
+                    "struct(named)",
+                    NexusCodec.struct("named", NexusCodec.STRING.field("name", Named::name), ParityCases.SHAPE.inline(Named::shape), Named::new),
+                    RecordCodecBuilder.create(instance -> instance.group(
+                            Codec.STRING.fieldOf("name").forGetter(Named::name),
+                            Identifier.CODEC.<Shape>dispatchMap("type", ParityCases::typeOf, ParityCases.SHAPES_DFU::get).forGetter(Named::shape)
+                    ).apply(instance, Named::new)),
+                    StreamCodec.composite(ByteBufCodecs.STRING_UTF8, Named::name, ParityCases.SHAPE_STREAM, Named::shape, Named::new),
+                    List.of(new Named("wheel", new Circle(3)), new Named("tile", new Square(4)))
+            ),
+            new Case<>(
+                    "recursive(node)",
+                    ParityCases.TREE,
+                    ParityCases.TREE_DFU,
+                    ParityCases.TREE_STREAM,
+                    List.of(new Node(1, List.of()), new Node(1, List.of(new Node(2, List.of()), new Node(3, List.of(new Node(4, List.of()))))))
+            ),
+            new Case<>(
+                    "INT.xmap(Amount)",
+                    NexusCodec.INT.xmap(Amount::new, Amount::value),
+                    Codec.INT.xmap(Amount::new, Amount::value),
+                    ByteBufCodecs.INT.map(Amount::new, Amount::value),
+                    List.of(new Amount(0), new Amount(-7), new Amount(300))
+            ),
+            new Case<>(
+                    "INT.flatXmap(Amount)",
+                    NexusCodec.INT.flatXmap(ParityCases::positiveAmount, Amount::value),
+                    Codec.INT.flatXmap(value -> value > 0 ? DataResult.success(new Amount(value)) : DataResult.error(() -> "negative"), amount -> DataResult.success(amount.value())),
+                    ByteBufCodecs.INT.map(Amount::new, Amount::value),
+                    List.of(new Amount(1), new Amount(300))
+            ),
+            new Case<>(
+                    "INT.validate()",
+                    NexusCodec.INT.validate(value -> value < 0 ? "negative" : null),
+                    Codec.INT.validate(value -> value < 0 ? DataResult.error(() -> "negative") : DataResult.success(value)),
+                    ByteBufCodecs.INT,
+                    List.of(0, 5, Integer.MAX_VALUE)
             )
     );
+    
+    public static Identifier typeOf(Shape shape) {
+        return switch (shape) {
+            case Circle _ -> ParityCases.CIRCLE;
+            case Square _ -> ParityCases.SQUARE;
+        };
+    }
+    
+    public static Amount positiveAmount(int value) {
+        if (value <= 0) throw new CodecException("expected a positive amount, found " + value);
+        return new Amount(value);
+    }
+    
+    private static Listing shortListing(String item) {
+        return new Listing(item, 1, Optional.empty());
+    }
+    
+    private static Optional<String> shortFormOf(Listing listing) {
+        return listing.count() == 1 && listing.label().isEmpty() ? Optional.of(listing.item()) : Optional.empty();
+    }
+    
+    private static Listing fromEither(Either<String, Listing> either) {
+        return either.map(ParityCases::shortListing, Function.identity());
+    }
+    
+    private static Either<String, Listing> toEither(Listing listing) {
+        return ParityCases.shortFormOf(listing).<Either<String, Listing>>map(Either::left).orElseGet(() -> Either.right(listing));
+    }
     
     public record Case<T>(String name, NexusCodec<T, ? super Access.Registries> codec, Codec<T> dfu, StreamCodec<? super RegistryFriendlyByteBuf, T> stream, List<T> values) { }
     
@@ -234,4 +381,16 @@ public class ParityCases {
     public record Offer(Listing listing, int price) { }
     
     public record Bundle(String name, List<Integer> counts) { }
+    
+    public sealed interface Shape permits Circle, Square { }
+    
+    public record Circle(int radius) implements Shape { }
+    
+    public record Square(int side) implements Shape { }
+    
+    public record Named(String name, Shape shape) { }
+    
+    public record Node(int value, List<Node> children) { }
+    
+    public record Amount(int value) { }
 }
