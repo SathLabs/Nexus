@@ -4,12 +4,15 @@ import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 
 import dev.satherov.nexus.api.codec.Access;
-import dev.satherov.nexus.api.codec.BufferFormat;
-import dev.satherov.nexus.api.codec.CodecFormat;
-import dev.satherov.nexus.api.codec.CodecResult;
 import dev.satherov.nexus.api.codec.NexusCodec;
-import dev.satherov.nexus.api.codec.NexusCodecException;
-import dev.satherov.nexus.api.codec.StructField;
+import dev.satherov.nexus.api.codec.format.BufferFormat;
+import dev.satherov.nexus.api.codec.format.CodecFormat;
+import dev.satherov.nexus.api.codec.result.CodecResult;
+import dev.satherov.nexus.api.codec.result.NexusCodecException;
+import dev.satherov.nexus.api.codec.struct.StructField;
+import dev.satherov.nexus.internal.codec.format.Operations;
+import dev.satherov.nexus.internal.codec.struct.Structs;
+import dev.satherov.nexus.internal.codec.vanilla.VanillaAdapters;
 
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.network.FriendlyByteBuf;
@@ -51,7 +54,7 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
         try {
             return this.write(Operations.of(format), value);
         } catch (NexusCodecException failure) {
-            throw Errors.encodeFailure(this.name, format.name(), failure);
+            throw CodecErrors.encodeFailure(this.name, format.name(), failure);
         }
     }
     
@@ -67,8 +70,16 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
         try {
             return this.read(Operations.of(format), input);
         } catch (NexusCodecException failure) {
-            throw Errors.decodeFailure(this.name, format.name(), failure);
+            throw CodecErrors.decodeFailure(this.name, format.name(), failure);
         }
+    }
+    
+    ///
+    /// Reads through the operations of the format and puts this codec's name and the format on top of a failure.
+    ///
+    public <V> T decode(Function<V, CodecFormat<V, ? extends A>> formatFactory, V input) {
+        CodecFormat<V, ? extends A> format = formatFactory.apply(input);
+        return this.decode(format, input);
     }
     
     ///
@@ -155,7 +166,7 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     }
     
     ///
-    /// Creates the codec of a list of at most 32767 values of this codec.
+    /// Creates the codec of a list of at most 32,767 values of this codec.
     ///
     @Override
     public NexusCodec<List<T>, A> list() {
@@ -171,7 +182,7 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     }
     
     ///
-    /// Creates the codec of a set of at most 32767 values of this codec.
+    /// Creates the codec of a set of at most 32,767 values of this codec.
     ///
     @Override
     public NexusCodec<Set<T>, A> set() {
@@ -179,7 +190,7 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     }
     
     ///
-    /// Creates the codec of a list of at most 32767 values of this codec, which writes a single value bare.
+    /// Creates the codec of a list of at most 32,767 values of this codec, which writes a single value bare.
     ///
     @Override
     public NexusCodec<List<T>, A> oneOrMany() {
@@ -244,7 +255,7 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     ///
     /// @throws NexusCodecException If the value could not be written, with every error at its path below this codec.
     ///
-    protected abstract <V> V write(Operations<V> operations, T value);
+    public abstract <V> V write(Operations<V> operations, T value);
     
     ///
     /// Reads a value from the given input through the given operations.
@@ -256,5 +267,5 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     ///
     /// @throws NexusCodecException If the input could not be read, with every error at its path below this codec.
     ///
-    protected abstract <V> T read(Operations<V> operations, V input);
+    public abstract <V> T read(Operations<V> operations, V input);
 }

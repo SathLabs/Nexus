@@ -1,12 +1,12 @@
 package dev.satherov.nexus.test.unit.api.codec;
 
 import dev.satherov.nexus.api.codec.Access;
-import dev.satherov.nexus.api.codec.CodecError;
-import dev.satherov.nexus.api.codec.CodecFormat;
-import dev.satherov.nexus.api.codec.MapKey;
 import dev.satherov.nexus.api.codec.NexusCodec;
-import dev.satherov.nexus.api.codec.NexusCodecException;
-import dev.satherov.nexus.api.codec.StructCodec;
+import dev.satherov.nexus.api.codec.format.CodecFormat;
+import dev.satherov.nexus.api.codec.key.MapKey;
+import dev.satherov.nexus.api.codec.result.CodecError;
+import dev.satherov.nexus.api.codec.result.NexusCodecException;
+import dev.satherov.nexus.api.codec.struct.StructCodec;
 
 import net.minecraft.nbt.ByteTag;
 import net.minecraft.nbt.CompoundTag;

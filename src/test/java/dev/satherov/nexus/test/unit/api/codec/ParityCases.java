@@ -4,11 +4,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.api.codec.Access;
-import dev.satherov.nexus.api.codec.MapKey;
 import dev.satherov.nexus.api.codec.NexusCodec;
-import dev.satherov.nexus.api.codec.NexusCodecException;
-import dev.satherov.nexus.api.codec.StructCodec;
-import dev.satherov.nexus.api.codec.VanillaCodecs;
+import dev.satherov.nexus.api.codec.key.MapKey;
+import dev.satherov.nexus.api.codec.result.NexusCodecException;
+import dev.satherov.nexus.api.codec.struct.StructCodec;
+import dev.satherov.nexus.api.codec.vanilla.VanillaCodecs;
 
 import net.neoforged.neoforge.common.CommonHooks;
 import net.neoforged.neoforge.fluids.FluidStack;

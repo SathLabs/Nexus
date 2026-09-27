@@ -1,11 +1,11 @@
 package dev.satherov.nexus.test.unit.api.codec;
 
 import dev.satherov.nexus.api.codec.Access;
-import dev.satherov.nexus.api.codec.CodecError;
-import dev.satherov.nexus.api.codec.CodecFormat;
 import dev.satherov.nexus.api.codec.NexusCodec;
-import dev.satherov.nexus.api.codec.NexusCodecException;
-import dev.satherov.nexus.api.codec.StructCodec;
+import dev.satherov.nexus.api.codec.format.CodecFormat;
+import dev.satherov.nexus.api.codec.result.CodecError;
+import dev.satherov.nexus.api.codec.result.NexusCodecException;
+import dev.satherov.nexus.api.codec.struct.StructCodec;
 
 import net.neoforged.neoforge.network.connection.ConnectionType;
 import net.neoforged.neoforge.registries.holdersets.AndHolderSet;

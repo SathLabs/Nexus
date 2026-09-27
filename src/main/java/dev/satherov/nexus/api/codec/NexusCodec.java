@@ -1,11 +1,19 @@
 package dev.satherov.nexus.api.codec;
 
+import dev.satherov.nexus.api.codec.format.BufferFormat;
+import dev.satherov.nexus.api.codec.format.CodecFormat;
+import dev.satherov.nexus.api.codec.key.KeyedCodec;
+import dev.satherov.nexus.api.codec.key.MapKey;
+import dev.satherov.nexus.api.codec.result.CodecResult;
+import dev.satherov.nexus.api.codec.result.NexusCodecException;
+import dev.satherov.nexus.api.codec.struct.StructCodec;
+import dev.satherov.nexus.api.codec.struct.StructField;
 import dev.satherov.nexus.internal.codec.CollectionCodecs;
 import dev.satherov.nexus.internal.codec.Combinators;
 import dev.satherov.nexus.internal.codec.HolderCodecs;
 import dev.satherov.nexus.internal.codec.Scalars;
-import dev.satherov.nexus.internal.codec.Structs;
-import dev.satherov.nexus.internal.codec.VanillaAdapters;
+import dev.satherov.nexus.internal.codec.struct.Structs;
+import dev.satherov.nexus.internal.codec.vanilla.VanillaAdapters;
 
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
@@ -43,12 +51,13 @@ import com.mojang.datafixers.util.Function9;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.JsonOps;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-import io.netty.handler.codec.DecoderException;
-import io.netty.handler.codec.EncoderException;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Range;
 import org.jspecify.annotations.Nullable;
+
+import io.netty.handler.codec.DecoderException;
+import io.netty.handler.codec.EncoderException;
 
 import java.util.List;
 import java.util.Map;

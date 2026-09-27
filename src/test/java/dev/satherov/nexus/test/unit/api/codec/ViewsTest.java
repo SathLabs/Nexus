@@ -1,10 +1,10 @@
 package dev.satherov.nexus.test.unit.api.codec;
 
 import dev.satherov.nexus.api.codec.Access;
-import dev.satherov.nexus.api.codec.CodecFormat;
 import dev.satherov.nexus.api.codec.NexusCodec;
-import dev.satherov.nexus.api.codec.NexusCodecException;
-import dev.satherov.nexus.api.codec.StructCodec;
+import dev.satherov.nexus.api.codec.format.CodecFormat;
+import dev.satherov.nexus.api.codec.result.NexusCodecException;
+import dev.satherov.nexus.api.codec.struct.StructCodec;
 
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
@@ -222,8 +222,8 @@ public class ViewsTest {
         DataResult<List<HolderSet<Item>>> sets = NexusCodec.holderSet(Registries.ITEM).asDfu().listOf().parse(ops, JsonParser.parseString("[\"minecraft:stone\",null]"));
         DataResult<List<String>> strings = NexusCodec.STRING.asDfu().listOf().parse(JsonOps.INSTANCE, JsonParser.parseString("[\"stone\",null]"));
         
-        Assertions.assertThat(ViewsTest.errorOf(sets)).contains("expected a list, found null");
-        Assertions.assertThat(ViewsTest.errorOf(strings)).contains("expected a string, found null");
+        Assertions.assertThat(ViewsTest.errorOf(sets)).contains("Expected a list, found null");
+        Assertions.assertThat(ViewsTest.errorOf(strings)).contains("Expected a string, found null");
     }
     
     @Test

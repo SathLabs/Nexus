@@ -3,10 +3,12 @@ package dev.satherov.nexus.internal.codec;
 import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.api.codec.Access;
-import dev.satherov.nexus.api.codec.CodecError;
 import dev.satherov.nexus.api.codec.NexusCodec;
-import dev.satherov.nexus.api.codec.NexusCodecException;
-import dev.satherov.nexus.api.codec.StructCodec;
+import dev.satherov.nexus.api.codec.result.CodecError;
+import dev.satherov.nexus.api.codec.result.NexusCodecException;
+import dev.satherov.nexus.api.codec.struct.StructCodec;
+import dev.satherov.nexus.internal.codec.format.Operations;
+import dev.satherov.nexus.internal.codec.struct.Structs;
 
 import net.minecraft.resources.Identifier;
 
@@ -51,7 +53,7 @@ public class Combinators {
             /// Writes the side held with its codec, after a boolean that is `true` for the left side on the network.
             ///
             @Override
-            protected <V> V write(Operations<V> operations, Either<L, R> value) {
+            public <V> V write(Operations<V> operations, Either<L, R> value) {
                 if (operations.isPositional()) {
                     operations.ofBoolean(value.left().isPresent());
                 }
@@ -63,9 +65,11 @@ public class Combinators {
             /// Reads the side its boolean picks on the network, and tries the left codec and then the right otherwise.
             ///
             @Override
-            protected <V> Either<L, R> read(Operations<V> operations, V input) {
+            public <V> Either<L, R> read(Operations<V> operations, V input) {
                 if (operations.isPositional()) {
-                    return operations.asBoolean(input) ? Either.left(first.read(operations, input)) : Either.right(second.read(operations, input));
+                    return operations.asBoolean(input) ?
+                            Either.left(first.read(operations, input)) :
+                            Either.right(second.read(operations, input));
                 }
                 
                 return Combinators.readEither(operations, input, first, second);
@@ -88,7 +92,7 @@ public class Combinators {
             /// Writes a single element bare and any other number of elements as a list, which it always does on the network.
             ///
             @Override
-            protected <V> V write(Operations<V> operations, List<T> value) {
+            public <V> V write(Operations<V> operations, List<T> value) {
                 if (operations.isPositional() || value.size() != 1) {
                     return list.write(operations, value);
                 }
@@ -100,7 +104,7 @@ public class Combinators {
             /// Reads a list on the network, and tries a list and then a bare element otherwise.
             ///
             @Override
-            protected <V> List<T> read(Operations<V> operations, V input) {
+            public <V> List<T> read(Operations<V> operations, V input) {
                 if (operations.isPositional()) {
                     return list.read(operations, input);
                 }
@@ -133,7 +137,7 @@ public class Combinators {
     }
     
     ///
-    /// Creates the codec behind [StructCodec#orShort(NexusCodec, Function, Function)], which is the either of the short form and the struct.
+    /// Creates the codec behind [StructCodec#orShort(NexusCodec, Function, Function)], which is the `either` of the short form and the struct.
     ///
     /// @param struct    The codec of the struct.
     /// @param shortForm The codec of the short form.
@@ -150,7 +154,7 @@ public class Combinators {
     ) {
         return Combinators.map(
                 "orShort",
-                Combinators.<S, T, A>either(shortForm, struct),
+                Combinators.either(shortForm, struct),
                 either -> either.map(fromShort, Function.identity()),
                 value -> toShort.apply(value).<Either<S, T>>map(Either::left).orElseGet(() -> Either.right(value))
         );
@@ -193,7 +197,7 @@ public class Combinators {
             /// Writes the value with the codec the definition returns.
             ///
             @Override
-            protected <V> V write(Operations<V> operations, T value) {
+            public <V> V write(Operations<V> operations, T value) {
                 return this.defined.get().write(operations, value);
             }
             
@@ -201,7 +205,7 @@ public class Combinators {
             /// Reads a value with the codec the definition returns.
             ///
             @Override
-            protected <V> T read(Operations<V> operations, V input) {
+            public <V> T read(Operations<V> operations, V input) {
                 return this.defined.get().read(operations, input);
             }
         };
@@ -244,7 +248,10 @@ public class Combinators {
     public static <T, A extends Access.Plain> Traversal<T, A> validate(Traversal<T, ? super A> codec, Function<? super T, @Nullable String> check) {
         Function<T, T> checked = Combinators.guarded("check", value -> {
             String error = check.apply(value);
-            if (error != null) throw new NexusCodecException(error);
+            if (error != null) {
+                throw new NexusCodecException(error);
+            }
+            
             return value;
         });
         
@@ -259,7 +266,9 @@ public class Combinators {
             try {
                 return function.apply(value);
             } catch (RuntimeException failure) {
-                throw failure instanceof NexusCodecException refused ? refused : new NexusCodecException("could not " + verb + " the value, " + failure);
+                throw failure instanceof NexusCodecException refused ?
+                        refused :
+                        new NexusCodecException("could not " + verb + " the value, " + failure);
             }
         };
     }
@@ -279,7 +288,7 @@ public class Combinators {
             /// Maps the value back and then writes it with the codec.
             ///
             @Override
-            protected <V> V write(Operations<V> operations, T value) {
+            public <V> V write(Operations<V> operations, T value) {
                 return codec.write(operations, from.apply(value));
             }
             
@@ -287,7 +296,7 @@ public class Combinators {
             /// Reads a value with the codec and then maps it.
             ///
             @Override
-            protected <V> T read(Operations<V> operations, V input) {
+            public <V> T read(Operations<V> operations, V input) {
                 return to.apply(codec.read(operations, input));
             }
         };
@@ -349,7 +358,7 @@ public class Combinators {
         /// The key and the keys of every subtype.
         ///
         @Override
-        protected Set<String> keys() {
+        public Set<String> keys() {
             return this.keys;
         }
         
@@ -357,7 +366,7 @@ public class Combinators {
         /// Writes the identifier and then the fields of the subtype on the network, and the fields and the identifier into a new object otherwise.
         ///
         @Override
-        protected <V> V write(Operations<V> operations, T value) {
+        public <V> V write(Operations<V> operations, T value) {
             if (!operations.isPositional()) {
                 V object = operations.emptyObject();
                 this.writeFields(operations, object, value);
@@ -374,7 +383,7 @@ public class Combinators {
         /// Writes the fields of the subtype and then the identifier under the key, and fails at the key if the identifier has no subtype.
         ///
         @Override
-        protected <V> void writeFields(Operations<V> operations, V object, T value) {
+        public <V> void writeFields(Operations<V> operations, V object, T value) {
             Identifier id = this.keyOf.apply(value);
             Structs.Inlinable<T, ? super A> subtype;
             V encoded;
@@ -382,7 +391,7 @@ public class Combinators {
                 subtype = this.subtype(id);
                 encoded = Scalars.IDENTIFIER.write(operations, id);
             } catch (NexusCodecException failure) {
-                throw Errors.prefixKey(failure, this.key);
+                throw CodecErrors.prefixKey(failure, this.key);
             }
             
             subtype.writeFields(operations, object, value);
@@ -393,7 +402,7 @@ public class Combinators {
         /// Reads the identifier and then the fields of its subtype on the network, and the fields of the subtype from an object otherwise.
         ///
         @Override
-        protected <V> T read(Operations<V> operations, V input) {
+        public <V> T read(Operations<V> operations, V input) {
             if (operations.isPositional()) {
                 return this.subtype(Scalars.IDENTIFIER.read(operations, input)).read(operations, input);
             }
@@ -405,18 +414,23 @@ public class Combinators {
         /// Reads the identifier under the key and then the fields of its subtype, and on a strict format refuses the keys that neither has.
         ///
         @Override
-        protected <V> T readFields(Operations<V> operations, V object, @Nullable Set<String> present) {
+        public <V> T readFields(Operations<V> operations, V object, @Nullable Set<String> present) {
             V encoded = operations.get(object, this.key);
-            if (encoded == null) throw new NexusCodecException(List.of(new CodecError(this.key, "missing")));
+            if (encoded == null) {
+                throw new NexusCodecException(List.of(new CodecError(this.key, "missing")));
+            }
             
             Structs.Inlinable<T, ? super A> subtype;
             try {
                 subtype = this.subtype(Scalars.IDENTIFIER.read(operations, encoded));
             } catch (NexusCodecException failure) {
-                throw Errors.prefixKey(failure, this.key);
+                throw CodecErrors.prefixKey(failure, this.key);
             }
             
-            List<CodecError> unknown = operations.isStrict() ? this.unknownKeys(operations, object, present, subtype) : null;
+            List<CodecError> unknown = operations.isStrict() ?
+                    this.unknownKeys(operations, object, present, subtype) :
+                    null;
+            
             if (unknown == null) {
                 return subtype.readFields(operations, object, null);
             }
@@ -432,6 +446,7 @@ public class Combinators {
         
         ///
         /// Creates an error for every key of the given object that is neither the key nor a key of the given subtype, or `null` if none exists.
+        ///
         /// If this struct is inline, only the keys of the other subtypes count, since its owner checks the rest.
         ///
         private <V> @Nullable List<CodecError> unknownKeys(Operations<V> operations, V object, @Nullable Set<String> present, Structs.Inlinable<?, ?> subtype) {
@@ -448,12 +463,12 @@ public class Combinators {
         }
         
         ///
-        /// Gets the codec of the subtype with the given identifier, and fails listing the identifiers of all subtypes if there is none.
+        /// Gets the codec of the subtype with the given identifier and fails to list the identifiers of all subtypes if there is none.
         ///
         private Structs.Inlinable<T, ? super A> subtype(Identifier id) {
             Structs.Inlinable<? extends T, ? super A> subtype = this.subtypes.get(id);
             if (subtype == null) {
-                throw Errors.unknownName(this.subtypes.keySet().stream().map(Identifier::toString).sorted().toList(), id.toString());
+                throw CodecErrors.unknownName(this.subtypes.keySet().stream().map(Identifier::toString).sorted().toList(), id.toString());
             }
             
             //noinspection unchecked A value is only ever written by the subtype that its own identifier picks.

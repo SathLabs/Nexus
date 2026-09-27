@@ -4,7 +4,8 @@ import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.NexusCodec;
-import dev.satherov.nexus.api.codec.NexusCodecException;
+import dev.satherov.nexus.api.codec.result.NexusCodecException;
+import dev.satherov.nexus.internal.codec.format.Operations;
 
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.network.FriendlyByteBuf;
@@ -34,18 +35,18 @@ public class Scalars {
     public static final Traversal<Boolean, Access.Plain> BOOL = new Traversal<>("BOOL") {
         
         ///
-        /// Writes the boolean.
+        /// Writes the `boolean`.
         ///
         @Override
-        protected <V> V write(Operations<V> operations, Boolean value) {
+        public <V> V write(Operations<V> operations, Boolean value) {
             return operations.ofBoolean(value);
         }
         
         ///
-        /// Reads a boolean.
+        /// Reads a `boolean`.
         ///
         @Override
-        protected <V> Boolean read(Operations<V> operations, V input) {
+        public <V> Boolean read(Operations<V> operations, V input) {
             return operations.asBoolean(input);
         }
     };
@@ -56,18 +57,18 @@ public class Scalars {
     public static final Traversal<Byte, Access.Plain> BYTE = new Traversal<>("BYTE") {
         
         ///
-        /// Writes the byte.
+        /// Writes the `byte`.
         ///
         @Override
-        protected <V> V write(Operations<V> operations, Byte value) {
+        public <V> V write(Operations<V> operations, Byte value) {
             return operations.ofByte(value);
         }
         
         ///
-        /// Reads a byte.
+        /// Reads a `byte`.
         ///
         @Override
-        protected <V> Byte read(Operations<V> operations, V input) {
+        public <V> Byte read(Operations<V> operations, V input) {
             return operations.asByte(input);
         }
     };
@@ -78,18 +79,18 @@ public class Scalars {
     public static final Traversal<Short, Access.Plain> SHORT = new Traversal<>("SHORT") {
         
         ///
-        /// Writes the short.
+        /// Writes the `short`.
         ///
         @Override
-        protected <V> V write(Operations<V> operations, Short value) {
+        public <V> V write(Operations<V> operations, Short value) {
             return operations.ofShort(value);
         }
         
         ///
-        /// Reads a short.
+        /// Reads a `short`.
         ///
         @Override
-        protected <V> Short read(Operations<V> operations, V input) {
+        public <V> Short read(Operations<V> operations, V input) {
             return operations.asShort(input);
         }
     };
@@ -100,18 +101,18 @@ public class Scalars {
     public static final Traversal<Integer, Access.Plain> INT = new Traversal<>("INT") {
         
         ///
-        /// Writes the int.
+        /// Writes the `int`.
         ///
         @Override
-        protected <V> V write(Operations<V> operations, Integer value) {
+        public <V> V write(Operations<V> operations, Integer value) {
             return operations.ofInt(value);
         }
         
         ///
-        /// Reads an int.
+        /// Reads an `int`.
         ///
         @Override
-        protected <V> Integer read(Operations<V> operations, V input) {
+        public <V> Integer read(Operations<V> operations, V input) {
             return operations.asInt(input);
         }
     };
@@ -122,18 +123,18 @@ public class Scalars {
     public static final Traversal<Integer, Access.Plain> VAR_INT = new Traversal<>("VAR_INT") {
         
         ///
-        /// Writes the int, as a VarInt on the network.
+        /// Writes the `int`, as a VarInt on the network.
         ///
         @Override
-        protected <V> V write(Operations<V> operations, Integer value) {
+        public <V> V write(Operations<V> operations, Integer value) {
             return operations.ofVarInt(value);
         }
         
         ///
-        /// Reads an int, as a VarInt on the network.
+        /// Reads an `int`, as a VarInt on the network.
         ///
         @Override
-        protected <V> Integer read(Operations<V> operations, V input) {
+        public <V> Integer read(Operations<V> operations, V input) {
             return operations.asVarInt(input);
         }
     };
@@ -144,18 +145,18 @@ public class Scalars {
     public static final Traversal<Long, Access.Plain> LONG = new Traversal<>("LONG") {
         
         ///
-        /// Writes the long.
+        /// Writes the `long`.
         ///
         @Override
-        protected <V> V write(Operations<V> operations, Long value) {
+        public <V> V write(Operations<V> operations, Long value) {
             return operations.ofLong(value);
         }
         
         ///
-        /// Reads a long.
+        /// Reads a `long`.
         ///
         @Override
-        protected <V> Long read(Operations<V> operations, V input) {
+        public <V> Long read(Operations<V> operations, V input) {
             return operations.asLong(input);
         }
     };
@@ -166,18 +167,18 @@ public class Scalars {
     public static final Traversal<Long, Access.Plain> VAR_LONG = new Traversal<>("VAR_LONG") {
         
         ///
-        /// Writes the long, as a VarLong on the network.
+        /// Writes the `long`, as a VarLong on the network.
         ///
         @Override
-        protected <V> V write(Operations<V> operations, Long value) {
+        public <V> V write(Operations<V> operations, Long value) {
             return operations.ofVarLong(value);
         }
         
         ///
-        /// Reads a long, as a VarLong on the network.
+        /// Reads a `long`, as a VarLong on the network.
         ///
         @Override
-        protected <V> Long read(Operations<V> operations, V input) {
+        public <V> Long read(Operations<V> operations, V input) {
             return operations.asVarLong(input);
         }
     };
@@ -188,18 +189,18 @@ public class Scalars {
     public static final Traversal<Float, Access.Plain> FLOAT = new Traversal<>("FLOAT") {
         
         ///
-        /// Writes the float.
+        /// Writes the `float`.
         ///
         @Override
-        protected <V> V write(Operations<V> operations, Float value) {
+        public <V> V write(Operations<V> operations, Float value) {
             return operations.ofFloat(value);
         }
         
         ///
-        /// Reads a float.
+        /// Reads a `float`.
         ///
         @Override
-        protected <V> Float read(Operations<V> operations, V input) {
+        public <V> Float read(Operations<V> operations, V input) {
             return operations.asFloat(input);
         }
     };
@@ -210,18 +211,18 @@ public class Scalars {
     public static final Traversal<Double, Access.Plain> DOUBLE = new Traversal<>("DOUBLE") {
         
         ///
-        /// Writes the double.
+        /// Writes the `double`.
         ///
         @Override
-        protected <V> V write(Operations<V> operations, Double value) {
+        public <V> V write(Operations<V> operations, Double value) {
             return operations.ofDouble(value);
         }
         
         ///
-        /// Reads a double.
+        /// Reads a `double`.
         ///
         @Override
-        protected <V> Double read(Operations<V> operations, V input) {
+        public <V> Double read(Operations<V> operations, V input) {
             return operations.asDouble(input);
         }
     };
@@ -237,21 +238,24 @@ public class Scalars {
     public static final Traversal<Identifier, Access.Plain> IDENTIFIER = new Traversal<>("IDENTIFIER") {
         
         ///
-        /// Writes the string form of the identifier.
+        /// Writes the string form of the `identifier`.
         ///
         @Override
-        protected <V> V write(Operations<V> operations, Identifier value) {
+        public <V> V write(Operations<V> operations, Identifier value) {
             return operations.ofString(value.toString(), FriendlyByteBuf.MAX_STRING_LENGTH);
         }
         
         ///
-        /// Reads a string and parses it as an identifier.
+        /// Reads a string and parses it as an `identifier`.
         ///
         @Override
-        protected <V> Identifier read(Operations<V> operations, V input) {
+        public <V> Identifier read(Operations<V> operations, V input) {
             String text = operations.asString(input, FriendlyByteBuf.MAX_STRING_LENGTH);
             Identifier identifier = Identifier.tryParse(text);
-            if (identifier == null) throw Errors.mismatch("an identifier", text);
+            if (identifier == null) {
+                throw CodecErrors.mismatch("an identifier", text);
+            }
+            
             return identifier;
         }
     };
@@ -264,10 +268,10 @@ public class Scalars {
     public static final Traversal<UUID, Access.Plain> UNIQUE_ID = new Traversal<>("UUID") {
         
         ///
-        /// Writes the UUID as two longs on the network, and as an int array otherwise.
+        /// Writes the `UUID` as two `long`s on the network, and as an `int` array otherwise.
         ///
         @Override
-        protected <V> V write(Operations<V> operations, UUID value) {
+        public <V> V write(Operations<V> operations, UUID value) {
             if (operations.isPositional()) {
                 operations.ofLong(value.getMostSignificantBits());
                 return operations.ofLong(value.getLeastSignificantBits());
@@ -277,10 +281,10 @@ public class Scalars {
         }
         
         ///
-        /// Reads two longs on the network, and an int array or the string form of a UUID otherwise.
+        /// Reads two `long`s on the network, and an `int` array or the string form of a `UUID` otherwise.
         ///
         @Override
-        protected <V> UUID read(Operations<V> operations, V input) {
+        public <V> UUID read(Operations<V> operations, V input) {
             if (operations.isPositional()) {
                 return new UUID(operations.asLong(input), operations.asLong(input));
             }
@@ -292,7 +296,7 @@ public class Scalars {
                 return Scalars.parseUuid(operations, input);
             }
             
-            if (parts.length != 4) throw Errors.mismatch("a list of 4 ints", parts.length);
+            if (parts.length != 4) throw CodecErrors.mismatch("a list of 4 `int`s", parts.length);
             return UUIDUtil.uuidFromIntArray(parts);
         }
     };
@@ -318,7 +322,7 @@ public class Scalars {
             /// Writes the string.
             ///
             @Override
-            protected <V> V write(Operations<V> operations, String value) {
+            public <V> V write(Operations<V> operations, String value) {
                 return operations.ofString(value, limit);
             }
             
@@ -326,7 +330,7 @@ public class Scalars {
             /// Reads a string.
             ///
             @Override
-            protected <V> String read(Operations<V> operations, V input) {
+            public <V> String read(Operations<V> operations, V input) {
                 return operations.asString(input, limit);
             }
         };
@@ -357,15 +361,15 @@ public class Scalars {
             /// Writes an empty object, which is nothing on the network.
             ///
             @Override
-            protected <V> V write(Operations<V> operations, T value) {
+            public <V> V write(Operations<V> operations, T value) {
                 return operations.emptyObject();
             }
             
             ///
-            /// Reads nothing on the network, and checks that the input is an object otherwise.
+            /// Reads nothing on the network and checks that the input is an object otherwise.
             ///
             @Override
-            protected <V> T read(Operations<V> operations, V input) {
+            public <V> T read(Operations<V> operations, V input) {
                 if (!operations.isPositional()) {
                     // Called only to fail on anything that isn't an object, the same as DFU does.
                     operations.keys(input);
@@ -377,20 +381,20 @@ public class Scalars {
     }
     
     ///
-    /// Reads the string form of a UUID from the given input.
+    /// Reads the string form of a `UUID` from the given input.
     ///
     private static <V> UUID parseUuid(Operations<V> operations, V input) {
         String text;
         try {
             text = operations.asString(input, FriendlyByteBuf.MAX_STRING_LENGTH);
         } catch (NexusCodecException _) {
-            throw Errors.mismatch("a list of 4 ints or a UUID string", input);
+            throw CodecErrors.mismatch("a list of 4 `int`s or a UUID string", input);
         }
         
         try {
             return UUID.fromString(text);
         } catch (IllegalArgumentException _) {
-            throw Errors.mismatch("a UUID string", text);
+            throw CodecErrors.mismatch("a UUID string", text);
         }
     }
     
@@ -423,14 +427,30 @@ public class Scalars {
             this.constants = type.getEnumConstants();
             this.names = Arrays.stream(this.constants).map(EnumScalar::nameOf).toList();
             this.constantsByName = Arrays.stream(this.constants)
-                    .collect(Collectors.collectingAndThen(Collectors.toMap(EnumScalar::nameOf, Function.identity(), (first, _) -> first), Map::copyOf));
+                    .collect(Collectors.collectingAndThen(
+                            Collectors.toMap(
+                                    val -> EnumScalar.nameOf(val), // Why the hell does a short form lambda not work here???
+                                    Function.identity(),
+                                    (first, _) -> first
+                            ),
+                            Map::copyOf
+                    ));
+        }
+        
+        ///
+        /// Gets the name of the given constant in JSON and NBT.
+        ///
+        private static String nameOf(Enum<?> constant) {
+            return constant instanceof StringRepresentable representable ?
+                    representable.getSerializedName() :
+                    constant.name().toLowerCase(Locale.ROOT);
         }
         
         ///
         /// Writes the ordinal of the constant as a VarInt on the network, and its name otherwise.
         ///
         @Override
-        protected <V> V write(Operations<V> operations, E value) {
+        public <V> V write(Operations<V> operations, E value) {
             if (operations.isPositional()) {
                 return operations.ofVarInt(value.ordinal());
             }
@@ -442,24 +462,23 @@ public class Scalars {
         /// Reads the ordinal of a constant as a VarInt on the network, and its name otherwise.
         ///
         @Override
-        protected <V> E read(Operations<V> operations, V input) {
+        public <V> E read(Operations<V> operations, V input) {
             if (operations.isPositional()) {
                 int ordinal = operations.asVarInt(input);
-                if (ordinal < 0 || ordinal >= this.constants.length) throw Errors.outOfRange(0, this.constants.length - 1, ordinal);
+                if (ordinal < 0 || ordinal >= this.constants.length) {
+                    throw CodecErrors.outOfRange(0, this.constants.length - 1, ordinal);
+                }
+                
                 return this.constants[ordinal];
             }
             
             String name = operations.asString(input, FriendlyByteBuf.MAX_STRING_LENGTH);
             E constant = this.constantsByName.get(name);
-            if (constant == null) throw Errors.unknownName(this.names, name);
+            if (constant == null) {
+                throw CodecErrors.unknownName(this.names, name);
+            }
+            
             return constant;
-        }
-        
-        ///
-        /// Gets the name of the given constant in JSON and NBT.
-        ///
-        private static String nameOf(Enum<?> constant) {
-            return constant instanceof StringRepresentable representable ? representable.getSerializedName() : constant.name().toLowerCase(Locale.ROOT);
         }
     }
 }

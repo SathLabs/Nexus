@@ -3,11 +3,12 @@ package dev.satherov.nexus.internal.codec;
 import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.api.codec.Access;
-import dev.satherov.nexus.api.codec.CodecError;
-import dev.satherov.nexus.api.codec.CodecFormat;
-import dev.satherov.nexus.api.codec.MapKey;
 import dev.satherov.nexus.api.codec.NexusCodec;
-import dev.satherov.nexus.api.codec.NexusCodecException;
+import dev.satherov.nexus.api.codec.format.CodecFormat;
+import dev.satherov.nexus.api.codec.key.MapKey;
+import dev.satherov.nexus.api.codec.result.CodecError;
+import dev.satherov.nexus.api.codec.result.NexusCodecException;
+import dev.satherov.nexus.internal.codec.format.Operations;
 
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.resources.Identifier;
@@ -41,11 +42,6 @@ public class CollectionCodecs {
     /// The default maximum number of entries of a list, a set, or a map.
     ///
     public static final int LIMIT = 32_767;
-    
-    ///
-    /// The json operations, which turn a key into its string form and back.
-    ///
-    private static final Operations<JsonElement> JSON = Operations.of(CodecFormat.JSON);
     
     ///
     /// The key behind [MapKey#STRING].
@@ -83,6 +79,11 @@ public class CollectionCodecs {
             String::valueOf,
             text -> CollectionCodecs.parseInteger(text, Long.MIN_VALUE, Long.MAX_VALUE)
     );
+    
+    ///
+    /// The json operations, which turn a key into its string form and back.
+    ///
+    private static final Operations<JsonElement> JSON = Operations.of(CodecFormat.JSON);
     
     ///
     /// Creates the codec behind [NexusCodec#list(int)].
@@ -136,7 +137,11 @@ public class CollectionCodecs {
     /// Creates the key over the given codec whose string form is the string the codec writes in JSON.
     ///
     private static <K> MapKey<K, Access.Plain> stringKey(Traversal<K, Access.Plain> codec) {
-        return new Key<>(codec, key -> codec.write(CollectionCodecs.JSON, key).getAsString(), text -> codec.read(CollectionCodecs.JSON, new JsonPrimitive(text)));
+        return new Key<>(
+                codec,
+                key -> codec.write(CollectionCodecs.JSON, key).getAsString(),
+                text -> codec.read(CollectionCodecs.JSON, new JsonPrimitive(text))
+        );
     }
     
     ///
@@ -160,10 +165,13 @@ public class CollectionCodecs {
         try {
             value = Long.parseLong(text);
         } catch (NumberFormatException _) {
-            throw Errors.mismatch("an integer", text);
+            throw CodecErrors.mismatch("an integer", text);
         }
         
-        if (value < min || value > max) throw Errors.outOfRange(min, max, value);
+        if (value < min || value > max) {
+            throw CodecErrors.outOfRange(min, max, value);
+        }
+        
         return value;
     }
     
@@ -210,24 +218,32 @@ public class CollectionCodecs {
     ) implements MapKey<K, A> {
         
         ///
-        /// Writes the string form of the given key, with anything other than a [NexusCodecException] that the printer throws turned into one.
+        /// Writes the string form of the given key.
+        ///
+        /// Any exception thrown that is not a [NexusCodecException] is wrapped into one.
         ///
         private String print(K key) {
             try {
                 return this.printer.apply(key);
             } catch (RuntimeException failure) {
-                throw failure instanceof NexusCodecException refused ? refused : new NexusCodecException("could not write the key, " + failure);
+                throw failure instanceof NexusCodecException refused ?
+                        refused :
+                        new NexusCodecException("could not write the key, " + failure);
             }
         }
         
         ///
-        /// Reads a key from the given string form, with anything other than a [NexusCodecException] that the parser throws turned into one.
+        /// Reads a key from the given string form.
+        ///
+        /// Any exception thrown that is not a [NexusCodecException] is wrapped into one.
         ///
         private K parse(String text) {
             try {
                 return this.parser.apply(text);
             } catch (RuntimeException failure) {
-                throw failure instanceof NexusCodecException refused ? refused : new NexusCodecException("could not read the key, " + failure);
+                throw failure instanceof NexusCodecException refused ?
+                        refused :
+                        new NexusCodecException("could not read the key, " + failure);
             }
         }
     }
@@ -250,7 +266,7 @@ public class CollectionCodecs {
         private final Traversal<T, ? super A> codec;
         
         ///
-        /// The constructor of an empty collection, called with the number of elements it should have room for.
+        /// The constructor of an empty collection, called with the given number of elements to fit.
         ///
         private final IntFunction<C> factory;
         
@@ -271,10 +287,19 @@ public class CollectionCodecs {
         }
         
         ///
+        /// Adds the given element to the given collection and fails if the collection does not add it.
+        ///
+        private static <T> void add(Collection<T> collection, T element) {
+            if (!collection.add(element)) {
+                throw new NexusCodecException("duplicate element");
+            }
+        }
+        
+        ///
         /// Writes the number of elements and then every element on the network, and a list of the elements otherwise.
         ///
         @Override
-        protected <V> V write(Operations<V> operations, C value) {
+        public <V> V write(Operations<V> operations, C value) {
             if (operations.isPositional()) {
                 V buffer = operations.emptyObject();
                 operations.writeCount(value.size(), this.limit);
@@ -285,7 +310,10 @@ public class CollectionCodecs {
                 return buffer;
             }
             
-            if (value.size() > this.limit) throw CollectionCodecs.tooMany(this.limit, value.size());
+            if (value.size() > this.limit) {
+                throw CollectionCodecs.tooMany(this.limit, value.size());
+            }
+            
             List<V> elements = new ArrayList<>(value.size());
             List<CodecError> errors = null;
             int index = 0;
@@ -293,7 +321,7 @@ public class CollectionCodecs {
                 try {
                     elements.add(this.codec.write(operations, element));
                 } catch (NexusCodecException failure) {
-                    errors = CollectionCodecs.collect(errors, Errors.prefixIndex(failure, index));
+                    errors = CollectionCodecs.collect(errors, CodecErrors.prefixIndex(failure, index));
                 }
                 
                 index++;
@@ -307,10 +335,10 @@ public class CollectionCodecs {
         /// Reads the number of elements and then every element on the network, and the elements of a list otherwise.
         ///
         @Override
-        protected <V> C read(Operations<V> operations, V input) {
+        public <V> C read(Operations<V> operations, V input) {
             if (operations.isPositional()) {
                 int count = operations.readCount(this.limit);
-                // The count may still be far more than the buffer holds, so the room is capped the same as vanilla does.
+                // We don't know if the count actually obeys the limit, so we cap it here like vanilla does.
                 C collection = this.factory.apply(Math.min(count, ByteBufCodecs.MAX_INITIAL_COLLECTION_SIZE));
                 for (int i = 0; i < count; i++) {
                     CollectionTraversal.add(collection, this.codec.read(operations, input));
@@ -320,31 +348,32 @@ public class CollectionCodecs {
             }
             
             List<V> elements = operations.asList(input);
-            if (elements.size() > this.limit) throw CollectionCodecs.tooMany(this.limit, elements.size());
+            if (elements.size() > this.limit) {
+                throw CollectionCodecs.tooMany(this.limit, elements.size());
+            }
+            
             C collection = this.factory.apply(elements.size());
             List<CodecError> errors = null;
             for (int i = 0; i < elements.size(); i++) {
                 try {
                     CollectionTraversal.add(collection, this.codec.read(operations, elements.get(i)));
                 } catch (NexusCodecException failure) {
-                    errors = CollectionCodecs.collect(errors, Errors.prefixIndex(failure, i));
+                    errors = CollectionCodecs.collect(errors, CodecErrors.prefixIndex(failure, i));
                 }
             }
             
-            if (errors != null) throw new NexusCodecException(errors);
+            if (errors != null) {
+                throw new NexusCodecException(errors);
+            }
+            
             return collection;
-        }
-        
-        ///
-        /// Adds the given element to the given collection, and fails if the collection does not add it.
-        ///
-        private static <T> void add(Collection<T> collection, T element) {
-            if (!collection.add(element)) throw new NexusCodecException("duplicate element");
         }
     }
     
     ///
-    /// A codec of a map over its key and the codec of its values, which fails on a key that the map already holds.
+    /// A codec of a map holding its key and the codec of its values.
+    ///
+    /// Does not allow duplicate keys.
     ///
     /// On the network, it writes the number of entries and then every key and its value.
     /// In JSON and NBT, it writes an object and throws once with the errors of every entry that failed.
@@ -382,12 +411,21 @@ public class CollectionCodecs {
         }
         
         ///
+        /// Puts the given value under the given key of the given map and fails if the map already holds the key.
+        ///
+        private static <K, T> void put(Map<K, T> map, K key, T value) {
+            if (map.putIfAbsent(key, value) != null) {
+                throw new NexusCodecException("duplicate key");
+            }
+        }
+        
+        ///
         /// Writes the number of entries and then every key and its value on the network, and every value under the string form of its key otherwise.
         ///
-        /// In JSON and NBT, the errors of an entry whose key has no string form are at the index of the entry.
+        /// In JSON and NBT, the errors of an entry whose key has no string version are at the index of the entry.
         ///
         @Override
-        protected <V> V write(Operations<V> operations, Map<K, T> map) {
+        public <V> V write(Operations<V> operations, Map<K, T> map) {
             if (operations.isPositional()) {
                 V buffer = operations.emptyObject();
                 operations.writeCount(map.size(), this.limit);
@@ -399,7 +437,10 @@ public class CollectionCodecs {
                 return buffer;
             }
             
-            if (map.size() > this.limit) throw CollectionCodecs.tooMany(this.limit, map.size());
+            if (map.size() > this.limit) {
+                throw CollectionCodecs.tooMany(this.limit, map.size());
+            }
+            
             V object = operations.emptyObject();
             List<CodecError> errors = null;
             int index = 0;
@@ -409,13 +450,19 @@ public class CollectionCodecs {
                     name = this.key.print(entry.getKey());
                     operations.put(object, name, this.value.write(operations, entry.getValue()));
                 } catch (NexusCodecException failure) {
-                    errors = CollectionCodecs.collect(errors, name == null ? Errors.prefixIndex(failure, index) : Errors.prefixMapKey(failure, name));
+                    errors = CollectionCodecs.collect(errors, name == null ?
+                            CodecErrors.prefixIndex(failure, index) :
+                            CodecErrors.prefixMapKey(failure, name)
+                    );
                 }
                 
                 index++;
             }
             
-            if (errors != null) throw new NexusCodecException(errors);
+            if (errors != null) {
+                throw new NexusCodecException(errors);
+            }
+            
             return object;
         }
         
@@ -423,10 +470,10 @@ public class CollectionCodecs {
         /// Reads the number of entries and then every key and its value on the network, and every key of an object and its value otherwise.
         ///
         @Override
-        protected <V> Map<K, T> read(Operations<V> operations, V input) {
+        public <V> Map<K, T> read(Operations<V> operations, V input) {
             if (operations.isPositional()) {
                 int count = operations.readCount(this.limit);
-                // The count may still be far more than the buffer holds, so the room is capped the same as vanilla does.
+                // We don't know if the count actually obeys the limit, so we cap it here like vanilla does.
                 Map<K, T> map = LinkedHashMap.newLinkedHashMap(Math.min(count, ByteBufCodecs.MAX_INITIAL_COLLECTION_SIZE));
                 for (int i = 0; i < count; i++) {
                     MapTraversal.put(map, this.key.codec().read(operations, input), this.value.read(operations, input));
@@ -436,7 +483,10 @@ public class CollectionCodecs {
             }
             
             Set<String> names = operations.keys(input);
-            if (names.size() > this.limit) throw CollectionCodecs.tooMany(this.limit, names.size());
+            if (names.size() > this.limit) {
+                throw CollectionCodecs.tooMany(this.limit, names.size());
+            }
+            
             Map<K, T> map = LinkedHashMap.newLinkedHashMap(names.size());
             List<CodecError> errors = null;
             for (String name : names) {
@@ -444,19 +494,15 @@ public class CollectionCodecs {
                     //noinspection DataFlowIssue The name is one of the keys of the object.
                     MapTraversal.put(map, this.key.parse(name), this.value.read(operations, operations.get(input, name)));
                 } catch (NexusCodecException failure) {
-                    errors = CollectionCodecs.collect(errors, Errors.prefixMapKey(failure, name));
+                    errors = CollectionCodecs.collect(errors, CodecErrors.prefixMapKey(failure, name));
                 }
             }
             
-            if (errors != null) throw new NexusCodecException(errors);
+            if (errors != null) {
+                throw new NexusCodecException(errors);
+            }
+            
             return map;
-        }
-        
-        ///
-        /// Puts the given value under the given key of the given map, and fails if the map already holds the key.
-        ///
-        private static <K, T> void put(Map<K, T> map, K key, T value) {
-            if (map.putIfAbsent(key, value) != null) throw new NexusCodecException("duplicate key");
         }
     }
 }

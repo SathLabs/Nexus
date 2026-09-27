@@ -3,9 +3,10 @@ package dev.satherov.nexus.internal.codec;
 import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.api.codec.Access;
-import dev.satherov.nexus.api.codec.CodecError;
 import dev.satherov.nexus.api.codec.NexusCodec;
-import dev.satherov.nexus.api.codec.NexusCodecException;
+import dev.satherov.nexus.api.codec.result.CodecError;
+import dev.satherov.nexus.api.codec.result.NexusCodecException;
+import dev.satherov.nexus.internal.codec.format.Operations;
 
 import net.neoforged.neoforge.registries.NeoForgeRegistries;
 import net.neoforged.neoforge.registries.holdersets.HolderSetType;
@@ -68,7 +69,7 @@ public class HolderCodecs {
             /// Writes the id of the holder's value as a VarInt on the network, and the identifier of a reference holder otherwise.
             ///
             @Override
-            protected <V> V write(Operations<V> operations, Holder<T> value) {
+            public <V> V write(Operations<V> operations, Holder<T> value) {
                 if (operations.isPositional()) {
                     return operations.ofVarInt(HolderCodecs.idOf(operations, registry, value));
                 }
@@ -80,7 +81,7 @@ public class HolderCodecs {
             /// Reads the id of a holder as a VarInt on the network, and the identifier of a holder otherwise.
             ///
             @Override
-            protected <V> Holder<T> read(Operations<V> operations, V input) {
+            public <V> Holder<T> read(Operations<V> operations, V input) {
                 if (operations.isPositional()) {
                     return HolderCodecs.byId(operations, registry, operations.asVarInt(input));
                 }
@@ -107,7 +108,7 @@ public class HolderCodecs {
             /// Writes a reference holder as the id of its value plus one on the network, and as its identifier otherwise.
             ///
             @Override
-            protected <V> V write(Operations<V> operations, Holder<T> value) {
+            public <V> V write(Operations<V> operations, Holder<T> value) {
                 if (value.kind() == Holder.Kind.DIRECT) {
                     if (operations.isPositional()) {
                         operations.ofVarInt(HolderCodecs.DIRECT_ID);
@@ -128,7 +129,7 @@ public class HolderCodecs {
             /// Otherwise, it reads a string that is a valid identifier as a reference holder, and anything else as a direct holder.
             ///
             @Override
-            protected <V> Holder<T> read(Operations<V> operations, V input) {
+            public <V> Holder<T> read(Operations<V> operations, V input) {
                 if (operations.isPositional()) {
                     int id = operations.asVarInt(input);
                     return id == HolderCodecs.DIRECT_ID ? Holder.direct(inline.read(operations, input)) : HolderCodecs.byId(operations, registry, id - 1);
@@ -174,15 +175,15 @@ public class HolderCodecs {
         return HolderCodecs.infoOf(operations, registry)
                 .getter()
                 .get(ResourceKey.create(registry, id))
-                .orElseThrow(() -> Errors.mismatch("an element of the registry '" + registry.identifier() + "'", id.toString()));
+                .orElseThrow(() -> CodecErrors.mismatch("an element of the registry '" + registry.identifier() + "'", id.toString()));
     }
     
     ///
-    /// Gets the given registry in the registries of the given format, and fails with its identifier if the format doesn't have it.
+    /// Gets the given registry in the registries of the given format and fails with its identifier if the format doesn't have it.
     ///
     private static <T> RegistryOps.RegistryInfo<T> infoOf(Operations<?> operations, ResourceKey<? extends Registry<T>> registry) {
-        RegistryOps.RegistryInfoLookup registries = operations.registries();
-        Optional<RegistryOps.RegistryInfo<T>> info = registries != null ? registries.lookup(registry) : Optional.empty();
+        RegistryOps.RegistryInfoLookup lookup = operations.lookup();
+        Optional<RegistryOps.RegistryInfo<T>> info = lookup != null ? lookup.lookup(registry) : Optional.empty();
         return info.orElseThrow(() -> HolderCodecs.inaccessible(registry));
     }
     
@@ -204,18 +205,18 @@ public class HolderCodecs {
     private static <T> Holder<T> byId(Operations<?> operations, ResourceKey<? extends Registry<T>> registry, int id) {
         return HolderCodecs.syncedRegistryOf(operations, registry)
                 .get(id)
-                .orElseThrow(() -> Errors.mismatch("an id of the registry '" + registry.identifier() + "'", id));
+                .orElseThrow(() -> CodecErrors.mismatch("an id of the registry '" + registry.identifier() + "'", id));
     }
     
     ///
-    /// Gets the given registry in the registry access of the given netty format, and fails with its identifier if it's missing or a built-in registry that isn't synced.
+    /// Gets the given registry in the registry access of the given netty format and fails with its identifier if it's missing or a built-in registry that isn't synced.
     ///
     private static <T> Registry<T> syncedRegistryOf(Operations<?> operations, ResourceKey<? extends Registry<T>> registry) {
         RegistryAccess access = operations.registryAccess();
         Optional<Registry<T>> found = access != null ? access.lookup(registry) : Optional.empty();
         Registry<T> synced = found.orElseThrow(() -> HolderCodecs.inaccessible(registry));
         if (BuiltInRegistries.REGISTRY.containsKey(registry.identifier()) && !synced.doesSync()) {
-            throw new NexusCodecException("could not use the ids of the registry '" + registry.identifier() + "' since it isn't synced");
+            throw new NexusCodecException("Could not use the ids of the registry '" + registry.identifier() + "' since it isn't synced");
         }
         
         return synced;
@@ -225,11 +226,11 @@ public class HolderCodecs {
     /// Creates the failure for a registry that the format doesn't have.
     ///
     private static NexusCodecException inaccessible(ResourceKey<?> registry) {
-        return new NexusCodecException("could not access the registry '" + registry.identifier() + "'");
+        return new NexusCodecException("Could not access the registry '" + registry.identifier() + "'");
     }
     
     ///
-    /// Gets the text of the given value if it's a json string or a string tag, or `null` if it's anything else.
+    /// Gets the text of the given value if it's a JSON string or a string tag, or `null` if it's anything else.
     ///
     private static @Nullable String textOf(Object value) {
         return switch (value) {
@@ -289,11 +290,56 @@ public class HolderCodecs {
         }
         
         ///
+        /// Checks that the type of the given custom set is registered.
+        ///
+        private static void requireRegistered(ICustomHolderSet<?> set) {
+            if (NeoForgeRegistries.HOLDER_SET_TYPES.getKey(set.type()) == null) {
+                throw new NexusCodecException("Expected a holder set of a registered type, found an unregistered type");
+            }
+        }
+        
+        ///
+        /// Writes the content of the given custom set with the given stream codec of its type, with anything other than a [NexusCodecException] turned into one.
+        ///
+        private static <T, S extends ICustomHolderSet<T>> void writeCustom(StreamCodec<RegistryFriendlyByteBuf, S> codec, RegistryFriendlyByteBuf buffer, ICustomHolderSet<T> set) {
+            try {
+                //noinspection unchecked The stream codec is the one of the set's own type.
+                codec.encode(buffer, (S) set);
+            } catch (RuntimeException failure) {
+                throw failure instanceof NexusCodecException refused ? refused : new NexusCodecException("could not write the custom holder set, " + failure);
+            }
+        }
+        
+        ///
+        /// Gets the holder set type of the given identifier and fails to list the identifiers of all types if there is none.
+        ///
+        private static HolderSetType typeOf(Identifier id) {
+            HolderSetType type = NeoForgeRegistries.HOLDER_SET_TYPES.getValue(id);
+            if (type == null) {
+                throw CodecErrors.unknownName(NeoForgeRegistries.HOLDER_SET_TYPES.keySet().stream().map(Identifier::toString).sorted().toList(), id.toString());
+            }
+            
+            return type;
+        }
+        
+        ///
+        /// Creates the registry ops over the json or NBT ops of the given format, with the registries of the format.
+        ///
+        private static <V> RegistryOps<V> registryOps(Operations<V> operations, ResourceKey<?> registry) {
+            RegistryOps.RegistryInfoLookup lookup = operations.lookup();
+            if (lookup == null) {
+                throw HolderCodecs.inaccessible(registry);
+            }
+            
+            return RegistryOps.create(operations.dynamicOps(), lookup);
+        }
+        
+        ///
         /// Writes the set in the layout of vanilla on the network.
         /// Otherwise, it writes a tag as `#` and its identifier, one holder bare, any other holders as a list, and a custom set with NeoForge's codec.
         ///
         @Override
-        protected <V> V write(Operations<V> operations, HolderSet<T> value) {
+        public <V> V write(Operations<V> operations, HolderSet<T> value) {
             if (operations.isPositional()) {
                 return this.writeBuffer(operations, value);
             }
@@ -309,7 +355,9 @@ public class HolderCodecs {
             
             return value.unwrap().map(
                     tag -> operations.ofString("#" + tag.location(), FriendlyByteBuf.MAX_STRING_LENGTH),
-                    contents -> contents.size() == 1 ? this.holder.write(operations, contents.getFirst()) : this.list.write(operations, contents)
+                    contents -> contents.size() == 1 ?
+                            this.holder.write(operations, contents.getFirst()) :
+                            this.list.write(operations, contents)
             );
         }
         
@@ -340,32 +388,11 @@ public class HolderCodecs {
         }
         
         ///
-        /// Checks that the type of the given custom set is registered.
-        ///
-        private static void requireRegistered(ICustomHolderSet<?> set) {
-            if (NeoForgeRegistries.HOLDER_SET_TYPES.getKey(set.type()) == null) {
-                throw new NexusCodecException("expected a holder set of a registered type, found an unregistered type");
-            }
-        }
-        
-        ///
-        /// Writes the content of the given custom set with the given stream codec of its type, with anything other than a [NexusCodecException] turned into one.
-        ///
-        private static <T, S extends ICustomHolderSet<T>> void writeCustom(StreamCodec<RegistryFriendlyByteBuf, S> codec, RegistryFriendlyByteBuf buffer, ICustomHolderSet<T> set) {
-            try {
-                //noinspection unchecked The stream codec is the one of the set's own type.
-                codec.encode(buffer, (S) set);
-            } catch (RuntimeException failure) {
-                throw failure instanceof NexusCodecException refused ? refused : new NexusCodecException("could not write the custom holder set, " + failure);
-            }
-        }
-        
-        ///
         /// Reads a set in the layout of vanilla on the network.
         /// Otherwise, it reads a string as a tag if it starts with `#` and as one holder if it doesn't, an object as a custom set, and anything else as a list.
         ///
         @Override
-        protected <V> HolderSet<T> read(Operations<V> operations, V input) {
+        public <V> HolderSet<T> read(Operations<V> operations, V input) {
             if (operations.isPositional()) {
                 return this.readBuffer(operations, input);
             }
@@ -373,7 +400,10 @@ public class HolderCodecs {
             String text = HolderCodecs.textOf(input);
             if (text != null && text.startsWith("#")) {
                 Identifier location = Identifier.tryParse(text.substring(1));
-                if (location == null) throw Errors.mismatch("a tag", text);
+                if (location == null) {
+                    throw CodecErrors.mismatch("a tag", text);
+                }
+                
                 return this.tagOf(operations, location);
             }
             
@@ -389,17 +419,19 @@ public class HolderCodecs {
         }
         
         ///
-        /// Reads a custom set from the given object with the codec of its type, and on a strict format refuses the keys that neither `type` nor the codec has.
+        /// Reads a custom set from the given object with the codec of its type and refuses keys that neither `type` nor the codec has when on a strict format.
         ///
         private <V> HolderSet<T> readObject(Operations<V> operations, V object) {
             V encoded = operations.get(object, HolderSetTraversal.TYPE_KEY);
-            if (encoded == null) throw new NexusCodecException(List.of(new CodecError(HolderSetTraversal.TYPE_KEY, "missing")));
+            if (encoded == null) {
+                throw new NexusCodecException(List.of(new CodecError(HolderSetTraversal.TYPE_KEY, "missing")));
+            }
             
             HolderSetType type;
             try {
                 type = HolderSetTraversal.typeOf(Scalars.IDENTIFIER.read(operations, encoded));
             } catch (NexusCodecException failure) {
-                throw Errors.prefixKey(failure, HolderSetTraversal.TYPE_KEY);
+                throw CodecErrors.prefixKey(failure, HolderSetTraversal.TYPE_KEY);
             }
             
             RegistryOps<V> ops = HolderSetTraversal.registryOps(operations, this.registry);
@@ -418,18 +450,6 @@ public class HolderCodecs {
             }
             
             return codec.codec().parse(ops, object).getOrThrow(NexusCodecException::new);
-        }
-        
-        ///
-        /// Gets the holder set type of the given identifier, and fails listing the identifiers of all types if there is none.
-        ///
-        private static HolderSetType typeOf(Identifier id) {
-            HolderSetType type = NeoForgeRegistries.HOLDER_SET_TYPES.getValue(id);
-            if (type == null) {
-                throw Errors.unknownName(NeoForgeRegistries.HOLDER_SET_TYPES.keySet().stream().map(Identifier::toString).sorted().toList(), id.toString());
-            }
-            
-            return type;
         }
         
         ///
@@ -459,8 +479,10 @@ public class HolderCodecs {
         ///
         private <V> HolderSet<T> readCustom(V input, int type) {
             HolderSetType found = NeoForgeRegistries.HOLDER_SET_TYPES.byId(type);
-            if (found == null) throw Errors.mismatch("the id of a holder set type", type);
-            if (!(input instanceof RegistryFriendlyByteBuf buffer)) throw HolderCodecs.inaccessible(this.registry);
+            if (found == null) throw CodecErrors.mismatch("the id of a holder set type", type);
+            if (!(input instanceof RegistryFriendlyByteBuf buffer)) {
+                throw HolderCodecs.inaccessible(this.registry);
+            }
             try {
                 return found.makeStreamCodec(this.registry).decode(buffer);
             } catch (RuntimeException failure) {
@@ -475,16 +497,7 @@ public class HolderCodecs {
             return HolderCodecs.infoOf(operations, this.registry)
                     .getter()
                     .get(TagKey.create(this.registry, location))
-                    .orElseThrow(() -> Errors.mismatch("a tag of the registry '" + this.registry.identifier() + "'", "#" + location));
-        }
-        
-        ///
-        /// Creates the registry ops over the json or NBT ops of the given format, with the registries of the format.
-        ///
-        private static <V> RegistryOps<V> registryOps(Operations<V> operations, ResourceKey<?> registry) {
-            RegistryOps.RegistryInfoLookup registries = operations.registries();
-            if (registries == null) throw HolderCodecs.inaccessible(registry);
-            return RegistryOps.create(operations.dynamicOps(), registries);
+                    .orElseThrow(() -> CodecErrors.mismatch("a tag of the registry '" + this.registry.identifier() + "'", "#" + location));
         }
     }
 }
