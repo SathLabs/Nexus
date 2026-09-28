@@ -247,7 +247,7 @@ public class HoldersTest {
         CodecFormat<JsonElement, Access.Registries> strict = HoldersTest.JSON.strict();
         JsonElement junk = JsonParser.parseString("{\"type\":\"neoforge:any\",\"junk\":1}");
         
-        Assertions.assertThat(HoldersTest.errors(() -> HoldersTest.ITEMS.decode(strict, junk))).containsExactly(new CodecError("junk", "unknown key"));
+        Assertions.assertThat(HoldersTest.errors(() -> HoldersTest.ITEMS.decode(strict, junk))).containsExactly(new CodecError("junk", "Unknown key"));
         Assertions.assertThat(HoldersTest.ITEMS.decode(HoldersTest.JSON, junk)).isInstanceOf(AnyHolderSet.class);
         HoldersTest.assertSameSet(
                 HoldersTest.ITEMS.decode(strict, JsonParser.parseString("{\"type\":\"neoforge:or\",\"values\":[\"minecraft:stone\"]}")),
@@ -261,7 +261,7 @@ public class HoldersTest {
         List<CodecError> malformed = HoldersTest.errors(() -> HoldersTest.ITEMS.decode(HoldersTest.NBT, HoldersTest.compound(Map.of("type", FloatTag.valueOf(1.0F)))));
         
         Assertions.assertThat(HoldersTest.errors(() -> HoldersTest.ITEMS.decode(HoldersTest.JSON, JsonParser.parseString("{\"values\":[]}"))))
-                .containsExactly(new CodecError("type", "missing"));
+                .containsExactly(new CodecError("type", "Missing"));
         Assertions.assertThat(unknown).singleElement().satisfies(error -> {
             Assertions.assertThat(error.path()).isEqualTo("type");
             Assertions.assertThat(error.message()).contains("\"nexus:nope\"", "neoforge:any", "neoforge:or").doesNotContain("values");

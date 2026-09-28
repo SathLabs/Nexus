@@ -79,7 +79,7 @@ public class VanillaAdapters {
         @Override
         @Contract("_ -> fail")
         public <T> Optional<RegistryOps.RegistryInfo<T>> lookup(ResourceKey<? extends Registry<? extends T>> registry) {
-            throw new NexusCodecException("could not access the registry '" + registry.identifier() + "' without registry ops");
+            throw new NexusCodecException("Could not access the registry '" + registry.identifier() + "' without registry ops");
         }
     };
     
@@ -464,7 +464,7 @@ public class VanillaAdapters {
             try {
                 this.stream.encode((FriendlyByteBuf) buffer, value);
             } catch (RuntimeException failure) {
-                throw failure instanceof NexusCodecException refused ? refused : new NexusCodecException("could not write to the buffer, " + failure);
+                throw failure instanceof NexusCodecException refused ? refused : new NexusCodecException("Could not write to the buffer, " + failure);
             }
             
             return buffer;
@@ -482,7 +482,7 @@ public class VanillaAdapters {
             try {
                 return this.stream.decode((FriendlyByteBuf) input);
             } catch (RuntimeException failure) {
-                throw failure instanceof NexusCodecException refused ? refused : new NexusCodecException("could not read from the buffer, " + failure);
+                throw failure instanceof NexusCodecException refused ? refused : new NexusCodecException("Could not read from the buffer, " + failure);
             }
         }
         
@@ -491,7 +491,7 @@ public class VanillaAdapters {
         ///
         private Codec<T> dfu() {
             Codec<T> dfu = this.codec;
-            if (dfu == null) throw new NexusCodecException("could not use a stream codec outside of netty");
+            if (dfu == null) throw new NexusCodecException("Could not use a stream codec outside of netty");
             return dfu;
         }
         

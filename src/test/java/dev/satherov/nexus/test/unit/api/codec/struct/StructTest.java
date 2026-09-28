@@ -119,9 +119,9 @@ public class StructTest {
         JsonElement input = JsonParser.parseString("{\"item\":\"stone\",\"count\":3,\"extra\":true}");
         
         Assertions.assertThat(StructTest.decodeErrors(() -> StructTest.OFFER.decode(CodecFormat.JSON.strict(), input)))
-                .containsExactly(new CodecError("extra", "unknown key"));
+                .containsExactly(new CodecError("extra", "Unknown key"));
         Assertions.assertThat(StructTest.decodeErrors(() -> StructTest.OFFER.decode(CodecFormat.NBT.strict(), tag)))
-                .containsExactly(new CodecError("extra", "unknown key"));
+                .containsExactly(new CodecError("extra", "Unknown key"));
     }
     
     @Test
@@ -131,7 +131,7 @@ public class StructTest {
         
         Assertions.assertThat(StructTest.PRICED.decode(CodecFormat.JSON.strict(), known)).isEqualTo(new Priced(new Offer("stone", 3), 5));
         Assertions.assertThat(StructTest.decodeErrors(() -> StructTest.PRICED.decode(CodecFormat.JSON.strict(), unknown)))
-                .containsExactly(new CodecError("extra", "unknown key"));
+                .containsExactly(new CodecError("extra", "Unknown key"));
     }
     
     @Test
@@ -181,7 +181,7 @@ public class StructTest {
         Assertions.assertThat(StructTest.decodeErrors(() -> StructTest.TRADE.decode(CodecFormat.JSON, input)))
                 .satisfiesExactly(
                         error -> Assertions.assertThat(error.path()).isEqualTo("cost.count"),
-                        error -> Assertions.assertThat(error).isEqualTo(new CodecError("result.count", "missing"))
+                        error -> Assertions.assertThat(error).isEqualTo(new CodecError("result.count", "Missing"))
                 );
     }
     

@@ -236,8 +236,8 @@ public class CombinatorsTest {
         CompoundTag tag = CombinatorsTest.compound(Map.of("radius", IntTag.valueOf(2)));
         
         Assertions.assertThat(CombinatorsTest.errors(() -> CombinatorsTest.SHAPE.decode(CodecFormat.JSON, JsonParser.parseString("{\"radius\":2}"))))
-                .containsExactly(new CodecError("type", "missing"));
-        Assertions.assertThat(CombinatorsTest.errors(() -> CombinatorsTest.SHAPE.decode(CodecFormat.NBT, tag))).containsExactly(new CodecError("type", "missing"));
+                .containsExactly(new CodecError("type", "Missing"));
+        Assertions.assertThat(CombinatorsTest.errors(() -> CombinatorsTest.SHAPE.decode(CodecFormat.NBT, tag))).containsExactly(new CodecError("type", "Missing"));
     }
     
     @Test
@@ -309,7 +309,7 @@ public class CombinatorsTest {
         
         Assertions.assertThat(CombinatorsTest.SHAPE.decode(CodecFormat.JSON.strict(), known)).isEqualTo(new ParityCases.Circle(2));
         Assertions.assertThat(CombinatorsTest.errors(() -> CombinatorsTest.SHAPE.decode(CodecFormat.JSON.strict(), other)))
-                .containsExactly(new CodecError("side", "unknown key"));
+                .containsExactly(new CodecError("side", "Unknown key"));
     }
     
     @Test
@@ -320,7 +320,7 @@ public class CombinatorsTest {
         Assertions.assertThat(CombinatorsTest.INLINE_NAMED.decode(CodecFormat.NBT.strict(), known))
                 .isEqualTo(new ParityCases.Named("wheel", new ParityCases.Circle(2)));
         Assertions.assertThat(CombinatorsTest.errors(() -> CombinatorsTest.INLINE_NAMED.decode(CodecFormat.JSON.strict(), unknown)))
-                .containsExactlyInAnyOrder(new CodecError("side", "unknown key"), new CodecError("extra", "unknown key"));
+                .containsExactlyInAnyOrder(new CodecError("side", "Unknown key"), new CodecError("extra", "Unknown key"));
     }
     
     @Test

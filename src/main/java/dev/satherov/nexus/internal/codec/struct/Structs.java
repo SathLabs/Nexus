@@ -455,7 +455,7 @@ public class Structs {
             V value = operations.get(input, this.name);
             if (value == null) {
                 if (this.fallback == null) {
-                    throw new NexusCodecException(List.of(new CodecError(this.name, "missing")));
+                    throw new NexusCodecException(List.of(new CodecError(this.name, "Missing")));
                 }
                 
                 return this.fallback;
@@ -706,7 +706,7 @@ public class Structs {
             if (present != null && !this.keys.containsAll(present)) {
                 List<CodecError> unknown = present.stream()
                         .filter(key -> !this.keys.contains(key))
-                        .map(key -> new CodecError(key, "unknown key"))
+                        .map(key -> new CodecError(key, "Unknown key"))
                         .toList();
                 errors = Struct.collect(errors, unknown);
             }

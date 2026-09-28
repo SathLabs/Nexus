@@ -49,9 +49,9 @@ public class FieldsTest {
         tag.put("count", IntTag.valueOf(2));
         
         Assertions.assertThat(FieldsTest.errors(() -> FieldsTest.STACK.decode(CodecFormat.JSON, JsonParser.parseString("{\"count\":2}"))))
-                .containsExactly(new CodecError("item", "missing"));
+                .containsExactly(new CodecError("item", "Missing"));
         Assertions.assertThat(FieldsTest.errors(() -> FieldsTest.STACK.decode(CodecFormat.NBT, tag)))
-                .containsExactly(new CodecError("item", "missing"));
+                .containsExactly(new CodecError("item", "Missing"));
     }
     
     @Test
@@ -178,7 +178,7 @@ public class FieldsTest {
         Assertions.assertThat(crate.decode(CodecFormat.JSON, nested)).isEqualTo(new Crate(new Stack("stone", 5)));
         Assertions.assertThat(crate.encode(CodecFormat.NBT, new Crate(new Stack("stone", 5)))).isEqualTo(tag);
         Assertions.assertThat(FieldsTest.errors(() -> crate.decode(CodecFormat.JSON, JsonParser.parseString("{\"item\":\"stone\",\"count\":5}"))))
-                .containsExactly(new CodecError("", "missing"));
+                .containsExactly(new CodecError("", "Missing"));
     }
     
     @Test

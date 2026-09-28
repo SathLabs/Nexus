@@ -268,7 +268,7 @@ public class Combinators {
             } catch (RuntimeException failure) {
                 throw failure instanceof NexusCodecException refused ?
                         refused :
-                        new NexusCodecException("could not " + verb + " the value, " + failure);
+                        new NexusCodecException("Could not " + verb + " the value, " + failure);
             }
         };
     }
@@ -417,7 +417,7 @@ public class Combinators {
         public <V> T readFields(Operations<V> operations, V object, @Nullable Set<String> present) {
             V encoded = operations.get(object, this.key);
             if (encoded == null) {
-                throw new NexusCodecException(List.of(new CodecError(this.key, "missing")));
+                throw new NexusCodecException(List.of(new CodecError(this.key, "Missing")));
             }
             
             Structs.Inlinable<T, ? super A> subtype;
@@ -455,7 +455,7 @@ public class Combinators {
                 boolean known = name.equals(this.key) || subtype.keys().contains(name);
                 if (!known && (present != null || this.keys.contains(name))) {
                     unknown = Objects.requireNonNullElseGet(unknown, ArrayList::new);
-                    unknown.add(new CodecError(name, "unknown key"));
+                    unknown.add(new CodecError(name, "Unknown key"));
                 }
             }
             

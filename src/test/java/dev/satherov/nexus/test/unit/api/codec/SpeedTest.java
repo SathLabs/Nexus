@@ -39,7 +39,8 @@ public class SpeedTest {
     private static final RegistryOps<JsonElement> JSON_OPS = RegistryOps.create(JsonOps.INSTANCE, SpeedTest.REGISTRIES);
     private static final RegistryOps<Tag> NBT_OPS = RegistryOps.create(NbtOps.INSTANCE, SpeedTest.REGISTRIES);
     private static final long WARMUP_NANOS = 30_000_000L;
-    private static final long MEASURE_NANOS = 60_000_000L;
+    private static final long MEASURE_NANOS = 40_000_000L;
+    private static final int ROUNDS = 3;
     private static final double ALLOWED_SLOWDOWN = 1.25D;
     private static final Path REPORT = Path.of(System.getProperty("nexus.codec.speed.report", "build/reports/codec/speed.md"));
     private static final List<Measurement> MEASUREMENTS = new ArrayList<>();
@@ -78,7 +79,7 @@ public class SpeedTest {
     
     @AfterAll
     public static void writeReport() {
-        List<String> lines = new ArrayList<>(List.of("# Codec speed", "", "Nanoseconds per value, less is better. The typical row is the geometric mean of the ratios of the operation, and an outlier past twice the twin is marked.", "", "| Operation | Case | Nexus | Twin | Nexus / Twin |", "|---|---|---:|---:|---:|"));
+        List<String> lines = new ArrayList<>(List.of("# Codec speed", "", "Nanoseconds per value, the best of three alternating rounds, less is better. The typical row is the geometric mean of the ratios of the operation, and an outlier past twice the twin is marked.", "", "| Operation | Case | Nexus | Twin | Nexus / Twin |", "|---|---|---:|---:|---:|"));
         SpeedTest.MEASUREMENTS.stream().map(Measurement::row).forEach(lines::add);
         try {
             Files.createDirectories(SpeedTest.REPORT.toAbsolutePath().getParent());
@@ -91,8 +92,15 @@ public class SpeedTest {
     private void measure(String operation, Consumer<ParityCases.Case<?>> nexus, Consumer<ParityCases.Case<?>> twin) {
         double logRatios = 0.0D;
         for (ParityCases.Case<?> parity : ParityCases.ALL) {
-            double nexusNanos = SpeedTest.nanosPerValue(parity, nexus);
-            double twinNanos = SpeedTest.nanosPerValue(parity, twin);
+            SpeedTest.runFor(SpeedTest.WARMUP_NANOS, parity, nexus);
+            SpeedTest.runFor(SpeedTest.WARMUP_NANOS, parity, twin);
+            double nexusNanos = Double.MAX_VALUE;
+            double twinNanos = Double.MAX_VALUE;
+            for (int round = 0; round < SpeedTest.ROUNDS; round++) {
+                nexusNanos = Math.min(nexusNanos, SpeedTest.nanosPerValue(parity, nexus));
+                twinNanos = Math.min(twinNanos, SpeedTest.nanosPerValue(parity, twin));
+            }
+            
             SpeedTest.MEASUREMENTS.add(new Measurement(operation, parity.name(), nexusNanos, twinNanos));
             logRatios += Math.log(nexusNanos / twinNanos);
         }
@@ -103,7 +111,6 @@ public class SpeedTest {
     }
     
     private static double nanosPerValue(ParityCases.Case<?> parity, Consumer<ParityCases.Case<?>> operation) {
-        SpeedTest.runFor(SpeedTest.WARMUP_NANOS, parity, operation);
         long runs = SpeedTest.runFor(SpeedTest.MEASURE_NANOS, parity, operation);
         return (double) SpeedTest.MEASURE_NANOS / (runs * parity.values().size());
     }

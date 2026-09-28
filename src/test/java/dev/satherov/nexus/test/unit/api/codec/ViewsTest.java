@@ -191,7 +191,7 @@ public class ViewsTest {
         Assertions.assertThat(note.asDfu().encodeStart(hash, new Note("empty", JsonNull.INSTANCE)).isSuccess()).isTrue();
         Assertions.assertThat(values.encodeStart(JavaOps.INSTANCE, List.of(JsonNull.INSTANCE, new JsonPrimitive("x"))).getOrThrow()).isEqualTo(Arrays.asList(null, "x"));
         Assertions.assertThat(values.parse(JavaOps.INSTANCE, Arrays.asList(null, "x")).getOrThrow()).containsExactly(JsonNull.INSTANCE, new JsonPrimitive("x"));
-        Assertions.assertThat(ViewsTest.errorOf(note.asDfu().parse(JavaOps.INSTANCE, withNull))).contains("value", "missing");
+        Assertions.assertThat(ViewsTest.errorOf(note.asDfu().parse(JavaOps.INSTANCE, withNull))).contains("value", "Missing");
     }
     
     @Test

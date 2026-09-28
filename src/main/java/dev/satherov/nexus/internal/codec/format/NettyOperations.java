@@ -203,7 +203,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
             }
         }
         
-        throw new NexusCodecException("expected a VarInt, found more than " + VarInt.MAX_VARINT_SIZE + " bytes");
+        throw new NexusCodecException("Expected a VarInt, found more than " + VarInt.MAX_VARINT_SIZE + " bytes");
     }
     
     ///
@@ -248,7 +248,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
             }
         }
         
-        throw new NexusCodecException("expected a VarLong, found more than " + NettyOperations.MAX_VARLONG_SIZE + " bytes");
+        throw new NexusCodecException("Expected a VarLong, found more than " + NettyOperations.MAX_VARLONG_SIZE + " bytes");
     }
     
     ///
@@ -296,9 +296,18 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
             throw CodecErrors.tooLong(limit, value.length());
         }
         
-        int length = ByteBufUtil.utf8Bytes(value);
-        this.requireWritable(VarInt.getByteSize(length) + length, "a string").writeVarInt(length);
-        this.buffer.writeCharSequence(value, StandardCharsets.UTF_8);
+        int reserved = VarInt.getByteSize(ByteBufUtil.utf8MaxBytes(value));
+        int start = this.requireWritable(reserved + ByteBufUtil.utf8MaxBytes(value), "a string").writerIndex();
+        this.buffer.writerIndex(start + reserved);
+        int length = ByteBufUtil.writeUtf8(this.buffer, value);
+        int size = VarInt.getByteSize(length);
+        if (size != reserved) {
+            this.buffer.setBytes(start + size, this.buffer, start + reserved, length);
+        }
+        
+        this.buffer.writerIndex(start);
+        this.buffer.writeVarInt(length);
+        this.buffer.writerIndex(start + size + length);
         return this.buffer;
     }
     
@@ -307,7 +316,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     ///
     private B requireWritable(int bytes, String expected) {
         if (this.buffer.maxWritableBytes() < bytes) {
-            throw new NexusCodecException("expected room for " + expected + ", found a full buffer");
+            throw new NexusCodecException("Expected room for " + expected + ", found a full buffer");
         }
         
         return this.buffer;
@@ -335,7 +344,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     ///
     private B requireReadable(B input, int bytes, String expected) {
         if (input.readableBytes() < bytes) {
-            throw new NexusCodecException("expected " + expected + ", found the end of the buffer");
+            throw new NexusCodecException("Expected " + expected + ", found the end of the buffer");
         }
         
         return input;

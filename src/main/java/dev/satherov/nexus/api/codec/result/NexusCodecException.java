@@ -9,6 +9,8 @@ import java.util.stream.Collectors;
 ///
 /// An exception that holds every error found during encoding or decoding.
 ///
+/// Only an exception with a header has a stack trace.
+///
 public final class NexusCodecException extends RuntimeException {
     
     ///
@@ -38,6 +40,9 @@ public final class NexusCodecException extends RuntimeException {
     /// @param errors The errors, in the order the message should list them.
     ///
     public NexusCodecException(List<CodecError> errors) {
+        //TODO: Evaluate how good of an idea this is.
+        // It safes a bunch of time, but may or may not cause some other issues
+        super(null, null, false, false);
         this.header = null;
         this.errors = List.copyOf(errors);
     }
@@ -49,6 +54,7 @@ public final class NexusCodecException extends RuntimeException {
     /// @param errors The errors, in the order the message should list them.
     ///
     public NexusCodecException(String header, List<CodecError> errors) {
+        super(null, null, false, true);
         this.header = header;
         this.errors = List.copyOf(errors);
     }

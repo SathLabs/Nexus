@@ -162,10 +162,10 @@ public class HolderCodecs {
     ///
     private static <T> ResourceKey<T> keyOf(Operations<?> operations, ResourceKey<? extends Registry<T>> registry, Holder<T> holder) {
         if (!holder.canSerializeIn(HolderCodecs.infoOf(operations, registry).owner())) {
-            throw new NexusCodecException("expected a holder of the registry '" + registry.identifier() + "', found one of other registries");
+            throw new NexusCodecException("Expected a holder of the registry '" + registry.identifier() + "', found one of other registries");
         }
         
-        return holder.unwrapKey().orElseThrow(() -> new NexusCodecException("expected a holder of the registry '" + registry.identifier() + "', found a direct holder"));
+        return holder.unwrapKey().orElseThrow(() -> new NexusCodecException("Expected a holder of the registry '" + registry.identifier() + "', found a direct holder"));
     }
     
     ///
@@ -193,7 +193,7 @@ public class HolderCodecs {
     private static <T> int idOf(Operations<?> operations, ResourceKey<? extends Registry<T>> registry, Holder<T> holder) {
         int id = HolderCodecs.syncedRegistryOf(operations, registry).getId(holder.value());
         if (id == -1) {
-            throw new NexusCodecException("expected an element of the registry '" + registry.identifier() + "', found an unregistered value");
+            throw new NexusCodecException("Expected an element of the registry '" + registry.identifier() + "', found an unregistered value");
         }
         
         return id;
@@ -306,7 +306,7 @@ public class HolderCodecs {
                 //noinspection unchecked The stream codec is the one of the set's own type.
                 codec.encode(buffer, (S) set);
             } catch (RuntimeException failure) {
-                throw failure instanceof NexusCodecException refused ? refused : new NexusCodecException("could not write the custom holder set, " + failure);
+                throw failure instanceof NexusCodecException refused ? refused : new NexusCodecException("Could not write the custom holder set, " + failure);
             }
         }
         
@@ -345,7 +345,7 @@ public class HolderCodecs {
             }
             
             if (!value.canSerializeIn(HolderCodecs.infoOf(operations, this.registry).owner())) {
-                throw new NexusCodecException("expected a holder set of the registry '" + this.registry.identifier() + "', found one of other registries");
+                throw new NexusCodecException("Expected a holder set of the registry '" + this.registry.identifier() + "', found one of other registries");
             }
             
             if (value instanceof ICustomHolderSet<T> set) {
@@ -424,7 +424,7 @@ public class HolderCodecs {
         private <V> HolderSet<T> readObject(Operations<V> operations, V object) {
             V encoded = operations.get(object, HolderSetTraversal.TYPE_KEY);
             if (encoded == null) {
-                throw new NexusCodecException(List.of(new CodecError(HolderSetTraversal.TYPE_KEY, "missing")));
+                throw new NexusCodecException(List.of(new CodecError(HolderSetTraversal.TYPE_KEY, "Missing")));
             }
             
             HolderSetType type;
@@ -443,7 +443,7 @@ public class HolderCodecs {
                 List<CodecError> unknown = operations.keys(object)
                         .stream()
                         .filter(key -> !key.equals(HolderSetTraversal.TYPE_KEY) && !known.contains(key))
-                        .map(key -> new CodecError(key, "unknown key"))
+                        .map(key -> new CodecError(key, "Unknown key"))
                         .toList();
                 
                 if (!unknown.isEmpty()) throw new NexusCodecException(unknown);
@@ -486,7 +486,7 @@ public class HolderCodecs {
             try {
                 return found.makeStreamCodec(this.registry).decode(buffer);
             } catch (RuntimeException failure) {
-                throw failure instanceof NexusCodecException refused ? refused : new NexusCodecException("could not read the custom holder set, " + failure);
+                throw failure instanceof NexusCodecException refused ? refused : new NexusCodecException("Could not read the custom holder set, " + failure);
             }
         }
         

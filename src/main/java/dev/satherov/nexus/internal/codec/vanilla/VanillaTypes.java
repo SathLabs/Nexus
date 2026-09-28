@@ -138,7 +138,7 @@ public class VanillaTypes {
             if (operations.isPositional()) {
                 int id = Block.BLOCK_STATE_REGISTRY.getId(value);
                 if (id == -1) {
-                    throw new NexusCodecException("expected a block state with an id, found '" + value + "'");
+                    throw new NexusCodecException("Expected a block state with an id, found '" + value + "'");
                 }
                 
                 return operations.ofVarInt(id);
@@ -444,7 +444,7 @@ public class VanillaTypes {
     ///
     private static <V> V required(@Nullable V value) {
         if (value == null) {
-            throw new NexusCodecException("missing");
+            throw new NexusCodecException("Missing");
         }
         
         return value;
@@ -456,7 +456,7 @@ public class VanillaTypes {
     private static List<CodecError> unknownKeys(Set<String> keys, Predicate<String> known) {
         return keys.stream()
                 .filter(known.negate())
-                .map(key -> new CodecError(key, "unknown key"))
+                .map(key -> new CodecError(key, "Unknown key"))
                 .toList();
     }
     
@@ -543,7 +543,7 @@ public class VanillaTypes {
                     boolean removed = key.startsWith(PatchCodec.REMOVED);
                     DataComponentType<?> type = PatchCodec.typeOf(removed ? key.substring(PatchCodec.REMOVED.length()) : key);
                     if (!types.add(type)) {
-                        throw new NexusCodecException("duplicate component");
+                        throw new NexusCodecException("Duplicate component");
                     }
                     
                     V value = VanillaTypes.required(operations.get(input, key));
@@ -570,10 +570,12 @@ public class VanillaTypes {
         ///
         private static <V> V writeBuffer(Operations<V> operations, DataComponentPatch patch) {
             V buffer = operations.emptyObject();
-            int removed = (int) patch.entrySet()
-                    .stream()
-                    .filter(entry -> entry.getValue().isEmpty())
-                    .count();
+            int removed = 0;
+            for (Map.Entry<DataComponentType<?>, Optional<?>> entry : patch.entrySet()) {
+                if (entry.getValue().isEmpty()) {
+                    removed++;
+                }
+            }
             
             operations.writeCount(patch.size() - removed, Integer.MAX_VALUE);
             operations.writeCount(removed, Integer.MAX_VALUE);
@@ -610,7 +612,7 @@ public class VanillaTypes {
                 DataComponentType<?> type = PatchCodec.TYPE.read(operations, input).value();
                 try {
                     if (!types.add(type)) {
-                        throw new NexusCodecException("duplicate component");
+                        throw new NexusCodecException("Duplicate component");
                     }
                     
                     builder.set(PatchCodec.readValue((RegistryFriendlyByteBuf) input, type));
@@ -622,7 +624,7 @@ public class VanillaTypes {
             for (int i = 0; i < removed; i++) {
                 DataComponentType<?> type = PatchCodec.TYPE.read(operations, input).value();
                 if (!types.add(type)) {
-                    throw CodecErrors.prefixMapKey(new NexusCodecException("duplicate component"), PatchCodec.REMOVED + PatchCodec.keyOf(type));
+                    throw CodecErrors.prefixMapKey(new NexusCodecException("Duplicate component"), PatchCodec.REMOVED + PatchCodec.keyOf(type));
                 }
                 
                 builder.remove(type);
@@ -640,7 +642,7 @@ public class VanillaTypes {
             } catch (RuntimeException failure) {
                 throw failure instanceof NexusCodecException refused ?
                         refused :
-                        new NexusCodecException("could not write to the buffer, " + failure);
+                        new NexusCodecException("Could not write to the buffer, " + failure);
             }
         }
         
@@ -653,7 +655,7 @@ public class VanillaTypes {
             } catch (RuntimeException failure) {
                 throw failure instanceof NexusCodecException refused ?
                         refused :
-                        new NexusCodecException("could not read from the buffer, " + failure);
+                        new NexusCodecException("Could not read from the buffer, " + failure);
             }
         }
         
@@ -671,7 +673,7 @@ public class VanillaTypes {
         private static String keyOf(DataComponentType<?> type) {
             Identifier id = BuiltInRegistries.DATA_COMPONENT_TYPE.getKey(type);
             if (id == null) {
-                throw new NexusCodecException("expected a registered component type, found '" + type + "'");
+                throw new NexusCodecException("Expected a registered component type, found '" + type + "'");
             }
             
             return id.toString();
@@ -892,7 +894,7 @@ public class VanillaTypes {
         /// Writes the identifier of the given reference holder.
         ///
         private <V> V writeId(Operations<V> operations, Holder<T> holder) {
-            ResourceKey<T> key = holder.unwrapKey().orElseThrow(() -> new NexusCodecException("expected a holder of the registry '" + this.registry.key().identifier() + "', found a direct holder"));
+            ResourceKey<T> key = holder.unwrapKey().orElseThrow(() -> new NexusCodecException("Expected a holder of the registry '" + this.registry.key().identifier() + "', found a direct holder"));
             return Scalars.IDENTIFIER.write(operations, key.identifier());
         }
         
@@ -907,7 +909,7 @@ public class VanillaTypes {
             }
             
             if (!holder.areComponentsBound()) {
-                throw new NexusCodecException("could not use '" + id + "' before its components are bound");
+                throw new NexusCodecException("Could not use '" + id + "' before its components are bound");
             }
             
             return holder;
@@ -923,7 +925,7 @@ public class VanillaTypes {
             
             Integer fallback = this.fallbackAmount();
             if (fallback == null) {
-                throw new NexusCodecException("missing");
+                throw new NexusCodecException("Missing");
             }
             
             return fallback;

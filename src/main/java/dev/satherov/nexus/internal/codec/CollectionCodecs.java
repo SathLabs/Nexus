@@ -190,7 +190,7 @@ public class CollectionCodecs {
     /// Creates a failure for a collection with more entries than the given limit.
     ///
     private static NexusCodecException tooMany(int limit, int count) {
-        return new NexusCodecException("expected at most " + limit + " entries, found " + count);
+        return new NexusCodecException("Expected at most " + limit + " entries, found " + count);
     }
     
     ///
@@ -228,7 +228,7 @@ public class CollectionCodecs {
             } catch (RuntimeException failure) {
                 throw failure instanceof NexusCodecException refused ?
                         refused :
-                        new NexusCodecException("could not write the key, " + failure);
+                        new NexusCodecException("Could not write the key, " + failure);
             }
         }
         
@@ -243,7 +243,7 @@ public class CollectionCodecs {
             } catch (RuntimeException failure) {
                 throw failure instanceof NexusCodecException refused ?
                         refused :
-                        new NexusCodecException("could not read the key, " + failure);
+                        new NexusCodecException("Could not read the key, " + failure);
             }
         }
     }
@@ -291,7 +291,7 @@ public class CollectionCodecs {
         ///
         private static <T> void add(Collection<T> collection, T element) {
             if (!collection.add(element)) {
-                throw new NexusCodecException("duplicate element");
+                throw new NexusCodecException("Duplicate element");
             }
         }
         
@@ -415,7 +415,7 @@ public class CollectionCodecs {
         ///
         private static <K, T> void put(Map<K, T> map, K key, T value) {
             if (map.putIfAbsent(key, value) != null) {
-                throw new NexusCodecException("duplicate key");
+                throw new NexusCodecException("Duplicate key");
             }
         }
         
