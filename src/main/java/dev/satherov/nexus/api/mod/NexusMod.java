@@ -3,6 +3,7 @@ package dev.satherov.nexus.api.mod;
 import lombok.Getter;
 
 import dev.satherov.nexus.api.text.Translations;
+import dev.satherov.nexus.internal.text.tooltip.TooltipDispatch;
 
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
@@ -72,7 +73,9 @@ public final class NexusMod {
             throw new IllegalStateException("Mod '" + container.getModId() + "' already has a handle");
         }
         
-        return new NexusMod(container);
+        NexusMod mod = new NexusMod(container);
+        TooltipDispatch.listen(mod);
+        return mod;
     }
     
     ///
