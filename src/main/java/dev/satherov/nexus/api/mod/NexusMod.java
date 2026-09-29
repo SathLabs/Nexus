@@ -2,6 +2,9 @@ package dev.satherov.nexus.api.mod;
 
 import lombok.Getter;
 
+import dev.satherov.nexus.api.text.Translations;
+import dev.satherov.nexus.internal.text.tooltip.TooltipDispatch;
+
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 
@@ -44,6 +47,12 @@ public final class NexusMod {
     private final ModContainer container;
     
     ///
+    /// The mod's translation table, created when its getter is first called.
+    ///
+    @Getter(lazy = true)
+    private final Translations translations = new Translations(this.modId);
+    
+    ///
     /// Creates the handle of the mod the given container belongs to.
     ///
     private NexusMod(ModContainer container) {
@@ -64,7 +73,9 @@ public final class NexusMod {
             throw new IllegalStateException("Mod '" + container.getModId() + "' already has a handle");
         }
         
-        return new NexusMod(container);
+        NexusMod mod = new NexusMod(container);
+        TooltipDispatch.listen(mod);
+        return mod;
     }
     
     ///

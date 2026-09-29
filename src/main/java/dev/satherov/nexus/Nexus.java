@@ -1,6 +1,7 @@
 package dev.satherov.nexus;
 
 import dev.satherov.nexus.api.mod.NexusMod;
+import dev.satherov.nexus.internal.text.tooltip.TooltipText;
 
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
@@ -34,6 +35,7 @@ public class Nexus {
     ///
     public Nexus(IEventBus bus, ModContainer container) {
         Nexus.mod = NexusMod.of(container);
+        TooltipText.init();
     }
     
     ///
