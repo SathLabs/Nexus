@@ -19,6 +19,8 @@ import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
+
 import com.mojang.serialization.Codec;
 
 import org.jetbrains.annotations.ApiStatus;
@@ -255,6 +257,7 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     ///
     /// @throws NexusCodecException If the value could not be written, with every error at its path below this codec.
     ///
+    @CanIgnoreReturnValue
     public abstract <V> V write(Operations<V> operations, T value);
     
     ///

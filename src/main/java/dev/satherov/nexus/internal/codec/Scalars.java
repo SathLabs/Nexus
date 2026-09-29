@@ -371,7 +371,7 @@ public class Scalars {
             @Override
             public <V> T read(Operations<V> operations, V input) {
                 if (!operations.isPositional()) {
-                    // Called only to fail on anything that isn't an object, the same as DFU does.
+                    //noinspection ResultOfMethodCallIgnored Called only to fail on anything that isn't an object, the same as DFU does.
                     operations.keys(input);
                 }
                 

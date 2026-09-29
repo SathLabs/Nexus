@@ -6,6 +6,7 @@ import dev.satherov.nexus.api.codec.result.NexusCodecException;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.RegistryOps;
 
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.mojang.serialization.DynamicOps;
 
 import org.jetbrains.annotations.ApiStatus;
@@ -343,6 +344,7 @@ public interface Operations<V> {
     ///
     /// @throws UnsupportedOperationException If the format is positional.
     ///
+    @CanIgnoreReturnValue
     V put(V object, String key, V value);
     
     ///

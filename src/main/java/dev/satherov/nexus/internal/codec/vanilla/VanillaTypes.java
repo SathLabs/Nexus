@@ -43,6 +43,8 @@ import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.level.material.Fluid;
 
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
+
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
 
@@ -419,6 +421,7 @@ public class VanillaTypes {
     ///
     /// Runs the given action and puts the given key in front of the path of every error of a failure.
     ///
+    @CanIgnoreReturnValue
     private static <R> R at(String key, Supplier<R> action) {
         try {
             return action.get();
@@ -430,6 +433,7 @@ public class VanillaTypes {
     ///
     /// Runs the given action or adds the errors of its failure to the given list with the given key in front of their paths and returns `null`.
     ///
+    @CanIgnoreReturnValue
     private static <R> @Nullable R collect(List<CodecError> errors, String key, Supplier<R> action) {
         try {
             return action.get();
@@ -548,6 +552,7 @@ public class VanillaTypes {
                     
                     V value = VanillaTypes.required(operations.get(input, key));
                     if (removed) {
+                        //noinspection ResultOfMethodCallIgnored Read only to fail on anything that isn't an object.
                         PatchCodec.REMOVED_VALUE.read(operations, value);
                         builder.remove(type);
                     } else {
@@ -798,6 +803,7 @@ public class VanillaTypes {
                 return operations.ofVarInt(0);
             }
             
+            //noinspection ResultOfMethodCallIgnored This can only be reached with a positional format
             operations.ofVarInt(this.amountOf(value));
             VanillaTypes.at(StackCodec.ID, () -> this.holder.write(operations, value.typeHolder()));
             return VanillaTypes.at(StackCodec.COMPONENTS, () -> VanillaTypes.PATCH.write(operations, this.patchOf(value)));

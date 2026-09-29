@@ -4,6 +4,8 @@ import lombok.SneakyThrows;
 
 import net.minecraft.resources.Identifier;
 
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
+
 import org.jetbrains.annotations.ApiStatus;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -102,6 +104,7 @@ public final class TestReport {
     ///
     /// @return The element of the test case, which is added to the suite.
     ///
+    @CanIgnoreReturnValue
     private Element testCase(Identifier id, long millis) {
         Element testCase = this.document.createElement("testcase");
         testCase.setAttribute("name", id.toString());

@@ -3,13 +3,14 @@ package dev.satherov.nexus.api.text;
 import dev.satherov.nexus.api.mod.NexusMod;
 import dev.satherov.zelqro.utils.StringUtils;
 
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
+
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 ///
@@ -53,6 +54,7 @@ public final class Translations {
     ///
     /// @throws IllegalStateException If the key is already declared.
     ///
+    @CanIgnoreReturnValue
     public Translation define(String category, String name, String english) {
         String key = category + "." + this.modId + "." + name;
         if (this.translationsByKey.containsKey(key)) {
@@ -78,6 +80,7 @@ public final class Translations {
     ///
     /// @throws IllegalStateException If the key is already declared.
     ///
+    @CanIgnoreReturnValue
     public Translation define(String category, Enum<?> constant, String english) {
         return this.define(category, StringUtils.lower(constant.name()), english);
     }

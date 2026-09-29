@@ -33,6 +33,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.ExtraCodecs;
 import net.minecraft.util.StringRepresentable;
 
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.mojang.datafixers.util.Either;
 import com.mojang.datafixers.util.Function10;
 import com.mojang.datafixers.util.Function11;
@@ -1159,6 +1160,7 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// @throws NexusCodecException If the value could not be encoded, with every error that occurred during encoding.
     ///
+    @CanIgnoreReturnValue
     <V> V encode(CodecFormat<V, ? extends A> format, T value);
     
     ///

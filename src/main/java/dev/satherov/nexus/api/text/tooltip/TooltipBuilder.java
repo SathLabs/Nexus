@@ -66,6 +66,7 @@ public final class TooltipBuilder {
     ///
     /// @return The builder for chaining.
     ///
+    @CanIgnoreReturnValue
     public TooltipBuilder line(Component line) {
         this.lines.accept(line.getStyle().getColor() == null ? line.copy().withStyle(ChatFormatting.GRAY) : line);
         return this;
@@ -78,6 +79,7 @@ public final class TooltipBuilder {
     ///
     /// @return The builder for chaining.
     ///
+    @CanIgnoreReturnValue
     public TooltipBuilder line(Translatable line) {
         return this.line(line.component());
     }
@@ -95,6 +97,7 @@ public final class TooltipBuilder {
     ///
     /// @return The builder for chaining.
     ///
+    @CanIgnoreReturnValue
     public TooltipBuilder entry(Translatable label, Object value) {
         MutableComponent text = switch (value) {
             case Component component -> Component.empty().append(component);
@@ -114,6 +117,7 @@ public final class TooltipBuilder {
     ///
     /// @return The builder for chaining.
     ///
+    @CanIgnoreReturnValue
     public TooltipBuilder blank() {
         this.lines.accept(Component.empty());
         return this;
@@ -128,6 +132,7 @@ public final class TooltipBuilder {
     ///
     /// @return The builder for chaining.
     ///
+    @CanIgnoreReturnValue
     public TooltipBuilder onShift(Consumer<TooltipBuilder> section) {
         if (this.flag.hasShiftDown()) {
             section.accept(this);
@@ -145,6 +150,7 @@ public final class TooltipBuilder {
     ///
     /// @return The builder for chaining.
     ///
+    @CanIgnoreReturnValue
     public TooltipBuilder onAdvanced(Consumer<TooltipBuilder> section) {
         if (this.flag.isAdvanced()) {
             section.accept(this);

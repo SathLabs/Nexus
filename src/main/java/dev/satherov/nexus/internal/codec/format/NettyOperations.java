@@ -14,6 +14,7 @@ import net.minecraft.network.VarLong;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.resources.RegistryOps;
 
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.mojang.serialization.DynamicOps;
 
 import org.jetbrains.annotations.ApiStatus;
@@ -114,6 +115,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     /// Appends the given `boolean` as one `byte`.
     ///
     @Override
+    @CanIgnoreReturnValue
     public B ofBoolean(boolean value) {
         this.requireWritable(Byte.BYTES, "a `boolean`").writeBoolean(value);
         return this.buffer;
@@ -131,6 +133,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     /// Appends the given `byte`.
     ///
     @Override
+    @CanIgnoreReturnValue
     public B ofByte(byte value) {
         this.requireWritable(Byte.BYTES, "a byte").writeByte(value);
         return this.buffer;
@@ -148,6 +151,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     /// Appends the given `short` as two big-endian bytes.
     ///
     @Override
+    @CanIgnoreReturnValue
     public B ofShort(short value) {
         this.requireWritable(Short.BYTES, "a short").writeShort(value);
         return this.buffer;
@@ -165,6 +169,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     /// Appends the given `int` as four big-endian bytes.
     ///
     @Override
+    @CanIgnoreReturnValue
     public B ofInt(int value) {
         this.requireWritable(Integer.BYTES, "an int").writeInt(value);
         return this.buffer;
@@ -182,6 +187,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     /// Appends the given `int` as a VarInt.
     ///
     @Override
+    @CanIgnoreReturnValue
     public B ofVarInt(int value) {
         this.requireWritable(VarInt.getByteSize(value), "a VarInt").writeVarInt(value);
         return this.buffer;
@@ -210,6 +216,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     /// Appends the given `long` as eight big-endian bytes.
     ///
     @Override
+    @CanIgnoreReturnValue
     public B ofLong(long value) {
         this.requireWritable(Long.BYTES, "a long").writeLong(value);
         return this.buffer;
@@ -227,6 +234,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     /// Appends the given `long` as a VarLong.
     ///
     @Override
+    @CanIgnoreReturnValue
     public B ofVarLong(long value) {
         this.requireWritable(VarLong.getByteSize(value), "a VarLong").writeVarLong(value);
         return this.buffer;
@@ -255,6 +263,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     /// Appends the given `float` as four big-endian bytes.
     ///
     @Override
+    @CanIgnoreReturnValue
     public B ofFloat(float value) {
         this.requireWritable(Float.BYTES, "a float").writeFloat(value);
         return this.buffer;
@@ -272,6 +281,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     /// Appends the given `double` as eight big-endian bytes.
     ///
     @Override
+    @CanIgnoreReturnValue
     public B ofDouble(double value) {
         this.requireWritable(Double.BYTES, "a double").writeDouble(value);
         return this.buffer;
@@ -291,6 +301,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     /// @throws NexusCodecException If the string has more than `limit` characters.
     ///
     @Override
+    @CanIgnoreReturnValue
     public B ofString(String value, int limit) {
         if (value.length() > limit) {
             throw CodecErrors.tooLong(limit, value.length());
@@ -354,6 +365,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     /// Appends the number of the given ints as a VarInt, and then each `int` as a VarInt.
     ///
     @Override
+    @CanIgnoreReturnValue
     public B ofIntArray(int[] value) {
         this.ofVarInt(value.length);
         for (int element : value) {

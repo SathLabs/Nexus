@@ -55,6 +55,7 @@ public class Combinators {
             @Override
             public <V> V write(Operations<V> operations, Either<L, R> value) {
                 if (operations.isPositional()) {
+                    //noinspection ResultOfMethodCallIgnored This can only be reached with a positional format
                     operations.ofBoolean(value.left().isPresent());
                 }
                 
@@ -436,6 +437,7 @@ public class Combinators {
             }
             
             try {
+                //noinspection ResultOfMethodCallIgnored Read only to join its errors with the unknown keys.
                 subtype.readFields(operations, object, null);
             } catch (NexusCodecException failure) {
                 throw Combinators.joined(failure.errors(), unknown);
