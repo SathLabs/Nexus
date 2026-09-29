@@ -13,6 +13,8 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.TooltipFlag;
 
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
+
 import org.jetbrains.annotations.ApiStatus;
 
 import java.util.function.Consumer;
@@ -118,11 +120,11 @@ public final class TooltipBuilder {
     }
 
     ///
-    /// Runs the given section if shift is held.
+    /// Shows the given section if shift is held.
     ///
     /// If shift is not held, a dark gray hint to hold the sneak key for details will be added instead.
     ///
-    /// @param section The section of lines to add, called with this builder if shift is held.
+    /// @param section The section of lines to add, if shift is held.
     ///
     /// @return The builder for chaining.
     ///
@@ -137,9 +139,9 @@ public final class TooltipBuilder {
     }
 
     ///
-    /// Runs the given section if advanced tooltips are on.
+    /// Shows the given section if advanced tooltips are on.
     ///
-    /// @param section The section of lines to add, called with this builder if advanced tooltips are on.
+    /// @param section The section of lines to add, if advanced tooltips are on.
     ///
     /// @return The builder for chaining.
     ///

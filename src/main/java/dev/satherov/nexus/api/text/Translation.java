@@ -12,7 +12,7 @@ import java.util.regex.Pattern;
 ///
 /// A translation key that a mod declared, with its English default.
 ///
-/// The English default writes an argument as the placeholder `{{<name>}}`, where `<name>` is made of `a-z`, `A-Z`, `0-9`, and `_`.
+/// The English default writes an argument as a placeholder with the pattern `{{<name>}}`, where `<name>` is made of `a-z`, `A-Z`, `0-9`, and `_`.
 ///
 public final class Translation implements Translatable {
     
@@ -30,7 +30,7 @@ public final class Translation implements Translatable {
     private final String key;
     
     ///
-    /// The English default as it was declared, with its placeholders.
+    /// The English default, with its placeholders.
     ///
     @Getter
     private final String english;

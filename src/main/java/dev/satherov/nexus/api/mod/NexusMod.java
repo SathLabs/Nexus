@@ -47,7 +47,7 @@ public final class NexusMod {
     private final ModContainer container;
     
     ///
-    /// The mod's translation table, created on first call.
+    /// The mod's translation table, created when its getter is first called.
     ///
     @Getter(lazy = true)
     private final Translations translations = new Translations(this.modId);

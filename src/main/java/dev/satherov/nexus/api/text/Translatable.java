@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 ///
-/// A value that stands for one declared translation key.
+/// A value representing one translated key.
 ///
 /// If the current language doesn't have the key, the created components will show the English default.
 ///

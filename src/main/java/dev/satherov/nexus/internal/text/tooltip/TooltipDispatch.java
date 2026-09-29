@@ -44,7 +44,10 @@ public class TooltipDispatch {
             
             BiConsumer<ItemStack, TooltipBuilder> items = event.getItemAttachments();
             if (items != null) {
-                registration.registerAppender(TooltipLocation.POST_CUSTOM, (stack, context, _, _, flag, lines) -> items.accept(stack, new TooltipBuilder(context, flag, lines)));
+                registration.registerAppender(TooltipLocation.POST_CUSTOM, (stack, context, _, _, flag, lines) -> items.accept(
+                        stack,
+                        new TooltipBuilder(context, flag, lines)
+                ));
             }
             
             BiConsumer<FluidStack, TooltipBuilder> fluids = event.getFluidAttachments();

@@ -22,7 +22,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Predicate;
 
 ///
-/// An event that attaches lines to the tooltips of item and fluid stacks.
+/// An event that attaches lines to the tooltips of item and Fluid Stacks.
 ///
 /// Posted once on the event bus of every mod that has a [NexusMod] handle, when neoforge registers its tooltip appenders.
 ///
@@ -35,19 +35,19 @@ public final class AttachTooltipsEvent extends Event implements IModBusEvent {
     private final NexusMod mod;
     
     ///
-    /// The attachments to item stacks, in order, oldest first.
+    /// The attachments to Item Stacks, in order, oldest first.
     ///
     private final List<BiConsumer<ItemStack, TooltipBuilder>> itemAttachments = new ArrayList<>();
     
     ///
-    /// The attachments to fluid stacks, in order, oldest first.
+    /// The attachments to Fluid Stacks, in order, oldest first.
     ///
     private final List<BiConsumer<FluidStack, TooltipBuilder>> fluidAttachments = new ArrayList<>();
     
     ///
     /// Creates the event for the given mod.
     ///
-    /// Should only ever be called by Nexus itself, when it dispatches the tooltips of a mod.
+    /// Should only ever be called by Nexus itself.
     ///
     /// @param mod The handle of the mod whose event bus this event is posted on.
     ///
@@ -70,7 +70,7 @@ public final class AttachTooltipsEvent extends Event implements IModBusEvent {
     }
     
     ///
-    /// Attaches lines to the tooltip of every item stack the given filter accepts.
+    /// Attaches lines to the tooltip of every Item Stack the given filter accepts.
     ///
     /// The lines are added after the item's own hover text and before the lines of the stack's data components.
     /// Stacks with previous calls to [#item(ItemLike, BiConsumer)] and [#items(Predicate, BiConsumer)], in the order they were written.
@@ -96,7 +96,7 @@ public final class AttachTooltipsEvent extends Event implements IModBusEvent {
     }
     
     ///
-    /// Attaches lines to the tooltip of every fluid stack the given filter accepts.
+    /// Attaches lines to the tooltip of every Fluid Stack the given filter accepts.
     ///
     /// The lines are added after the fluid's own hover text.
     /// Stacks with previous calls to [#fluid(Fluid, BiConsumer)] and [#fluids(Predicate, BiConsumer)], in the order they were written.
@@ -120,9 +120,9 @@ public final class AttachTooltipsEvent extends Event implements IModBusEvent {
     }
     
     ///
-    /// Every attachment to item stacks as one attachment, in order, oldest first, or `null` if there was none.
+    /// Merges all calls for adding tooltips to Item Stacks into a single one, in order, oldest first, or `null` if there were none.
     ///
-    /// @return The attachments to item stacks as one attachment, or `null` if there was none.
+    /// @return The merged call for adding tooltips to Item Stacks as one attachment, or `null` if there were none.
     ///
     @ApiStatus.Internal
     public @Nullable BiConsumer<ItemStack, TooltipBuilder> getItemAttachments() {
@@ -130,9 +130,9 @@ public final class AttachTooltipsEvent extends Event implements IModBusEvent {
     }
     
     ///
-    /// Every attachment to fluid stacks as one attachment, in order, oldest first, or `null` if there was none.
+    /// Merges all calls for adding tooltips to Fluid Stacks into a single one, in order, oldest first, or `null` if there were none.
     ///
-    /// @return The attachments to fluid stacks as one attachment, or `null` if there was none.
+    /// @return The merged call for adding tooltips to Fluid Stacks as one attachment, or `null` if there were none.
     ///
     @ApiStatus.Internal
     public @Nullable BiConsumer<FluidStack, TooltipBuilder> getFluidAttachments() {

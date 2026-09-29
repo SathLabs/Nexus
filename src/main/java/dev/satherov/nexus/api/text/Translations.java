@@ -1,6 +1,7 @@
 package dev.satherov.nexus.api.text;
 
 import dev.satherov.nexus.api.mod.NexusMod;
+import dev.satherov.zelqro.utils.StringUtils;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
@@ -22,7 +23,7 @@ public final class Translations {
     private final String modId;
     
     ///
-    /// Every declared translation by its key, in order, oldest first.
+    /// Every declared translation by its key.
     ///
     private final Map<String, Translation> translationsByKey = new LinkedHashMap<>();
     
@@ -78,11 +79,11 @@ public final class Translations {
     /// @throws IllegalStateException If the key is already declared.
     ///
     public Translation define(String category, Enum<?> constant, String english) {
-        return this.define(category, constant.name().toLowerCase(Locale.ROOT), english);
+        return this.define(category, StringUtils.lower(constant.name()), english);
     }
     
     ///
-    /// Every declared translation, in order, oldest first.
+    /// Every declared translation.
     ///
     /// @return Every declared translation.
     ///
