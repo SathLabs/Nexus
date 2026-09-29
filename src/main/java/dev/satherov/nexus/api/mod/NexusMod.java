@@ -2,6 +2,8 @@ package dev.satherov.nexus.api.mod;
 
 import lombok.Getter;
 
+import dev.satherov.nexus.api.text.Translations;
+
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 
@@ -42,6 +44,12 @@ public final class NexusMod {
     ///
     @Getter
     private final ModContainer container;
+    
+    ///
+    /// The mod's translation table, created on first call.
+    ///
+    @Getter(lazy = true)
+    private final Translations translations = new Translations(this.modId);
     
     ///
     /// Creates the handle of the mod the given container belongs to.
