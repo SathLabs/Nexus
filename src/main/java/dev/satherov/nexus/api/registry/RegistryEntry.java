@@ -19,7 +19,7 @@ import java.util.Set;
 /// @param <REGISTRY> The type of the objects of the registry.
 /// @param <VALUE>    The type of the object.
 ///
-public abstract class RegistryEntry<REGISTRY, VALUE extends REGISTRY> extends DeferredHolder<REGISTRY, VALUE> {
+public class RegistryEntry<REGISTRY, VALUE extends REGISTRY> extends DeferredHolder<REGISTRY, VALUE> {
     
     ///
     /// The builder that registered the object, which no longer changes once it has registered.

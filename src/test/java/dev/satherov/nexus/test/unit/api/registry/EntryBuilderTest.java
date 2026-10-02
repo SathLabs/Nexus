@@ -128,7 +128,7 @@ public class EntryBuilderTest {
         
         @Override
         protected RegistryEntry<GameEvent, GameEvent> createEntry(ResourceKey<GameEvent> key) {
-            return new RegistryEntry<>(key, this) { };
+            return new TestEntry(key, this);
         }
     }
     
@@ -150,7 +150,14 @@ public class EntryBuilderTest {
         @Override
         protected RegistryEntry<GameEvent, GameEvent> createEntry(ResourceKey<GameEvent> key) {
             this.subEntry = EntryBuilder.registerSubObject(this.sub);
-            return new RegistryEntry<>(key, this) { };
+            return new TestEntry(key, this);
+        }
+    }
+    
+    private static final class TestEntry extends RegistryEntry<GameEvent, GameEvent> {
+        
+        private TestEntry(ResourceKey<GameEvent> key, EntryBuilder<GameEvent, GameEvent, ?, ?, ?> builder) {
+            super(key, builder);
         }
     }
     

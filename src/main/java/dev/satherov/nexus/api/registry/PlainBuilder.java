@@ -55,6 +55,6 @@ public final class PlainBuilder<REGISTRY, VALUE extends REGISTRY, PARENT> extend
     ///
     @Override
     protected RegistryEntry<REGISTRY, VALUE> createEntry(ResourceKey<REGISTRY> key) {
-        return new RegistryEntry<>(key, this) { };
+        return new RegistryEntry<>(key, this);
     }
 }
