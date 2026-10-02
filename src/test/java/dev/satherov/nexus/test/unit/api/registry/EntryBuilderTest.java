@@ -40,6 +40,7 @@ public class EntryBuilderTest {
     private static @Nullable PlainBuilder<GameEvent, GameEvent, Registrations> registered;
     private static @Nullable RegistryEntry<GameEvent, GameEvent> event;
     private static @Nullable ParentBuilder parent;
+    private static @Nullable ParentBuilder takenParent;
     private static @Nullable Throwable subRefusal;
     private static boolean clientCodeRan;
     
@@ -88,13 +89,13 @@ public class EntryBuilderTest {
     @Test
     public void refusesToTakeOverATakenBuilder() {
         PlainBuilder<GameEvent, GameEvent, Registrations> taken = Objects.requireNonNull(EntryBuilderTest.taken);
-        Assertions.assertThatThrownBy(() -> new Takeover(taken)).isInstanceOf(IllegalStateException.class);
+        Assertions.assertThatThrownBy(() -> new Takeover<>(taken)).isInstanceOf(IllegalStateException.class);
     }
     
     @Test
     public void refusesToTakeOverARegisteredBuilder() {
         PlainBuilder<GameEvent, GameEvent, Registrations> registered = Objects.requireNonNull(EntryBuilderTest.registered);
-        Assertions.assertThatThrownBy(() -> new Takeover(registered)).isInstanceOf(IllegalStateException.class);
+        Assertions.assertThatThrownBy(() -> new Takeover<>(registered)).isInstanceOf(IllegalStateException.class);
     }
     
     @Test
@@ -112,6 +113,14 @@ public class EntryBuilderTest {
     }
     
     @Test
+    public void registersTheBuilderThatTookOverASubObject() {
+        RegistryEntry<GameEvent, GameEvent> sub = Objects.requireNonNull(Objects.requireNonNull(EntryBuilderTest.takenParent).subEntry);
+        Assertions.assertThat(sub.getId()).isEqualTo(Nexus.getMod().id("entry_builder_test_taken_sub"));
+        Assertions.assertThat(sub.value()).isSameAs(BuiltInRegistries.GAME_EVENT.getValue(sub.getId()));
+        Assertions.assertThat(sub.getTags()).containsExactly(EntryBuilderTest.SECOND_TAG);
+    }
+    
+    @Test
     public void refusesALateRegisterBeforeCreatingTheEntry() {
         LateBuilder late = new LateBuilder(Nexus.getMod().getRegistrations());
         Assertions.assertThatThrownBy(late::register)
@@ -124,9 +133,9 @@ public class EntryBuilderTest {
         return Objects.requireNonNull(EntryBuilderTest.event);
     }
     
-    private static final class Takeover extends EntryBuilder<GameEvent, GameEvent, RegistryEntry<GameEvent, GameEvent>, Registrations, Takeover> {
+    private static final class Takeover<PARENT> extends EntryBuilder<GameEvent, GameEvent, RegistryEntry<GameEvent, GameEvent>, PARENT, Takeover<PARENT>> {
         
-        private Takeover(PlainBuilder<GameEvent, GameEvent, Registrations> from) {
+        private Takeover(PlainBuilder<GameEvent, GameEvent, PARENT> from) {
             super(from, from.end());
         }
         
@@ -146,9 +155,9 @@ public class EntryBuilderTest {
         private final PlainBuilder<GameEvent, GameEvent, ParentBuilder> sub;
         private @Nullable RegistryEntry<GameEvent, GameEvent> subEntry;
         
-        private ParentBuilder(Registrations registrations) {
-            super(registrations, Registries.GAME_EVENT, "entry_builder_test_parent", registrations);
-            this.sub = new PlainBuilder<>(registrations, Registries.GAME_EVENT, "entry_builder_test_sub", this, () -> new GameEvent(16));
+        private ParentBuilder(Registrations registrations, String name) {
+            super(registrations, Registries.GAME_EVENT, name, registrations);
+            this.sub = new PlainBuilder<>(registrations, Registries.GAME_EVENT, name + "_sub", this, () -> new GameEvent(16));
         }
         
         @Override
@@ -207,7 +216,7 @@ public class EntryBuilderTest {
                     });
             
             EntryBuilderTest.taken = taken;
-            EntryBuilderTest.event = new Takeover(taken)
+            EntryBuilderTest.event = new Takeover<>(taken)
                     .tag(EntryBuilderTest.SECOND_TAG)
                     .onRegister(_ -> EntryBuilderTest.CALLBACKS.add("taking"))
                     .register();
@@ -216,10 +225,15 @@ public class EntryBuilderTest {
             registered.register();
             EntryBuilderTest.registered = registered;
             
-            ParentBuilder parent = new ParentBuilder(registrations);
+            ParentBuilder parent = new ParentBuilder(registrations, "entry_builder_test");
             EntryBuilderTest.subRefusal = Assertions.catchThrowable(parent.sub::register);
             parent.register();
             EntryBuilderTest.parent = parent;
+            
+            ParentBuilder takenParent = new ParentBuilder(registrations, "entry_builder_test_taken");
+            new Takeover<>(takenParent.sub).tag(EntryBuilderTest.SECOND_TAG);
+            takenParent.register();
+            EntryBuilderTest.takenParent = takenParent;
         }
     }
 }

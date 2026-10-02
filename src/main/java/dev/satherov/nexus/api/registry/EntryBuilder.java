@@ -83,6 +83,11 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
     private boolean registered;
     
     ///
+    /// The builder that took over this one, or `null` if none did.
+    ///
+    private @Nullable EntryBuilder<REGISTRY, VALUE, ? extends ENTRY, ?, ?> successor;
+    
+    ///
     /// Starts the object `<modid>:<name>` in the given registry.
     /// - `<modid>` is the id of the mod of the given registrations.
     /// - `<name>` is the given name.
@@ -120,6 +125,7 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
         this.callbacks.addAll(from.callbacks);
         from.clientCode.forEach(code -> this.clientCode.add(() -> code.get()::accept));
         from.registered = true;
+        from.successor = this;
     }
     
     ///
@@ -256,17 +262,21 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
     ///
     /// Registers the given sub-object, whose own [#register()] throws.
     ///
+    /// If another builder took over the given one, the builder that took over last registers instead, with everything
+    /// recorded on it.
+    ///
     /// Should only ever be called from [#createEntry(ResourceKey)].
     ///
     /// @param builder The builder of the sub-object.
     ///
     /// @return The still unbound entry of the sub-object.
     ///
-    /// @throws IllegalStateException If the sub-object was already registered, another builder took it over, or the registry event of its registry already ran.
+    /// @throws IllegalStateException If the sub-object was already registered or the registry event of its registry already ran.
     ///
     @CanIgnoreReturnValue
     protected static <SUB extends RegistryEntry<?, ?>> SUB registerSubObject(EntryBuilder<?, ?, SUB, ?, ?> builder) {
-        return builder.registerEntry();
+        EntryBuilder<?, ?, ? extends SUB, ?, ?> successor = builder.successor;
+        return successor == null ? builder.registerEntry() : EntryBuilder.registerSubObject(successor);
     }
     
     ///

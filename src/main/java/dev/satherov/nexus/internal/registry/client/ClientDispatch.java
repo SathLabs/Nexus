@@ -6,6 +6,7 @@ import dev.satherov.nexus.api.registry.block.PlainBlockEntry;
 import dev.satherov.nexus.api.registry.block.entity.BlockEntityEntry;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
 import dev.satherov.nexus.api.registry.client.ScreenFactory;
+import dev.satherov.nexus.api.registry.fluid.PlainFluidEntry;
 import dev.satherov.nexus.api.registry.menu.MenuEntry;
 import dev.satherov.nexus.internal.registry.EntryRegister;
 
@@ -13,12 +14,16 @@ import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.RegisterColorHandlersEvent;
+import net.neoforged.neoforge.client.event.RegisterFluidModelsEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
+import net.neoforged.neoforge.client.extensions.common.IClientFluidTypeExtensions;
+import net.neoforged.neoforge.client.extensions.common.RegisterClientExtensionsEvent;
 import net.neoforged.neoforge.registries.RegisterEvent;
 
 import net.minecraft.client.color.block.BlockTintSource;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.MenuAccess;
+import net.minecraft.client.renderer.block.FluidModel;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.client.renderer.blockentity.state.BlockEntityRenderState;
@@ -33,6 +38,7 @@ import org.jspecify.annotations.Nullable;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 ///
 /// The dispatch of the client hooks that the builders of one mod stored.
@@ -105,5 +111,29 @@ public class ClientDispatch {
             ClientOnly<ScreenFactory<MENU, SCREEN>> screen
     ) {
         bus.addListener(RegisterMenuScreensEvent.class, event -> event.register(entry.get(), screen.get()::create));
+    }
+    
+    ///
+    /// Registers the given model for the source and the flowing fluid of the given entry once the fluid models are
+    /// registered.
+    ///
+    /// @param bus   The event bus of the mod.
+    /// @param fluid The entry of the fluid.
+    /// @param model The model of both fluids.
+    ///
+    public static void fluidModel(IEventBus bus, PlainFluidEntry<?, ?, ?> fluid, ClientOnly<Supplier<FluidModel.Unbaked>> model) {
+        bus.addListener(RegisterFluidModelsEvent.class, event -> event.register(model.get().get(), fluid, fluid.getFlowing()));
+    }
+    
+    ///
+    /// Registers the given client extensions for the type of the given entry once the client extensions are
+    /// registered.
+    ///
+    /// @param bus        The event bus of the mod.
+    /// @param fluid      The entry of the fluid.
+    /// @param extensions The client extensions of the type.
+    ///
+    public static void fluidExtensions(IEventBus bus, PlainFluidEntry<?, ?, ?> fluid, ClientOnly<Supplier<IClientFluidTypeExtensions>> extensions) {
+        bus.addListener(RegisterClientExtensionsEvent.class, event -> event.registerFluidType(extensions.get().get(), fluid.getType()));
     }
 }

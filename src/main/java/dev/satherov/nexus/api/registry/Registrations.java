@@ -5,6 +5,7 @@ import lombok.Getter;
 import dev.satherov.nexus.api.mod.NexusMod;
 import dev.satherov.nexus.api.registry.block.PlainBlockBuilder;
 import dev.satherov.nexus.api.registry.block.entity.BlockEntityBuilder;
+import dev.satherov.nexus.api.registry.fluid.PlainFluidBuilder;
 import dev.satherov.nexus.api.registry.item.ItemBuilder;
 import dev.satherov.nexus.api.registry.menu.MenuBuilder;
 import dev.satherov.nexus.api.registry.tab.TabBuilder;
@@ -14,6 +15,8 @@ import dev.satherov.nexus.internal.registry.tab.TabContents;
 
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
+import net.neoforged.neoforge.fluids.BaseFlowingFluid;
+import net.neoforged.neoforge.fluids.FluidType;
 import net.neoforged.neoforge.network.IContainerFactory;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
@@ -193,6 +196,20 @@ public final class Registrations {
     ///
     public <ENTITY extends BlockEntity> BlockEntityBuilder<ENTITY, Registrations> blockEntity(String name, BlockEntityType.BlockEntitySupplier<ENTITY> factory) {
         return new BlockEntityBuilder<>(this, name, this, factory);
+    }
+    
+    ///
+    /// Starts a fluid with a plain [FluidType], a [BaseFlowingFluid.Source], and a [BaseFlowingFluid.Flowing].
+    ///
+    /// [PlainFluidBuilder#type(Function)] and [PlainFluidBuilder#fluids(Function, Function)] replace them.
+    ///
+    /// @param name    The path of the identifier.
+    /// @param english The English name.
+    ///
+    /// @return The builder of the fluid.
+    ///
+    public PlainFluidBuilder<FluidType, BaseFlowingFluid.Source, BaseFlowingFluid.Flowing, Registrations> fluid(String name, String english) {
+        return new PlainFluidBuilder<>(this, name, english, this, FluidType::new, BaseFlowingFluid.Source::new, BaseFlowingFluid.Flowing::new);
     }
     
     ///
