@@ -4,7 +4,9 @@ import lombok.Getter;
 
 import dev.satherov.nexus.api.mod.NexusMod;
 import dev.satherov.nexus.api.registry.block.PlainBlockBuilder;
+import dev.satherov.nexus.api.registry.block.entity.BlockEntityBuilder;
 import dev.satherov.nexus.api.registry.item.ItemBuilder;
+import dev.satherov.nexus.api.registry.menu.MenuBuilder;
 import dev.satherov.nexus.api.registry.tab.TabBuilder;
 import dev.satherov.nexus.internal.registry.EntryRegister;
 import dev.satherov.nexus.internal.registry.client.ClientDispatch;
@@ -12,12 +14,16 @@ import dev.satherov.nexus.internal.registry.tab.TabContents;
 
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
+import net.neoforged.neoforge.network.IContainerFactory;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
 import net.minecraft.core.Registry;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 
 import com.mojang.serialization.MapCodec;
@@ -178,6 +184,18 @@ public final class Registrations {
     }
     
     ///
+    /// Starts a block entity type of the factory, valid for the blocks the builder is given.
+    ///
+    /// @param name    The path of the identifier.
+    /// @param factory The factory of the block entity, called each time a block entity of the type is created.
+    ///
+    /// @return The builder of the block entity type.
+    ///
+    public <ENTITY extends BlockEntity> BlockEntityBuilder<ENTITY, Registrations> blockEntity(String name, BlockEntityType.BlockEntitySupplier<ENTITY> factory) {
+        return new BlockEntityBuilder<>(this, name, this, factory);
+    }
+    
+    ///
     /// Starts a plain item with `new Item.Properties()`.
     ///
     /// @param name    The path of the identifier.
@@ -202,6 +220,21 @@ public final class Registrations {
     ///
     public <ITEM extends Item> ItemBuilder<ITEM, Registrations> item(String name, String english, Function<Item.Properties, ITEM> factory) {
         return new ItemBuilder<>(this, name, english, this, factory);
+    }
+    
+    ///
+    /// Starts a menu type of the factory, titled with the given English name.
+    ///
+    /// If the server doesn't write any extra data when it opens the menu, the factory will receive `null` instead of it.
+    ///
+    /// @param name    The path of the identifier.
+    /// @param english The English title.
+    /// @param factory The factory of the menu, called on the client with the extra data that the server wrote.
+    ///
+    /// @return The builder of the menu type.
+    ///
+    public <MENU extends AbstractContainerMenu> MenuBuilder<MENU, Registrations> menu(String name, String english, IContainerFactory<MENU> factory) {
+        return new MenuBuilder<>(this, name, english, this, factory);
     }
     
     ///

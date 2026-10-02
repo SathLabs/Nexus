@@ -4,8 +4,10 @@ package dev.satherov.nexus.api.registry.client;
 /// Client code behind a supplier, written `() -> CrusherScreen::new`.
 ///
 /// The body runs on the client only, so the classes it names load there only.
-/// It should be a constructor reference, a method reference, or a plain `new` of the client class, since the verifier
-/// loads a class only to check an assignment between two different class types.
+/// The type of the client code should erase to a class that both sides have, such as a JDK functional interface or one
+/// in this package.
+/// The body may then name client classes in a constructor reference, a method reference, or a plain `new`, since they
+/// resolve only once [#get()] runs on the client.
 ///
 /// A body with statements goes into a separate client class and is called as `() -> OilClient.extensions()`.
 ///

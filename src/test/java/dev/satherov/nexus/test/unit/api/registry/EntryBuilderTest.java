@@ -111,6 +111,15 @@ public class EntryBuilderTest {
         Assertions.assertThat(sub.value()).isSameAs(BuiltInRegistries.GAME_EVENT.getValue(sub.getId()));
     }
     
+    @Test
+    public void refusesALateRegisterBeforeCreatingTheEntry() {
+        LateBuilder late = new LateBuilder(Nexus.getMod().getRegistrations());
+        Assertions.assertThatThrownBy(late::register)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Could not register 'nexus:entry_builder_test_late' because the registry event of 'minecraft:game_event' already ran");
+        Assertions.assertThat(late.entryCreated).isFalse();
+    }
+    
     private static RegistryEntry<GameEvent, GameEvent> event() {
         return Objects.requireNonNull(EntryBuilderTest.event);
     }
@@ -150,6 +159,26 @@ public class EntryBuilderTest {
         @Override
         protected RegistryEntry<GameEvent, GameEvent> createEntry(ResourceKey<GameEvent> key) {
             this.subEntry = EntryBuilder.registerSubObject(this.sub);
+            return new TestEntry(key, this);
+        }
+    }
+    
+    private static final class LateBuilder extends EntryBuilder<GameEvent, GameEvent, RegistryEntry<GameEvent, GameEvent>, Registrations, LateBuilder> {
+        
+        private boolean entryCreated;
+        
+        private LateBuilder(Registrations registrations) {
+            super(registrations, Registries.GAME_EVENT, "entry_builder_test_late", registrations);
+        }
+        
+        @Override
+        protected GameEvent create() {
+            return new GameEvent(16);
+        }
+        
+        @Override
+        protected RegistryEntry<GameEvent, GameEvent> createEntry(ResourceKey<GameEvent> key) {
+            this.entryCreated = true;
             return new TestEntry(key, this);
         }
     }

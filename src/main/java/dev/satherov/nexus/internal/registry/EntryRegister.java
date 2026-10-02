@@ -81,6 +81,19 @@ public final class EntryRegister<REGISTRY> extends DeferredRegister<REGISTRY> {
     }
     
     ///
+    /// Throws an [IllegalStateException] if the registry event of the registry already ran.
+    ///
+    /// @param id The identifier of the object to register, used in the failure message.
+    ///
+    /// @throws IllegalStateException If the registry event of the registry already ran.
+    ///
+    public void checkUnfired(Identifier id) {
+        if (EntryRegister.FIRED_REGISTRIES.contains(this.getRegistryKey())) {
+            throw new IllegalStateException("Could not register '" + id + "' because the registry event of '" + this.getRegistryName() + "' already ran");
+        }
+    }
+    
+    ///
     /// Adds the given entry, whose object the given factory creates inside the registry event.
     ///
     /// Should only ever be called from [EntryBuilder#register()].
@@ -91,10 +104,7 @@ public final class EntryRegister<REGISTRY> extends DeferredRegister<REGISTRY> {
     /// @throws IllegalStateException If the registry event of the registry already ran.
     ///
     public <VALUE extends REGISTRY> void add(RegistryEntry<REGISTRY, VALUE> entry, Supplier<VALUE> factory) {
-        if (EntryRegister.FIRED_REGISTRIES.contains(this.getRegistryKey())) {
-            throw new IllegalStateException("Could not register '" + entry.getId() + "' because the registry event of '" + this.getRegistryName() + "' already ran");
-        }
-        
+        this.checkUnfired(entry.getId());
         this.pending = entry;
         this.register(entry.getName(), factory);
         this.entries.add(entry);

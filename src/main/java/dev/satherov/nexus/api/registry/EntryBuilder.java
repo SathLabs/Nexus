@@ -274,8 +274,10 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
     ///
     private ENTRY registerEntry() {
         this.checkUnregistered();
-        ENTRY entry = this.createEntry(this.key);
         EntryRegister<REGISTRY> register = (EntryRegister<REGISTRY>) this.registrations.getRegister(this.key.registryKey());
+        // Check before creating the entry, or a late call would leave the listeners and sub-objects of the entry behind.
+        register.checkUnfired(this.key.identifier());
+        ENTRY entry = this.createEntry(this.key);
         register.add(entry, () -> {
             VALUE value = this.create();
             this.callbacks.forEach(callback -> callback.accept(value));
