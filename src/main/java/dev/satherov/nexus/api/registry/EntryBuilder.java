@@ -12,6 +12,7 @@ import net.neoforged.bus.api.IEventBus;
 import net.minecraft.core.Registry;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.tags.TagKey;
+import net.minecraft.util.Util;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.google.errorprone.annotations.ForOverride;
@@ -248,7 +249,7 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
     ///
     /// @return The still unbound entry of the object.
     ///
-    /// @throws IllegalStateException If [#end()] returns another builder, which registers this one, if this was already called, if another builder took over this one, or if the registry event of the registry already ran.
+    /// @throws IllegalStateException If [#end()] returns another builder, which registers this one, if this was already called, if another builder took over this one, if the registry event of the registry already ran, or if a translation key the object declares is already declared, such as by a name that differs only by a `/` in place of a `.`.
     ///
     @CanIgnoreReturnValue
     public ENTRY register() {
@@ -327,18 +328,21 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
     /// Declares the key `<category>.<modid>.<name>` with the given English name in the translations of the mod.
     /// - `<category>` is the given category.
     /// - `<modid>` is the id of the mod.
-    /// - `<name>` is the name of this builder.
+    /// - `<name>` is the name of this builder, with every `/` replaced by `.`.
+    ///
+    /// The key is the description id that vanilla derives from the identifier for the given category.
+    /// Two names that differ only by a `/` in place of a `.` share the key, as their vanilla description ids do.
     ///
     /// @param category The first part of the key.
     /// @param english  The English name.
     ///
     /// @return The declared translation.
     ///
-    /// @throws IllegalStateException If the key is already declared.
+    /// @throws IllegalStateException If the key is already declared, such as by a name that differs from this one only by a `/` in place of a `.`.
     ///
     @CanIgnoreReturnValue
     protected Translation define(String category, String english) {
-        return this.registrations.getMod().getTranslations().define(category, this.getName(), english);
+        return this.registrations.getMod().getTranslations().defineKey(Util.makeDescriptionId(category, this.key.identifier()), english);
     }
     
     ///

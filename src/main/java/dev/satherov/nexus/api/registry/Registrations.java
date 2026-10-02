@@ -5,6 +5,7 @@ import lombok.Getter;
 import dev.satherov.nexus.api.mod.NexusMod;
 import dev.satherov.nexus.api.registry.block.PlainBlockBuilder;
 import dev.satherov.nexus.api.registry.block.entity.BlockEntityBuilder;
+import dev.satherov.nexus.api.registry.entity.EntityBuilder;
 import dev.satherov.nexus.api.registry.fluid.PlainFluidBuilder;
 import dev.satherov.nexus.api.registry.item.ItemBuilder;
 import dev.satherov.nexus.api.registry.menu.MenuBuilder;
@@ -22,6 +23,9 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 
 import net.minecraft.core.Registry;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
@@ -196,6 +200,20 @@ public final class Registrations {
     ///
     public <ENTITY extends BlockEntity> BlockEntityBuilder<ENTITY, Registrations> blockEntity(String name, BlockEntityType.BlockEntitySupplier<ENTITY> factory) {
         return new BlockEntityBuilder<>(this, name, this, factory);
+    }
+    
+    ///
+    /// Starts an entity type of the factory in the given category.
+    ///
+    /// @param name     The path of the identifier.
+    /// @param english  The English name.
+    /// @param category The category of the entity type.
+    /// @param factory  The factory of the entities, called each time an entity of the type is created.
+    ///
+    /// @return The builder of the entity type.
+    ///
+    public <ENTITY extends Entity> EntityBuilder<ENTITY, Registrations> entity(String name, String english, MobCategory category, EntityType.EntityFactory<ENTITY> factory) {
+        return new EntityBuilder<>(this, name, english, this, category, factory);
     }
     
     ///

@@ -6,6 +6,7 @@ import dev.satherov.nexus.api.registry.block.PlainBlockEntry;
 import dev.satherov.nexus.api.registry.block.entity.BlockEntityEntry;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
 import dev.satherov.nexus.api.registry.client.ScreenFactory;
+import dev.satherov.nexus.api.registry.entity.EntityEntry;
 import dev.satherov.nexus.api.registry.fluid.PlainFluidEntry;
 import dev.satherov.nexus.api.registry.menu.MenuEntry;
 import dev.satherov.nexus.internal.registry.EntryRegister;
@@ -27,8 +28,12 @@ import net.minecraft.client.renderer.block.FluidModel;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.client.renderer.blockentity.state.BlockEntityRenderState;
+import net.minecraft.client.renderer.entity.EntityRenderer;
+import net.minecraft.client.renderer.entity.EntityRendererProvider;
+import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.core.Registry;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
@@ -96,6 +101,21 @@ public class ClientDispatch {
             ClientOnly<Function<BlockEntityRendererProvider.Context, BlockEntityRenderer<ENTITY, STATE>>> renderer
     ) {
         bus.addListener(EntityRenderersEvent.RegisterRenderers.class, event -> event.registerBlockEntityRenderer(entry.get(), renderer.get()::apply));
+    }
+    
+    ///
+    /// Registers the given renderer for the entity type of the given entry once the entity renderers are registered.
+    ///
+    /// @param bus      The event bus of the mod.
+    /// @param entry    The entry of the entity type.
+    /// @param renderer The factory of the renderer.
+    ///
+    public static <ENTITY extends Entity, STATE extends EntityRenderState> void entityRenderer(
+            IEventBus bus,
+            EntityEntry<ENTITY> entry,
+            ClientOnly<Function<EntityRendererProvider.Context, EntityRenderer<ENTITY, STATE>>> renderer
+    ) {
+        bus.addListener(EntityRenderersEvent.RegisterRenderers.class, event -> event.registerEntityRenderer(entry.get(), renderer.get()::apply));
     }
     
     ///

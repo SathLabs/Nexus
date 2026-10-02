@@ -6,6 +6,7 @@ import dev.satherov.nexus.api.registry.PlainBuilder;
 import dev.satherov.nexus.api.registry.Registrations;
 import dev.satherov.nexus.api.registry.RegistryEntry;
 import dev.satherov.nexus.api.registry.datagen.ProviderKind;
+import dev.satherov.nexus.api.text.Translation;
 
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -129,6 +130,12 @@ public class EntryBuilderTest {
         Assertions.assertThat(late.entryCreated).isFalse();
     }
     
+    @Test
+    public void definesTheKeyOfASlashedNameWithDots() {
+        SlashedBuilder slashed = new SlashedBuilder(Nexus.getMod().getRegistrations());
+        Assertions.assertThat(slashed.defineName().getKey()).isEqualTo("event.nexus.entry_builder_test.slashed");
+    }
+    
     private static RegistryEntry<GameEvent, GameEvent> event() {
         return Objects.requireNonNull(EntryBuilderTest.event);
     }
@@ -188,6 +195,27 @@ public class EntryBuilderTest {
         @Override
         protected RegistryEntry<GameEvent, GameEvent> createEntry(ResourceKey<GameEvent> key) {
             this.entryCreated = true;
+            return new TestEntry(key, this);
+        }
+    }
+    
+    private static final class SlashedBuilder extends EntryBuilder<GameEvent, GameEvent, RegistryEntry<GameEvent, GameEvent>, Registrations, SlashedBuilder> {
+        
+        private SlashedBuilder(Registrations registrations) {
+            super(registrations, Registries.GAME_EVENT, "entry_builder_test/slashed", registrations);
+        }
+        
+        private Translation defineName() {
+            return this.define("event", "Slashed Event");
+        }
+        
+        @Override
+        protected GameEvent create() {
+            return new GameEvent(16);
+        }
+        
+        @Override
+        protected RegistryEntry<GameEvent, GameEvent> createEntry(ResourceKey<GameEvent> key) {
             return new TestEntry(key, this);
         }
     }
