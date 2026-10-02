@@ -2,13 +2,23 @@ package dev.satherov.nexus.api.registry;
 
 import lombok.Getter;
 
+import dev.satherov.nexus.api.codec.NexusCodec;
+import dev.satherov.nexus.api.codec.struct.StructCodec;
 import dev.satherov.nexus.api.mod.NexusMod;
+import dev.satherov.nexus.api.registry.attachment.AttachmentBuilder;
+import dev.satherov.nexus.api.registry.attribute.AttributeBuilder;
 import dev.satherov.nexus.api.registry.block.PlainBlockBuilder;
 import dev.satherov.nexus.api.registry.block.entity.BlockEntityBuilder;
+import dev.satherov.nexus.api.registry.component.DataComponentBuilder;
+import dev.satherov.nexus.api.registry.effect.EffectBuilder;
 import dev.satherov.nexus.api.registry.entity.EntityBuilder;
 import dev.satherov.nexus.api.registry.fluid.PlainFluidBuilder;
 import dev.satherov.nexus.api.registry.item.ItemBuilder;
 import dev.satherov.nexus.api.registry.menu.MenuBuilder;
+import dev.satherov.nexus.api.registry.particle.ParticleBuilder;
+import dev.satherov.nexus.api.registry.potion.PotionBuilder;
+import dev.satherov.nexus.api.registry.recipe.RecipeTypeBuilder;
+import dev.satherov.nexus.api.registry.sound.SoundBuilder;
 import dev.satherov.nexus.api.registry.tab.TabBuilder;
 import dev.satherov.nexus.internal.registry.EntryRegister;
 import dev.satherov.nexus.internal.registry.client.ClientDispatch;
@@ -22,12 +32,18 @@ import net.neoforged.neoforge.network.IContainerFactory;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
 import net.minecraft.core.Registry;
+import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.core.particles.ParticleType;
+import net.minecraft.core.particles.SimpleParticleType;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.effect.MobEffect;
+import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -164,6 +180,35 @@ public final class Registrations {
     }
     
     ///
+    /// Starts an attachment type with the given initial value.
+    ///
+    /// If [AttachmentBuilder#codec(StructCodec)] isn't called, the attachment will not be saved.
+    ///
+    /// @param name    The path of the identifier.
+    /// @param initial The supplier of the initial value, called each time the attachment is read from a holder that doesn't have it.
+    ///
+    /// @return The builder of the attachment type.
+    ///
+    public <VALUE> AttachmentBuilder<VALUE, Registrations> attachment(String name, Supplier<VALUE> initial) {
+        return new AttachmentBuilder<>(this, name, this, initial);
+    }
+    
+    ///
+    /// Starts a ranged entity attribute with the given default, minimum, and maximum value.
+    ///
+    /// @param name    The path of the identifier.
+    /// @param english The English name.
+    /// @param initial The default value.
+    /// @param min     The minimum value.
+    /// @param max     The maximum value.
+    ///
+    /// @return The builder of the attribute.
+    ///
+    public AttributeBuilder<Registrations> attribute(String name, String english, double initial, double min, double max) {
+        return new AttributeBuilder<>(this, name, english, this, initial, min, max);
+    }
+    
+    ///
     /// Starts a plain block with `BlockBehaviour.Properties.of()`.
     ///
     /// @param name    The path of the identifier.
@@ -200,6 +245,31 @@ public final class Registrations {
     ///
     public <ENTITY extends BlockEntity> BlockEntityBuilder<ENTITY, Registrations> blockEntity(String name, BlockEntityType.BlockEntitySupplier<ENTITY> factory) {
         return new BlockEntityBuilder<>(this, name, this, factory);
+    }
+    
+    ///
+    /// Starts a data component type, saved with the DFU codec of the given codec and synced with its stream codec.
+    ///
+    /// @param name  The path of the identifier.
+    /// @param codec The codec of the values of the component.
+    ///
+    /// @return The builder of the data component type.
+    ///
+    public <VALUE> DataComponentBuilder<VALUE, Registrations> component(String name, NexusCodec<VALUE, ?> codec) {
+        return new DataComponentBuilder<>(this, name, this, codec);
+    }
+    
+    ///
+    /// Starts a mob effect of the given factory.
+    ///
+    /// @param name    The path of the identifier.
+    /// @param english The English name.
+    /// @param factory The factory of the mob effect, called once inside the registry event.
+    ///
+    /// @return The builder of the mob effect.
+    ///
+    public <EFFECT extends MobEffect> EffectBuilder<EFFECT, Registrations> effect(String name, String english, Supplier<EFFECT> factory) {
+        return new EffectBuilder<>(this, name, english, this, factory);
     }
     
     ///
@@ -270,6 +340,74 @@ public final class Registrations {
     ///
     public <MENU extends AbstractContainerMenu> MenuBuilder<MENU, Registrations> menu(String name, String english, IContainerFactory<MENU> factory) {
         return new MenuBuilder<>(this, name, english, this, factory);
+    }
+    
+    ///
+    /// Starts a simple particle type.
+    ///
+    /// The type doesn't override the particle limiter.
+    ///
+    /// @param name The path of the identifier.
+    ///
+    /// @return The builder of the particle type.
+    ///
+    public ParticleBuilder<SimpleParticleType, SimpleParticleType, Registrations> particle(String name) {
+        return this.particle(name, () -> new SimpleParticleType(false));
+    }
+    
+    ///
+    /// Starts a particle type of the given factory, with its own options.
+    ///
+    /// @param name    The path of the identifier.
+    /// @param factory The factory of the particle type, called once inside the registry event.
+    ///
+    /// @return The builder of the particle type.
+    ///
+    public <OPTIONS extends ParticleOptions, TYPE extends ParticleType<OPTIONS>> ParticleBuilder<OPTIONS, TYPE, Registrations> particle(String name, Supplier<TYPE> factory) {
+        return new ParticleBuilder<>(this, name, this, factory);
+    }
+    
+    ///
+    /// Starts a potion of the given effects, named after the English name of the effect:
+    /// - `Potion of <english>` as a potion.
+    /// - `Splash Potion of <english>` as a splash potion.
+    /// - `Lingering Potion of <english>` as a lingering potion.
+    /// - `Arrow of <english>` as a tipped arrow.
+    ///
+    /// @param name    The path of the identifier.
+    /// @param english The English name of the effect, `<english>` in the names.
+    /// @param effects The suppliers of the effects, each called once inside the registry event.
+    ///
+    /// @return The builder of the potion.
+    ///
+    @SafeVarargs
+    public final PotionBuilder<Registrations> potion(String name, String english, Supplier<MobEffectInstance>... effects) {
+        return new PotionBuilder<>(this, name, english, this, effects);
+    }
+    
+    ///
+    /// Starts a recipe type and, under the same name, a recipe serializer that reads and writes the recipes with the
+    /// given codec.
+    ///
+    /// @param name  The path of the identifier of both.
+    /// @param codec The codec of the recipes of the type.
+    ///
+    /// @return The builder of the recipe type.
+    ///
+    public <RECIPE extends Recipe<?>> RecipeTypeBuilder<RECIPE, Registrations> recipe(String name, StructCodec<RECIPE, ?> codec) {
+        return new RecipeTypeBuilder<>(this, name, this, codec);
+    }
+    
+    ///
+    /// Starts a sound event with the default range and the given English subtitle.
+    ///
+    /// @param name    The path of the identifier.
+    /// @param english The English subtitle.
+    ///
+    /// @return The builder of the sound event.
+    ///
+    public SoundBuilder<Registrations> sound(String name, String english) {
+        return new SoundBuilder<>(this, name, english, this);
     }
     
     ///

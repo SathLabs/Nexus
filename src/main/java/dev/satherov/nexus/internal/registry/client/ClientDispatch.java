@@ -9,6 +9,7 @@ import dev.satherov.nexus.api.registry.client.ScreenFactory;
 import dev.satherov.nexus.api.registry.entity.EntityEntry;
 import dev.satherov.nexus.api.registry.fluid.PlainFluidEntry;
 import dev.satherov.nexus.api.registry.menu.MenuEntry;
+import dev.satherov.nexus.api.registry.particle.ParticleEntry;
 import dev.satherov.nexus.internal.registry.EntryRegister;
 
 import net.neoforged.bus.api.EventPriority;
@@ -17,6 +18,7 @@ import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.RegisterColorHandlersEvent;
 import net.neoforged.neoforge.client.event.RegisterFluidModelsEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
+import net.neoforged.neoforge.client.event.RegisterParticleProvidersEvent;
 import net.neoforged.neoforge.client.extensions.common.IClientFluidTypeExtensions;
 import net.neoforged.neoforge.client.extensions.common.RegisterClientExtensionsEvent;
 import net.neoforged.neoforge.registries.RegisterEvent;
@@ -24,6 +26,8 @@ import net.neoforged.neoforge.registries.RegisterEvent;
 import net.minecraft.client.color.block.BlockTintSource;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.MenuAccess;
+import net.minecraft.client.particle.ParticleProvider;
+import net.minecraft.client.particle.SpriteSet;
 import net.minecraft.client.renderer.block.FluidModel;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
@@ -32,6 +36,7 @@ import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.core.Registry;
+import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -155,5 +160,37 @@ public class ClientDispatch {
     ///
     public static void fluidExtensions(IEventBus bus, PlainFluidEntry<?, ?, ?> fluid, ClientOnly<Supplier<IClientFluidTypeExtensions>> extensions) {
         bus.addListener(RegisterClientExtensionsEvent.class, event -> event.registerFluidType(extensions.get().get(), fluid.getType()));
+    }
+    
+    ///
+    /// Registers the provider of the given factory for the particle type of the given entry, with the sprites of the
+    /// type, once the particle providers are registered.
+    ///
+    /// @param bus      The event bus of the mod.
+    /// @param entry    The entry of the particle type.
+    /// @param provider The factory of the provider, called with the sprites of the type.
+    ///
+    public static <OPTIONS extends ParticleOptions> void particleSprites(
+            IEventBus bus,
+            ParticleEntry<OPTIONS, ?> entry,
+            ClientOnly<Function<SpriteSet, ParticleProvider<OPTIONS>>> provider
+    ) {
+        bus.addListener(RegisterParticleProvidersEvent.class, event -> event.registerSpriteSet(entry.get(), provider.get()::apply));
+    }
+    
+    ///
+    /// Registers the given provider for the particle type of the given entry once the particle providers are
+    /// registered.
+    ///
+    /// @param bus      The event bus of the mod.
+    /// @param entry    The entry of the particle type.
+    /// @param provider The provider of the particles.
+    ///
+    public static <OPTIONS extends ParticleOptions> void particleProvider(
+            IEventBus bus,
+            ParticleEntry<OPTIONS, ?> entry,
+            ClientOnly<Supplier<ParticleProvider<OPTIONS>>> provider
+    ) {
+        bus.addListener(RegisterParticleProvidersEvent.class, event -> event.registerSpecial(entry.get(), provider.get().get()));
     }
 }
