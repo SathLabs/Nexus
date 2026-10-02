@@ -78,7 +78,7 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
     private final List<ClientOnly<BiConsumer<IEventBus, ENTRY>>> clientCode = new ArrayList<>();
     
     ///
-    /// If [#register()] was called.
+    /// If [#register()] was called or another builder took over this one.
     ///
     private boolean registered;
     
@@ -97,6 +97,29 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
         this.parent = parent;
         
         this.key = registrations.getMod().key(registry, name);
+    }
+    
+    ///
+    /// Takes over the object of the given builder, with its key and everything recorded on it so far.
+    ///
+    /// The given builder will throw on every later call that records something or registers.
+    ///
+    /// @param from   The builder to take over.
+    /// @param parent What [#end()] returns.
+    ///
+    /// @throws IllegalStateException If the given builder already registered or another builder took it over.
+    ///
+    protected EntryBuilder(EntryBuilder<REGISTRY, VALUE, ? super ENTRY, ?, ?> from, PARENT parent) {
+        from.checkUnregistered();
+        this.registrations = from.registrations;
+        this.key = from.key;
+        this.parent = parent;
+        
+        this.tags.addAll(from.tags);
+        this.factsByKind.putAll(from.factsByKind);
+        this.callbacks.addAll(from.callbacks);
+        from.clientCode.forEach(code -> this.clientCode.add(() -> code.get()::accept));
+        from.registered = true;
     }
     
     ///
@@ -138,7 +161,7 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
     ///
     /// @return The builder for chaining.
     ///
-    /// @throws IllegalStateException If [#register()] was already called.
+    /// @throws IllegalStateException If [#register()] was already called or another builder took over this one.
     ///
     @SafeVarargs
     @CanIgnoreReturnValue
@@ -157,7 +180,7 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
     ///
     /// @return The builder for chaining.
     ///
-    /// @throws IllegalStateException If [#register()] was already called.
+    /// @throws IllegalStateException If [#register()] was already called or another builder took over this one.
     ///
     @CanIgnoreReturnValue
     public SELF onRegister(Consumer<VALUE> callback) {
@@ -176,7 +199,7 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
     ///
     /// @return The builder for chaining.
     ///
-    /// @throws IllegalStateException If [#register()] was already called.
+    /// @throws IllegalStateException If [#register()] was already called or another builder took over this one.
     ///
     @CanIgnoreReturnValue
     public <FACT> SELF datagen(ProviderKind<FACT> kind, FACT fact) {
@@ -197,7 +220,7 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
     ///
     /// @return The builder for chaining.
     ///
-    /// @throws IllegalStateException If [#register()] was already called.
+    /// @throws IllegalStateException If [#register()] was already called or another builder took over this one.
     ///
     @CanIgnoreReturnValue
     public SELF client(ClientOnly<BiConsumer<IEventBus, ENTRY>> code) {
@@ -219,10 +242,37 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
     ///
     /// @return The still unbound entry of the object.
     ///
-    /// @throws IllegalStateException If this was already called or the registry event of the registry already ran.
+    /// @throws IllegalStateException If [#end()] returns another builder, which registers this one, if this was already called, if another builder took over this one, or if the registry event of the registry already ran.
     ///
     @CanIgnoreReturnValue
     public ENTRY register() {
+        if (this.parent instanceof EntryBuilder<?, ?, ?, ?, ?>) {
+            throw new IllegalStateException("'" + this.key.identifier() + "' is registered by its parent through end().register()");
+        }
+        
+        return this.registerEntry();
+    }
+    
+    ///
+    /// Registers the given sub-object, whose own [#register()] throws.
+    ///
+    /// Should only ever be called from [#createEntry(ResourceKey)].
+    ///
+    /// @param builder The builder of the sub-object.
+    ///
+    /// @return The still unbound entry of the sub-object.
+    ///
+    /// @throws IllegalStateException If the sub-object was already registered, another builder took it over, or the registry event of its registry already ran.
+    ///
+    @CanIgnoreReturnValue
+    protected static <SUB extends RegistryEntry<?, ?>> SUB registerSubObject(EntryBuilder<?, ?, SUB, ?, ?> builder) {
+        return builder.registerEntry();
+    }
+    
+    ///
+    /// Registers the object and its sub-objects.
+    ///
+    private ENTRY registerEntry() {
         this.checkUnregistered();
         ENTRY entry = this.createEntry(this.key);
         EntryRegister<REGISTRY> register = (EntryRegister<REGISTRY>) this.registrations.getRegister(this.key.registryKey());
@@ -238,9 +288,13 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
     }
     
     ///
-    /// Throws an [IllegalStateException] if [#register()] was already called.
+    /// Throws an [IllegalStateException] if [#register()] was already called or another builder took over this one.
     ///
-    private void checkUnregistered() {
+    /// Meant to be used for the setters of a mod's own builders.
+    ///
+    /// @throws IllegalStateException If [#register()] was already called or another builder took over this one.
+    ///
+    protected final void checkUnregistered() {
         if (this.registered) {
             throw new IllegalStateException("'" + this.key.identifier() + "' is already registered");
         }

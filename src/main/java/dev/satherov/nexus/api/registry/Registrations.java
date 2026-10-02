@@ -3,14 +3,22 @@ package dev.satherov.nexus.api.registry;
 import lombok.Getter;
 
 import dev.satherov.nexus.api.mod.NexusMod;
+import dev.satherov.nexus.api.registry.block.PlainBlockBuilder;
+import dev.satherov.nexus.api.registry.item.ItemBuilder;
+import dev.satherov.nexus.api.registry.tab.TabBuilder;
 import dev.satherov.nexus.internal.registry.EntryRegister;
 import dev.satherov.nexus.internal.registry.client.ClientDispatch;
+import dev.satherov.nexus.internal.registry.tab.TabContents;
 
 import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
 import net.minecraft.core.Registry;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockBehaviour;
 
 import com.mojang.serialization.MapCodec;
 
@@ -22,6 +30,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 ///
@@ -58,6 +67,7 @@ public final class Registrations {
     public Registrations(NexusMod mod) {
         this.mod = mod;
         
+        mod.getEventBus().addListener(BuildCreativeModeTabContentsEvent.class, new TabContents(this)::onBuildContents);
         if (FMLEnvironment.getDist().isClient()) {
             ClientDispatch.listen(mod.getEventBus(), Collections.unmodifiableMap(this.registersByKey));
         }
@@ -138,5 +148,73 @@ public final class Registrations {
             MapCodec<VALUE> codec
     ) {
         return new PlainBuilder<>(this, registry, name, this, () -> codec);
+    }
+    
+    ///
+    /// Starts a plain block with `BlockBehaviour.Properties.of()`.
+    ///
+    /// @param name    The path of the identifier.
+    /// @param english The English name.
+    ///
+    /// @return The builder of the block.
+    ///
+    public PlainBlockBuilder<Block, Registrations> block(String name, String english) {
+        return this.block(name, english, Block::new);
+    }
+    
+    ///
+    /// Starts a block of the factory's class.
+    ///
+    /// The factory receives the properties with the id set.
+    ///
+    /// @param name    The path of the identifier.
+    /// @param english The English name.
+    /// @param factory The factory of the block, called once inside the registry event.
+    ///
+    /// @return The builder of the block.
+    ///
+    public <BLOCK extends Block> PlainBlockBuilder<BLOCK, Registrations> block(String name, String english, Function<BlockBehaviour.Properties, BLOCK> factory) {
+        return new PlainBlockBuilder<>(this, name, english, this, factory);
+    }
+    
+    ///
+    /// Starts a plain item with `new Item.Properties()`.
+    ///
+    /// @param name    The path of the identifier.
+    /// @param english The English name.
+    ///
+    /// @return The builder of the item.
+    ///
+    public ItemBuilder<Item, Registrations> item(String name, String english) {
+        return this.item(name, english, Item::new);
+    }
+    
+    ///
+    /// Starts an item of the factory's class.
+    ///
+    /// The factory receives the properties with the id set.
+    ///
+    /// @param name    The path of the identifier.
+    /// @param english The English name.
+    /// @param factory The factory of the item, called once inside the registry event.
+    ///
+    /// @return The builder of the item.
+    ///
+    public <ITEM extends Item> ItemBuilder<ITEM, Registrations> item(String name, String english, Function<Item.Properties, ITEM> factory) {
+        return new ItemBuilder<>(this, name, english, this, factory);
+    }
+    
+    ///
+    /// Starts a creative tab titled with the given English name.
+    ///
+    /// The first tab the mod registers is where its items show by default.
+    ///
+    /// @param name    The path of the identifier.
+    /// @param english The English title.
+    ///
+    /// @return The builder of the tab.
+    ///
+    public TabBuilder<Registrations> tab(String name, String english) {
+        return new TabBuilder<>(this, name, english, this);
     }
 }
