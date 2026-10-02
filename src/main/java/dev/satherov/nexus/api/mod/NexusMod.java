@@ -2,6 +2,7 @@ package dev.satherov.nexus.api.mod;
 
 import lombok.Getter;
 
+import dev.satherov.nexus.api.registry.Registrations;
 import dev.satherov.nexus.api.text.Translations;
 import dev.satherov.nexus.internal.text.tooltip.TooltipDispatch;
 
@@ -51,6 +52,12 @@ public final class NexusMod {
     ///
     @Getter(lazy = true)
     private final Translations translations = new Translations(this.modId);
+    
+    ///
+    /// The mod's registrations, created when its getter is first called.
+    ///
+    @Getter(lazy = true)
+    private final Registrations registrations = new Registrations(this);
     
     ///
     /// Creates the handle of the mod the given container belongs to.

@@ -56,14 +56,7 @@ public final class Translations {
     ///
     @CanIgnoreReturnValue
     public Translation define(String category, String name, String english) {
-        String key = category + "." + this.modId + "." + name;
-        if (this.translationsByKey.containsKey(key)) {
-            throw new IllegalStateException("Key '" + key + "' is already declared");
-        }
-        
-        Translation translation = new Translation(key, english);
-        this.translationsByKey.put(key, translation);
-        return translation;
+        return this.defineKey(category + "." + this.modId + "." + name, english);
     }
     
     ///
@@ -83,6 +76,29 @@ public final class Translations {
     @CanIgnoreReturnValue
     public Translation define(String category, Enum<?> constant, String english) {
         return this.define(category, StringUtils.lower(constant.name()), english);
+    }
+    
+    ///
+    /// Declares the given key with the given English default.
+    ///
+    /// Meant to be used for keys outside the `<category>.<modid>.<name>` shape.
+    ///
+    /// @param key     The full key.
+    /// @param english The English default, with its placeholders.
+    ///
+    /// @return The declared translation.
+    ///
+    /// @throws IllegalStateException If the key is already declared.
+    ///
+    @CanIgnoreReturnValue
+    public Translation defineKey(String key, String english) {
+        if (this.translationsByKey.containsKey(key)) {
+            throw new IllegalStateException("Key '" + key + "' is already declared");
+        }
+        
+        Translation translation = new Translation(key, english);
+        this.translationsByKey.put(key, translation);
+        return translation;
     }
     
     ///
