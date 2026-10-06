@@ -4,7 +4,6 @@ import dev.satherov.nexus.api.registry.EntryBuilder;
 import dev.satherov.nexus.api.registry.Registrations;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
 import dev.satherov.nexus.api.registry.client.ScreenFactory;
-import dev.satherov.nexus.internal.registry.EntryRegister;
 import dev.satherov.nexus.internal.registry.client.ClientDispatch;
 
 import net.neoforged.bus.api.IEventBus;
@@ -106,8 +105,7 @@ public final class MenuBuilder<MENU extends AbstractContainerMenu, PARENT> exten
         MenuEntry<MENU> entry = new MenuEntry<>(key, this, this.define("container", this.english));
         BiConsumer<IEventBus, MenuEntry<MENU>> screen = this.screen;
         if (screen != null) {
-            EntryRegister<MenuType<?>> register = (EntryRegister<MenuType<?>>) this.getRegistrations().getRegister(Registries.MENU);
-            register.addClientHook(bus -> screen.accept(bus, entry));
+            this.addClientHook(bus -> screen.accept(bus, entry));
         }
 
         return entry;

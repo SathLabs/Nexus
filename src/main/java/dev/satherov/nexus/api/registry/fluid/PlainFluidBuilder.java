@@ -6,7 +6,6 @@ import dev.satherov.nexus.api.registry.RegistryEntry;
 import dev.satherov.nexus.api.registry.block.PlainBlockBuilder;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
 import dev.satherov.nexus.api.text.Translation;
-import dev.satherov.nexus.internal.registry.EntryRegister;
 import dev.satherov.nexus.internal.registry.client.ClientDispatch;
 
 import net.neoforged.neoforge.client.extensions.common.IClientFluidTypeExtensions;
@@ -356,15 +355,14 @@ public final class PlainFluidBuilder<TYPE extends FluidType, SOURCE extends Flow
                 new FluidEntry<>(key, block.end(), translation, type, flowing, EntryBuilder.registerSubObject(block), EntryBuilder.registerSubObject(block.end().bucket()));
         
         this.entry = entry;
-        EntryRegister<Fluid> register = (EntryRegister<Fluid>) registrations.getRegister(Registries.FLUID);
         ClientOnly<Supplier<FluidModel.Unbaked>> model = this.model;
         if (model != null) {
-            register.addClientHook(bus -> ClientDispatch.fluidModel(bus, entry, model));
+            this.addClientHook(bus -> ClientDispatch.fluidModel(bus, entry, model));
         }
         
         ClientOnly<Supplier<IClientFluidTypeExtensions>> extensions = this.extensions;
         if (extensions != null) {
-            register.addClientHook(bus -> ClientDispatch.fluidExtensions(bus, entry, extensions));
+            this.addClientHook(bus -> ClientDispatch.fluidExtensions(bus, entry, extensions));
         }
         
         return entry;

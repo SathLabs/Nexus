@@ -24,17 +24,18 @@ import dev.satherov.nexus.internal.registry.EntryRegister;
 import dev.satherov.nexus.internal.registry.client.ClientDispatch;
 import dev.satherov.nexus.internal.registry.tab.TabContents;
 
+import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.fluids.BaseFlowingFluid;
 import net.neoforged.neoforge.fluids.FluidType;
 import net.neoforged.neoforge.network.IContainerFactory;
-import net.neoforged.neoforge.registries.DeferredRegister;
 
 import net.minecraft.core.Registry;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleType;
 import net.minecraft.core.particles.SimpleParticleType;
+import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -59,6 +60,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -103,21 +105,58 @@ public final class Registrations {
     }
     
     ///
-    /// The register of the given registry, created and subscribed to the event bus of the mod on the first call.
+    /// Throws an [IllegalStateException] if the registry event of the given registry already ran or the given
+    /// identifier is already registered in it.
     ///
-    /// Meant to be used for a mod's own builders.
+    /// Should only ever be called from [EntryBuilder#register()].
     ///
     /// @param registry The key of the registry.
+    /// @param id       The identifier of the object to register.
     ///
-    /// @return The register of the registry.
+    /// @throws IllegalStateException If the registry event of the registry already ran, or if the identifier is already registered.
     ///
-    public <REGISTRY> DeferredRegister<REGISTRY> getRegister(ResourceKey<? extends Registry<REGISTRY>> registry) {
+    @ApiStatus.Internal
+    public <REGISTRY> void checkAddable(ResourceKey<? extends Registry<REGISTRY>> registry, Identifier id) {
+        this.getRegister(registry).checkAddable(id);
+    }
+    
+    ///
+    /// Adds the given entry, whose object the given factory creates inside the registry event of its registry.
+    ///
+    /// Should only ever be called from [EntryBuilder#register()].
+    ///
+    /// @param entry   The still unbound entry.
+    /// @param factory The factory of the object, called once inside the registry event.
+    ///
+    /// @throws IllegalStateException If the registry event of the registry already ran, or if the identifier of the entry is already registered.
+    ///
+    @ApiStatus.Internal
+    public <REGISTRY, VALUE extends REGISTRY> void add(RegistryEntry<REGISTRY, VALUE> entry, Supplier<VALUE> factory) {
+        this.getRegister(entry.getKey().registryKey()).add(entry, factory);
+    }
+    
+    ///
+    /// Adds the given client hook to the given registry, called with the mod bus once the registry event of the
+    /// registry has run.
+    ///
+    /// Should only ever be called from [EntryBuilder#addClientHook(Consumer)].
+    ///
+    /// @param registry The key of the registry.
+    /// @param hook     The client hook, called with the mod bus.
+    ///
+    /// @throws IllegalStateException If the registry event of the registry already ran.
+    ///
+    @ApiStatus.Internal
+    public <REGISTRY> void addClientHook(ResourceKey<? extends Registry<REGISTRY>> registry, Consumer<IEventBus> hook) {
+        this.getRegister(registry).addClientHook(hook);
+    }
+    
+    ///
+    /// The register of the given registry, created and subscribed to the event bus of the mod on the first call.
+    ///
+    private <REGISTRY> EntryRegister<REGISTRY> getRegister(ResourceKey<? extends Registry<REGISTRY>> registry) {
         //noinspection unchecked The register under a key is of the registry of that key.
-        return (DeferredRegister<REGISTRY>) this.registersByKey.computeIfAbsent(registry, _ -> {
-            EntryRegister<REGISTRY> register = new EntryRegister<>(registry, this.mod.getModId(), this.entries);
-            register.register(this.mod.getEventBus());
-            return register;
-        });
+        return (EntryRegister<REGISTRY>) this.registersByKey.computeIfAbsent(registry, _ -> new EntryRegister<>(registry, this.mod.getEventBus(), this.entries));
     }
     
     ///

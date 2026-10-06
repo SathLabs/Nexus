@@ -3,7 +3,6 @@ package dev.satherov.nexus.api.registry.particle;
 import dev.satherov.nexus.api.registry.EntryBuilder;
 import dev.satherov.nexus.api.registry.Registrations;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
-import dev.satherov.nexus.internal.registry.EntryRegister;
 import dev.satherov.nexus.internal.registry.client.ClientDispatch;
 
 import net.neoforged.bus.api.IEventBus;
@@ -122,8 +121,7 @@ public final class ParticleBuilder<OPTIONS extends ParticleOptions, TYPE extends
         ParticleEntry<OPTIONS, TYPE> entry = new ParticleEntry<>(key, this);
         BiConsumer<IEventBus, ParticleEntry<OPTIONS, TYPE>> provider = this.provider;
         if (provider != null) {
-            EntryRegister<ParticleType<?>> register = (EntryRegister<ParticleType<?>>) this.getRegistrations().getRegister(Registries.PARTICLE_TYPE);
-            register.addClientHook(bus -> provider.accept(bus, entry));
+            this.addClientHook(bus -> provider.accept(bus, entry));
         }
         
         return entry;

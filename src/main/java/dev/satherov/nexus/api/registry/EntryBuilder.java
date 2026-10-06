@@ -5,7 +5,6 @@ import lombok.Getter;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
 import dev.satherov.nexus.api.registry.datagen.ProviderKind;
 import dev.satherov.nexus.api.text.Translation;
-import dev.satherov.nexus.internal.registry.EntryRegister;
 
 import net.neoforged.bus.api.IEventBus;
 
@@ -249,7 +248,7 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
     ///
     /// @return The still unbound entry of the object.
     ///
-    /// @throws IllegalStateException If [#end()] returns another builder, which registers this one, if this was already called, if another builder took over this one, if the registry event of the registry already ran, or if a translation key the object declares is already declared, such as by a name that differs only by a `/` in place of a `.`.
+    /// @throws IllegalStateException If [#end()] returns another builder, which registers this one, if this was already called, if another builder took over this one, if the registry event of the registry already ran, if the identifier is already registered in the registry, or if a translation key the object declares is already declared, such as by a name that differs only by a `/` in place of a `.`.
     ///
     @CanIgnoreReturnValue
     public ENTRY register() {
@@ -272,7 +271,7 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
     ///
     /// @return The still unbound entry of the sub-object.
     ///
-    /// @throws IllegalStateException If the sub-object was already registered or the registry event of its registry already ran.
+    /// @throws IllegalStateException If the sub-object was already registered, if the registry event of its registry already ran, or if its identifier is already registered in the registry.
     ///
     @CanIgnoreReturnValue
     protected static <SUB extends RegistryEntry<?, ?>> SUB registerSubObject(EntryBuilder<?, ?, SUB, ?, ?> builder) {
@@ -285,18 +284,17 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
     ///
     private ENTRY registerEntry() {
         this.checkUnregistered();
-        EntryRegister<REGISTRY> register = (EntryRegister<REGISTRY>) this.registrations.getRegister(this.key.registryKey());
         // Check before creating the entry, or a late call would leave the listeners and sub-objects of the entry behind.
-        register.checkUnfired(this.key.identifier());
+        this.registrations.checkAddable(this.key.registryKey(), this.key.identifier());
         ENTRY entry = this.createEntry(this.key);
-        register.add(entry, () -> {
+        this.registrations.add(entry, () -> {
             VALUE value = this.create();
             this.callbacks.forEach(callback -> callback.accept(value));
             return value;
         });
         
         this.registered = true;
-        this.clientCode.forEach(code -> register.addClientHook(bus -> code.get().accept(bus, entry)));
+        this.clientCode.forEach(code -> this.addClientHook(bus -> code.get().accept(bus, entry)));
         return entry;
     }
     
@@ -311,6 +309,23 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
         if (this.registered) {
             throw new IllegalStateException("'" + this.key.identifier() + "' is already registered");
         }
+    }
+    
+    ///
+    /// Adds the given client hook to the registry of the object, called with the mod bus once the registry event of the
+    /// registry has run.
+    /// Stacks with previous calls, in the order they were written.
+    ///
+    /// Meant to be used for the client code of a mod's own builders.
+    ///
+    /// Never runs on a dedicated server.
+    ///
+    /// @param hook The client hook, called with the mod bus.
+    ///
+    /// @throws IllegalStateException If the registry event of the registry already ran.
+    ///
+    protected final void addClientHook(Consumer<IEventBus> hook) {
+        this.registrations.addClientHook(this.key.registryKey(), hook);
     }
     
     ///

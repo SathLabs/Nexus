@@ -3,7 +3,6 @@ package dev.satherov.nexus.api.registry.block.entity;
 import dev.satherov.nexus.api.registry.EntryBuilder;
 import dev.satherov.nexus.api.registry.Registrations;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
-import dev.satherov.nexus.internal.registry.EntryRegister;
 import dev.satherov.nexus.internal.registry.client.ClientDispatch;
 
 import net.neoforged.bus.api.IEventBus;
@@ -164,8 +163,7 @@ public final class BlockEntityBuilder<ENTITY extends BlockEntity, PARENT> extend
         this.capabilities.forEach(capability -> modBus.addListener(RegisterCapabilitiesEvent.class, event -> capability.accept(event, entry.value())));
         BiConsumer<IEventBus, BlockEntityEntry<ENTITY>> renderer = this.renderer;
         if (renderer != null) {
-            EntryRegister<BlockEntityType<?>> register = (EntryRegister<BlockEntityType<?>>) this.getRegistrations().getRegister(Registries.BLOCK_ENTITY_TYPE);
-            register.addClientHook(bus -> renderer.accept(bus, entry));
+            this.addClientHook(bus -> renderer.accept(bus, entry));
         }
         
         return entry;

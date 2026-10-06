@@ -39,7 +39,9 @@ public class RegistrationsTest {
     
     private static @Nullable PlainBuilder<SoundEvent, SoundEvent, Registrations> soundBuilder;
     private static @Nullable RegistryEntry<SoundEvent, SoundEvent> sound;
+    private static @Nullable RegistryEntry<SoundEvent, SoundEvent> secondSound;
     private static @Nullable RegistryEntry<GameEvent, GameEvent> gameEvent;
+    private static @Nullable Throwable duplicateRefusal;
     private static boolean clientCodeRan;
     
     @Test
@@ -50,9 +52,10 @@ public class RegistrationsTest {
     }
     
     @Test
-    public void isTheHolderOfItsRegister() {
-        RegistryEntry<SoundEvent, SoundEvent> sound = RegistrationsTest.sound();
-        Assertions.assertThat(Nexus.getMod().getRegistrations().getRegister(Registries.SOUND_EVENT).getEntries()).anySatisfy(holder -> Assertions.assertThat(holder).isSameAs(sound));
+    public void registersTheObjectsOfOneRegistryInRegistrationOrder() {
+        int first = BuiltInRegistries.SOUND_EVENT.getId(RegistrationsTest.sound().value());
+        int second = BuiltInRegistries.SOUND_EVENT.getId(RegistrationsTest.secondSound().value());
+        Assertions.assertThat(first).isLessThan(second);
     }
     
     @Test
@@ -104,6 +107,16 @@ public class RegistrationsTest {
     }
     
     @Test
+    public void refusesAnIdentifierThatIsAlreadyRegistered() {
+        Assertions.assertThat(RegistrationsTest.duplicateRefusal)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("'nexus:registrations_test_sound' is already registered");
+        Assertions.assertThat(Nexus.getMod().getRegistrations().getAll(Registries.SOUND_EVENT))
+                .filteredOn(entry -> entry.getName().equals("registrations_test_sound"))
+                .containsExactly(RegistrationsTest.sound());
+    }
+    
+    @Test
     public void refusesAnObjectOfARegistryWithoutRegisterAfterItsEvent() {
         Registrations registrations = Nexus.getMod().getRegistrations();
         PlainBuilder<Identifier, Identifier, Registrations> builder = registrations.register(
@@ -141,7 +154,7 @@ public class RegistrationsTest {
     
     @Test
     public void listsEveryEntryInRegistrationOrder() {
-        Assertions.assertThat(Nexus.getMod().getRegistrations().getAll()).containsSubsequence(RegistrationsTest.sound(), RegistrationsTest.gameEvent());
+        Assertions.assertThat(Nexus.getMod().getRegistrations().getAll()).containsSubsequence(RegistrationsTest.sound(), RegistrationsTest.secondSound(), RegistrationsTest.gameEvent());
     }
     
     @Test
@@ -155,6 +168,10 @@ public class RegistrationsTest {
     
     private static RegistryEntry<SoundEvent, SoundEvent> sound() {
         return Objects.requireNonNull(RegistrationsTest.sound);
+    }
+    
+    private static RegistryEntry<SoundEvent, SoundEvent> secondSound() {
+        return Objects.requireNonNull(RegistrationsTest.secondSound);
     }
     
     private static RegistryEntry<GameEvent, GameEvent> gameEvent() {
@@ -182,7 +199,14 @@ public class RegistrationsTest {
             
             RegistrationsTest.soundBuilder = builder;
             RegistrationsTest.sound = builder.register();
+            RegistrationsTest.secondSound = registrations
+                    .register(Registries.SOUND_EVENT, "registrations_test_second_sound", () -> SoundEvent.createVariableRangeEvent(Nexus.getMod().id("registrations_test_second_sound")))
+                    .register();
             RegistrationsTest.gameEvent = registrations.register(Registries.GAME_EVENT, "registrations_test_game_event", () -> new GameEvent(16)).register();
+            RegistrationsTest.duplicateRefusal = Assertions.catchThrowable(() -> registrations
+                    .register(Registries.SOUND_EVENT, "registrations_test_sound", () -> SoundEvent.createVariableRangeEvent(Nexus.getMod().id("registrations_test_sound")))
+                    .register()
+            );
         }
     }
 }

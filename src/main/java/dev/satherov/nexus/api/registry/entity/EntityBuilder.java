@@ -5,7 +5,6 @@ import dev.satherov.nexus.api.registry.Registrations;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
 import dev.satherov.nexus.api.registry.item.ItemBuilder;
 import dev.satherov.nexus.api.text.Translation;
-import dev.satherov.nexus.internal.registry.EntryRegister;
 import dev.satherov.nexus.internal.registry.client.ClientDispatch;
 
 import net.neoforged.bus.api.IEventBus;
@@ -308,8 +307,7 @@ public final class EntityBuilder<ENTITY extends Entity, PARENT> extends EntryBui
         
         BiConsumer<IEventBus, EntityEntry<ENTITY>> renderer = this.renderer;
         if (renderer != null) {
-            EntryRegister<EntityType<?>> register = (EntryRegister<EntityType<?>>) this.getRegistrations().getRegister(Registries.ENTITY_TYPE);
-            register.addClientHook(bus -> renderer.accept(bus, entry));
+            this.addClientHook(bus -> renderer.accept(bus, entry));
         }
         
         return entry;

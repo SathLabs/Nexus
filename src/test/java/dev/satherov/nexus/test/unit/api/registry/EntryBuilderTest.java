@@ -41,6 +41,7 @@ public class EntryBuilderTest {
     private static @Nullable PlainBuilder<GameEvent, GameEvent, Registrations> registered;
     private static @Nullable RegistryEntry<GameEvent, GameEvent> event;
     private static @Nullable ParentBuilder parent;
+    private static @Nullable RegistryEntry<GameEvent, GameEvent> parentEntry;
     private static @Nullable ParentBuilder takenParent;
     private static @Nullable Throwable subRefusal;
     private static boolean clientCodeRan;
@@ -111,6 +112,12 @@ public class EntryBuilderTest {
         RegistryEntry<GameEvent, GameEvent> sub = Objects.requireNonNull(Objects.requireNonNull(EntryBuilderTest.parent).subEntry);
         Assertions.assertThat(sub.getId()).isEqualTo(Nexus.getMod().id("entry_builder_test_sub"));
         Assertions.assertThat(sub.value()).isSameAs(BuiltInRegistries.GAME_EVENT.getValue(sub.getId()));
+    }
+    
+    @Test
+    public void listsASubObjectBeforeItsParent() {
+        RegistryEntry<GameEvent, GameEvent> sub = Objects.requireNonNull(Objects.requireNonNull(EntryBuilderTest.parent).subEntry);
+        Assertions.assertThat(Nexus.getMod().getRegistrations().getAll()).containsSubsequence(sub, Objects.requireNonNull(EntryBuilderTest.parentEntry));
     }
     
     @Test
@@ -255,7 +262,7 @@ public class EntryBuilderTest {
             
             ParentBuilder parent = new ParentBuilder(registrations, "entry_builder_test");
             EntryBuilderTest.subRefusal = Assertions.catchThrowable(parent.sub::register);
-            parent.register();
+            EntryBuilderTest.parentEntry = parent.register();
             EntryBuilderTest.parent = parent;
             
             ParentBuilder takenParent = new ParentBuilder(registrations, "entry_builder_test_taken");

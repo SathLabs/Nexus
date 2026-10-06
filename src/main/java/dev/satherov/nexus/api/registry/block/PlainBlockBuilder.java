@@ -5,7 +5,6 @@ import dev.satherov.nexus.api.registry.Registrations;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
 import dev.satherov.nexus.api.registry.item.ItemBuilder;
 import dev.satherov.nexus.api.text.Translation;
-import dev.satherov.nexus.internal.registry.EntryRegister;
 import dev.satherov.nexus.internal.registry.client.ClientDispatch;
 
 import net.neoforged.neoforge.registries.DeferredHolder;
@@ -206,8 +205,7 @@ public final class PlainBlockBuilder<BLOCK extends Block, PARENT> extends EntryB
         PlainBlockEntry<BLOCK> entry = blockEntryFactory == null ? new PlainBlockEntry<>(key, this, this.translation) : blockEntryFactory.apply(key);
         ClientOnly<List<BlockTintSource>> tints = this.tints;
         if (tints != null) {
-            EntryRegister<Block> register = (EntryRegister<Block>) this.getRegistrations().getRegister(Registries.BLOCK);
-            register.addClientHook(bus -> ClientDispatch.tint(bus, entry, tints));
+            this.addClientHook(bus -> ClientDispatch.tint(bus, entry, tints));
         }
         
         return entry;
