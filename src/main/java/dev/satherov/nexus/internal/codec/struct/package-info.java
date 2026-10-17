@@ -1,6 +1,3 @@
-///
-/// The implementation of struct codecs.
-///
 @NullMarked
 @CheckReturnValue
 package dev.satherov.nexus.internal.codec.struct;
