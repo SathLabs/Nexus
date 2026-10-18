@@ -78,7 +78,7 @@ public class ClientDispatch {
             return;
         }
         
-        register.getClientHooks().forEach(hook -> hook.accept(bus));
+        register.runClientHooks(bus);
     }
     
     ///

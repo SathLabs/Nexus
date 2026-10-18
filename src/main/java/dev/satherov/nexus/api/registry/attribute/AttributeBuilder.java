@@ -160,10 +160,11 @@ public final class AttributeBuilder<ATTRIBUTE extends Attribute, PARENT>
     @Override
     protected AttributeEntry<ATTRIBUTE> createEntry(ResourceKey<Attribute> key) {
         AttributeEntry<ATTRIBUTE> entry = new AttributeEntry<>(key, this, this.translation.get());
+        List<Supplier<? extends EntityType<? extends LivingEntity>>> types = List.copyOf(this.types);
         this.getRegistrations()
                 .getMod()
                 .getEventBus()
-                .addListener(EntityAttributeModificationEvent.class, event -> this.types.forEach(type -> event.add(type.get(), entry)));
+                .addListener(EntityAttributeModificationEvent.class, event -> types.forEach(type -> event.add(type.get(), entry)));
         return entry;
     }
 }

@@ -12,6 +12,7 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
 import org.jspecify.annotations.Nullable;
 
+import java.util.Map;
 import java.util.Set;
 
 ///
@@ -23,19 +24,33 @@ import java.util.Set;
 public class RegistryEntry<REGISTRY, VALUE extends REGISTRY> extends DeferredHolder<REGISTRY, VALUE> {
     
     ///
-    /// The builder that registered the object, which no longer changes once it has registered.
+    /// The handle of the mod that registered the object.
     ///
-    private final EntryBuilder<REGISTRY, VALUE, ?, ?, ?> builder;
+    private final NexusMod mod;
+    
+    ///
+    /// The tags the builder recorded, in call order.
+    ///
+    private final @Unmodifiable Set<TagKey<REGISTRY>> tags;
+    
+    ///
+    /// The facts the builder recorded for datagen, by kind.
+    ///
+    private final @Unmodifiable Map<ProviderKind<?>, Object> factsByKind;
     
     ///
     /// Should only ever be called from [EntryBuilder#createEntry(ResourceKey)].
+    ///
+    /// Copies what it needs out of the given builder and keeps no reference to it.
     ///
     /// @param key     The key of the object.
     /// @param builder The builder that registers the object.
     ///
     protected RegistryEntry(ResourceKey<REGISTRY> key, EntryBuilder<REGISTRY, VALUE, ?, ?, ?> builder) {
         super(key);
-        this.builder = builder;
+        this.mod = builder.getRegistrations().getMod();
+        this.tags = builder.getTags();
+        this.factsByKind = builder.getAllDatagen();
     }
     
     ///
@@ -45,7 +60,7 @@ public class RegistryEntry<REGISTRY, VALUE extends REGISTRY> extends DeferredHol
     ///
     @ApiStatus.Internal
     public NexusMod getMod() {
-        return this.builder.getRegistrations().getMod();
+        return this.mod;
     }
     
     ///
@@ -63,7 +78,7 @@ public class RegistryEntry<REGISTRY, VALUE extends REGISTRY> extends DeferredHol
     /// @return The recorded tags.
     ///
     public @Unmodifiable Set<TagKey<REGISTRY>> getTags() {
-        return this.builder.getTags();
+        return this.tags;
     }
     
     ///
@@ -75,6 +90,7 @@ public class RegistryEntry<REGISTRY, VALUE extends REGISTRY> extends DeferredHol
     ///
     @ApiStatus.Internal
     public <FACT> @Nullable FACT getDatagen(ProviderKind<FACT> kind) {
-        return this.builder.getDatagen(kind);
+        //noinspection unchecked A fact is only ever recorded under a kind of its own type.
+        return (FACT) this.factsByKind.get(kind);
     }
 }

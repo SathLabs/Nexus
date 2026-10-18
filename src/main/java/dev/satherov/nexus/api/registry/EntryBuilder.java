@@ -16,7 +16,9 @@ import net.minecraft.util.Util;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.google.errorprone.annotations.ForOverride;
 
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
+import org.jetbrains.annotations.UnmodifiableView;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -187,6 +189,16 @@ public abstract class EntryBuilder
     public <FACT> @Nullable FACT getDatagen(ProviderKind<FACT> kind) {
         //noinspection unchecked A fact is only ever recorded under a kind of its own type.
         return (FACT) this.factsByKind.get(kind);
+    }
+    
+    ///
+    /// The facts recorded for datagen so far, by kind.
+    ///
+    /// @return The recorded facts.
+    ///
+    @ApiStatus.Internal
+    public @UnmodifiableView Map<ProviderKind<?>, Object> getAllDatagen() {
+        return Map.copyOf(this.factsByKind);
     }
     
     ///

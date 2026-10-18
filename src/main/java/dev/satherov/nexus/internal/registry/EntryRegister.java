@@ -16,7 +16,6 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 
 import org.jetbrains.annotations.ApiStatus;
-import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -62,10 +61,14 @@ public final class EntryRegister<REGISTRY> {
     ///
     /// All entries of this register with their factories, in registration order.
     ///
+    /// Emptied once the registry event has run.
+    ///
     private final List<Map.Entry<RegistryEntry<REGISTRY, ?>, Supplier<REGISTRY>>> factories = new ArrayList<>();
     
     ///
     /// The client hooks of the entries of this register.
+    ///
+    /// Emptied once the hooks have run.
     ///
     private final List<Consumer<IEventBus>> clientHooks = new ArrayList<>();
     
@@ -154,20 +157,27 @@ public final class EntryRegister<REGISTRY> {
     }
     
     ///
-    /// The client hooks of the entries of this register, in order, oldest first.
+    /// Runs the client hooks of the entries of this register with the given event bus, in order, oldest first, and then drops them.
     ///
-    /// @return The client hooks.
+    /// @param bus The event bus of the mod.
     ///
-    public @Unmodifiable List<Consumer<IEventBus>> getClientHooks() {
-        return List.copyOf(this.clientHooks);
+    public void runClientHooks(IEventBus bus) {
+        this.clientHooks.forEach(hook -> hook.accept(bus));
+        this.clientHooks.clear();
     }
     
     ///
-    /// Registers the objects of the entries of this register in registration order if the given event is the one of its registry.
+    /// Registers the objects of the entries of this register in registration order if the given event is the one of its registry,
+    /// and then drops the factories.
     ///
     /// Runs at the normal priority, so before [ClientDispatch] runs the client hooks at the lowest.
     ///
     private void onRegisterObjects(RegisterEvent event) {
+        if (!event.getRegistryKey().equals(this.registryKey)) {
+            return;
+        }
+        
         this.factories.forEach(entry -> event.register(this.registryKey, entry.getKey().getId(), entry.getValue()));
+        this.factories.clear();
     }
 }
