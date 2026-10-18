@@ -51,7 +51,7 @@ public final class Translation implements Translatable {
     ///
     /// Creates the translation of the given key and resolves the placeholders of the given English default.
     ///
-    /// Should only ever be called from [Translations#define(String, String, String)].
+    /// Should only ever be called from [Translations#defineKey(String, String)].
     ///
     /// @param key     The full key.
     /// @param english The English default, with its placeholders.

@@ -56,6 +56,26 @@ public class TranslationsTest {
                 .containsExactly("tooltip.examplemod.mana", "element.examplemod.water_source", "message.examplemod.cost");
     }
     
+    @Test
+    public void definesTheExactKey() {
+        Translations translations = new Translations("examplemod");
+        Assertions.assertThat(translations.defineKey("advancements.examplemod.root.title", "Root").getKey()).isEqualTo("advancements.examplemod.root.title");
+    }
+    
+    @Test
+    public void refusesAnExactKeyThatIsAlreadyDeclaredByName() {
+        Translations translations = new Translations("examplemod");
+        translations.define("tooltip", "mana", "Mana");
+        Assertions.assertThatThrownBy(() -> translations.defineKey("tooltip.examplemod.mana", "Other mana")).isInstanceOf(IllegalStateException.class);
+    }
+    
+    @Test
+    public void refusesAnExactKeyThatIsAlreadyDeclaredExactly() {
+        Translations translations = new Translations("examplemod");
+        translations.defineKey("advancements.examplemod.root.title", "Root");
+        Assertions.assertThatThrownBy(() -> translations.defineKey("advancements.examplemod.root.title", "Other root")).isInstanceOf(IllegalStateException.class);
+    }
+    
     private enum Element {
         WATER_SOURCE
     }

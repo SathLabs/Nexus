@@ -1,0 +1,196 @@
+package dev.satherov.nexus.internal.registry.client;
+
+import lombok.experimental.UtilityClass;
+
+import dev.satherov.nexus.api.registry.block.PlainBlockEntry;
+import dev.satherov.nexus.api.registry.block.entity.BlockEntityEntry;
+import dev.satherov.nexus.api.registry.client.ClientOnly;
+import dev.satherov.nexus.api.registry.client.ScreenFactory;
+import dev.satherov.nexus.api.registry.entity.EntityEntry;
+import dev.satherov.nexus.api.registry.fluid.PlainFluidEntry;
+import dev.satherov.nexus.api.registry.menu.MenuEntry;
+import dev.satherov.nexus.api.registry.particle.ParticleEntry;
+import dev.satherov.nexus.internal.registry.EntryRegister;
+
+import net.neoforged.bus.api.EventPriority;
+import net.neoforged.bus.api.IEventBus;
+import net.neoforged.neoforge.client.event.EntityRenderersEvent;
+import net.neoforged.neoforge.client.event.RegisterColorHandlersEvent;
+import net.neoforged.neoforge.client.event.RegisterFluidModelsEvent;
+import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
+import net.neoforged.neoforge.client.event.RegisterParticleProvidersEvent;
+import net.neoforged.neoforge.client.extensions.common.IClientFluidTypeExtensions;
+import net.neoforged.neoforge.client.extensions.common.RegisterClientExtensionsEvent;
+import net.neoforged.neoforge.registries.RegisterEvent;
+
+import net.minecraft.client.color.block.BlockTintSource;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.MenuAccess;
+import net.minecraft.client.particle.ParticleProvider;
+import net.minecraft.client.particle.SpriteSet;
+import net.minecraft.client.renderer.block.FluidModel;
+import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
+import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
+import net.minecraft.client.renderer.blockentity.state.BlockEntityRenderState;
+import net.minecraft.client.renderer.entity.EntityRenderer;
+import net.minecraft.client.renderer.entity.EntityRendererProvider;
+import net.minecraft.client.renderer.entity.state.EntityRenderState;
+import net.minecraft.core.Registry;
+import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.level.block.entity.BlockEntity;
+
+import org.jetbrains.annotations.ApiStatus;
+import org.jspecify.annotations.Nullable;
+
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+///
+/// The dispatch of the client hooks that the builders of one mod stored.
+///
+/// Should only ever be loaded on the client.
+///
+@UtilityClass
+@ApiStatus.Internal
+public class ClientDispatch {
+    
+    ///
+    /// Listens on the given event bus for [RegisterEvent], after every other listener, and runs the `client(...)` hooks
+    /// of the register of its registry.
+    ///
+    /// @param bus       The event bus of the mod.
+    /// @param registers Every register of the mod by the key of its registry.
+    ///
+    public static void listen(IEventBus bus, Map<ResourceKey<? extends Registry<?>>, EntryRegister<?>> registers) {
+        bus.addListener(EventPriority.LOWEST, RegisterEvent.class, event -> ClientDispatch.runClientHooks(bus, registers.get(event.getRegistryKey())));
+    }
+    
+    ///
+    /// Runs the `client(...)` hooks of the given register, if there is one, with the given event bus.
+    ///
+    private static void runClientHooks(IEventBus bus, @Nullable EntryRegister<?> register) {
+        if (register == null) {
+            return;
+        }
+        
+        register.runClientHooks(bus);
+    }
+    
+    ///
+    /// Registers the given tint sources for the block of the given entry once the block tint sources are registered.
+    ///
+    /// @param bus   The event bus of the mod.
+    /// @param block The entry of the block.
+    /// @param tints The tint sources, where the index corresponds to the tint index.
+    ///
+    public static void tint(IEventBus bus, PlainBlockEntry<?> block, ClientOnly<List<BlockTintSource>> tints) {
+        bus.addListener(RegisterColorHandlersEvent.BlockTintSources.class, event -> event.register(tints.get(), block.get()));
+    }
+    
+    ///
+    /// Registers the given renderer for the block entity type of the given entry once the block entity renderers are
+    /// registered.
+    ///
+    /// @param bus      The event bus of the mod.
+    /// @param entry    The entry of the block entity type.
+    /// @param renderer The factory of the renderer.
+    ///
+    public static <ENTITY extends BlockEntity, STATE extends BlockEntityRenderState> void blockEntityRenderer(
+            IEventBus bus,
+            BlockEntityEntry<ENTITY> entry,
+            ClientOnly<Function<BlockEntityRendererProvider.Context, BlockEntityRenderer<ENTITY, STATE>>> renderer
+    ) {
+        bus.addListener(EntityRenderersEvent.RegisterRenderers.class, event -> event.registerBlockEntityRenderer(entry.get(), renderer.get()::apply));
+    }
+    
+    ///
+    /// Registers the given renderer for the entity type of the given entry once the entity renderers are registered.
+    ///
+    /// @param bus      The event bus of the mod.
+    /// @param entry    The entry of the entity type.
+    /// @param renderer The factory of the renderer.
+    ///
+    public static <ENTITY extends Entity, STATE extends EntityRenderState> void entityRenderer(
+            IEventBus bus,
+            EntityEntry<ENTITY> entry,
+            ClientOnly<Function<EntityRendererProvider.Context, EntityRenderer<ENTITY, STATE>>> renderer
+    ) {
+        bus.addListener(EntityRenderersEvent.RegisterRenderers.class, event -> event.registerEntityRenderer(entry.get(), renderer.get()::apply));
+    }
+    
+    ///
+    /// Registers the given screen for the menu type of the given entry once the menu screens are registered.
+    ///
+    /// @param bus    The event bus of the mod.
+    /// @param entry  The entry of the menu type.
+    /// @param screen The factory of the screen.
+    ///
+    public static <MENU extends AbstractContainerMenu, SCREEN extends Screen & MenuAccess<MENU>> void screen(
+            IEventBus bus,
+            MenuEntry<MENU> entry,
+            ClientOnly<ScreenFactory<MENU, SCREEN>> screen
+    ) {
+        bus.addListener(RegisterMenuScreensEvent.class, event -> event.register(entry.get(), screen.get()::create));
+    }
+    
+    ///
+    /// Registers the given model for the source and the flowing fluid of the given entry once the fluid models are
+    /// registered.
+    ///
+    /// @param bus   The event bus of the mod.
+    /// @param fluid The entry of the fluid.
+    /// @param model The model of both fluids.
+    ///
+    public static void fluidModel(IEventBus bus, PlainFluidEntry<?, ?, ?> fluid, ClientOnly<Supplier<FluidModel.Unbaked>> model) {
+        bus.addListener(RegisterFluidModelsEvent.class, event -> event.register(model.get().get(), fluid, fluid.getFlowing()));
+    }
+    
+    ///
+    /// Registers the given client extensions for the type of the given entry once the client extensions are
+    /// registered.
+    ///
+    /// @param bus        The event bus of the mod.
+    /// @param fluid      The entry of the fluid.
+    /// @param extensions The client extensions of the type.
+    ///
+    public static void fluidExtensions(IEventBus bus, PlainFluidEntry<?, ?, ?> fluid, ClientOnly<Supplier<IClientFluidTypeExtensions>> extensions) {
+        bus.addListener(RegisterClientExtensionsEvent.class, event -> event.registerFluidType(extensions.get().get(), fluid.getType()));
+    }
+    
+    ///
+    /// Registers the provider of the given factory for the particle type of the given entry, with the sprites of the
+    /// type, once the particle providers are registered.
+    ///
+    /// @param bus      The event bus of the mod.
+    /// @param entry    The entry of the particle type.
+    /// @param provider The factory of the provider, called with the sprites of the type.
+    ///
+    public static <OPTIONS extends ParticleOptions> void particleSprites(
+            IEventBus bus,
+            ParticleEntry<OPTIONS, ?> entry,
+            ClientOnly<Function<SpriteSet, ParticleProvider<OPTIONS>>> provider
+    ) {
+        bus.addListener(RegisterParticleProvidersEvent.class, event -> event.registerSpriteSet(entry.get(), provider.get()::apply));
+    }
+    
+    ///
+    /// Registers the given provider for the particle type of the given entry once the particle providers are
+    /// registered.
+    ///
+    /// @param bus      The event bus of the mod.
+    /// @param entry    The entry of the particle type.
+    /// @param provider The provider of the particles.
+    ///
+    public static <OPTIONS extends ParticleOptions> void particleProvider(
+            IEventBus bus,
+            ParticleEntry<OPTIONS, ?> entry,
+            ClientOnly<Supplier<ParticleProvider<OPTIONS>>> provider
+    ) {
+        bus.addListener(RegisterParticleProvidersEvent.class, event -> event.registerSpecial(entry.get(), provider.get().get()));
+    }
+}
