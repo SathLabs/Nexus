@@ -1,6 +1,3 @@
-///
-/// The builder of particle types and the entry it returns.
-///
 @NullMarked
 @CheckReturnValue
 package dev.satherov.nexus.api.registry.particle;

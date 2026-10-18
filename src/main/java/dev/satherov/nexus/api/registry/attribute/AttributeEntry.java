@@ -8,23 +8,22 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
-import net.minecraft.world.entity.ai.attributes.RangedAttribute;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
 
 ///
-/// A holder of one ranged entity attribute that a builder registered, bound once the attribute registry event has run.
+/// ATTRIBUTE holder of one entity attribute that a builder registered, bound once the attribute registry event has run.
 ///
-public final class AttributeEntry extends RegistryEntry<Attribute, RangedAttribute> implements Translatable {
+/// @param <ATTRIBUTE> The type of the attribute.
+///
+public final class AttributeEntry<ATTRIBUTE extends Attribute> extends RegistryEntry<Attribute, ATTRIBUTE> implements Translatable {
     
     ///
     /// The `attribute.name.<modid>.<name>` translation.
     ///
     private final Translation translation;
     
-    ///
-    /// Binds to the given key.
     ///
     /// Should only ever be called from [AttributeBuilder#createEntry(ResourceKey)].
     ///
@@ -33,7 +32,7 @@ public final class AttributeEntry extends RegistryEntry<Attribute, RangedAttribu
     /// @param translation The `attribute.name.<modid>.<name>` translation.
     ///
     @ApiStatus.Internal
-    public AttributeEntry(ResourceKey<Attribute> key, AttributeBuilder<?> builder, Translation translation) {
+    public AttributeEntry(ResourceKey<Attribute> key, AttributeBuilder<ATTRIBUTE, ?> builder, Translation translation) {
         super(key, builder);
         this.translation = translation;
     }

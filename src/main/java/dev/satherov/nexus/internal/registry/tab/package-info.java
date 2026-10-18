@@ -1,6 +1,3 @@
-///
-/// The contents that a mod adds to the creative tabs.
-///
 @NullMarked
 @CheckReturnValue
 package dev.satherov.nexus.internal.registry.tab;

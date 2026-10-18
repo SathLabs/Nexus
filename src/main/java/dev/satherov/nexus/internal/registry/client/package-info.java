@@ -1,6 +1,3 @@
-///
-/// The dispatch of the client hooks that builders stored.
-///
 @NullMarked
 @CheckReturnValue
 package dev.satherov.nexus.internal.registry.client;

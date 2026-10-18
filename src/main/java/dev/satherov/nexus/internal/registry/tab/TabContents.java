@@ -80,8 +80,7 @@ public final class TabContents {
     }
     
     ///
-    /// Adds the item entries of the mod that the tab of the given event shows, and then the extra stacks if it is one of
-    /// the mod's tabs.
+    /// Adds the item entries of the mod to the tab of the current event and any extra ones if the tab belongs to the mod.
     ///
     /// Skips every stack the tab already has, so each one shows once.
     ///
@@ -94,6 +93,7 @@ public final class TabContents {
                 .map(TabEntry.class::cast)
                 .findFirst()
                 .orElse(null);
+        
         List<ItemEntry<? extends Item>> shown = TabContents.select(
                 TabContents.getItemEntries(this.registrations),
                 event.getTabKey(),

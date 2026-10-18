@@ -1,15 +1,14 @@
 package dev.satherov.nexus.api.registry.client;
 
 ///
-/// Client code behind a supplier, written `() -> CrusherScreen::new`.
+/// A supplier for client-only code.
 ///
-/// The body runs on the client only, so the classes it names load there only.
-/// The type of the client code should erase to a class that both sides have, such as a JDK functional interface or one
-/// in this package.
-/// The body may then name client classes in a constructor reference, a method reference, or a plain `new`, since they
-/// resolve only once [#get()] runs on the client.
+/// Due to the way lambda expressions are created and loaded by the JVM,
+/// we can't just have client-code inside one and just not call it on the server side.
 ///
-/// A body with statements goes into a separate client class and is called as `() -> OilClient.extensions()`.
+/// Because of that we have this class to wrap everything inside another lambda itself, so any code, even another lambda expression
+/// must be called through this as to not get loaded. Inside the supplier body any client code can freely be used,
+/// even in classes that are also loaded on the server side.
 ///
 /// @param <VALUE> The type of the client code.
 ///

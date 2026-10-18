@@ -17,7 +17,23 @@ import java.util.function.BiFunction;
 /// @param <ITEM>   The type of the item.
 /// @param <PARENT> The type of what [#end()] returns.
 ///
-public final class BlockBuilder<BLOCK extends Block, ITEM extends Item, PARENT> extends EntryBuilder<Block, BLOCK, BlockEntry<BLOCK, ITEM>, PARENT, BlockBuilder<BLOCK, ITEM, PARENT>> {
+public final class BlockBuilder
+        // @formatter:off
+        <
+            BLOCK extends Block,
+            ITEM extends Item,
+            PARENT
+        >
+        extends EntryBuilder
+        <
+            Block,
+            BLOCK,
+            BlockEntry<BLOCK, ITEM>,
+            PARENT,
+            BlockBuilder<BLOCK, ITEM, PARENT>
+        >
+        // @formatter:on
+{
     
     ///
     /// The builder of the block, which creates the block and its entry.
@@ -25,7 +41,7 @@ public final class BlockBuilder<BLOCK extends Block, ITEM extends Item, PARENT> 
     private final PlainBlockBuilder<BLOCK, PARENT> block;
     
     ///
-    /// Takes over the given builder of the block, with everything recorded on it so far.
+    /// Takes over from the given builder of the block.
     ///
     /// Should only ever be called from [PlainBlockBuilder#item(BiFunction)].
     ///
@@ -49,7 +65,9 @@ public final class BlockBuilder<BLOCK extends Block, ITEM extends Item, PARENT> 
     }
     
     ///
-    /// Creates the entry of block and item with the builder of the block, which registers the item first.
+    /// Creates the entry of block and item with the builder of the block.
+    ///
+    /// The item will be registered first.
     ///
     /// @param key The key of the block.
     ///
@@ -57,7 +75,6 @@ public final class BlockBuilder<BLOCK extends Block, ITEM extends Item, PARENT> 
     ///
     @Override
     protected BlockEntry<BLOCK, ITEM> createEntry(ResourceKey<Block> key) {
-        //noinspection unchecked The builder of the block creates the entry with the item that this builder was opened for.
         return (BlockEntry<BLOCK, ITEM>) this.block.createEntry(key);
     }
 }

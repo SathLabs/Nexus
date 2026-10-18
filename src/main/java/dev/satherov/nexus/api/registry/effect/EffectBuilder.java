@@ -15,7 +15,18 @@ import java.util.function.Supplier;
 /// @param <EFFECT> The type of the mob effect.
 /// @param <PARENT> The type of what [#end()] returns.
 ///
-public final class EffectBuilder<EFFECT extends MobEffect, PARENT> extends EntryBuilder<MobEffect, EFFECT, EffectEntry<EFFECT>, PARENT, EffectBuilder<EFFECT, PARENT>> {
+public final class EffectBuilder<EFFECT extends MobEffect, PARENT>
+        // @formatter:off
+        extends EntryBuilder
+        <
+            MobEffect,
+            EFFECT,
+            EffectEntry<EFFECT>,
+            PARENT,
+            EffectBuilder<EFFECT, PARENT>
+        >
+        // @formatter:on
+{
     
     ///
     /// The English name of the mob effect.

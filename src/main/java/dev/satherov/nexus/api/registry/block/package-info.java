@@ -1,6 +1,3 @@
-///
-/// The builders of blocks and their items, and the entries the builders return.
-///
 @NullMarked
 @CheckReturnValue
 package dev.satherov.nexus.api.registry.block;

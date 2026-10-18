@@ -22,6 +22,8 @@ import java.util.function.BiFunction;
 /// @param <BLOCK> The type of the block.
 /// @param <ITEM>  The type of the item.
 ///
+/// @see PlainBlockEntry
+///
 public final class BlockEntry<BLOCK extends Block, ITEM extends Item> extends PlainBlockEntry<BLOCK> implements ItemLike {
     
     ///
@@ -30,8 +32,6 @@ public final class BlockEntry<BLOCK extends Block, ITEM extends Item> extends Pl
     @Getter
     private final ItemEntry<ITEM> item;
     
-    ///
-    /// Binds to the given key.
     ///
     /// Should only ever be called from [PlainBlockBuilder#item(BiFunction)].
     ///
@@ -57,7 +57,7 @@ public final class BlockEntry<BLOCK extends Block, ITEM extends Item> extends Pl
     }
     
     ///
-    /// Creates a stack of one.
+    /// Creates a new item stack with one item.
     ///
     /// @return The created stack.
     ///
@@ -66,7 +66,7 @@ public final class BlockEntry<BLOCK extends Block, ITEM extends Item> extends Pl
     }
     
     ///
-    /// Creates a stack of the given count.
+    /// Creates a new item stack with the given number of items.
     ///
     /// @param count The number of items in the stack.
     ///

@@ -2,6 +2,7 @@ package dev.satherov.nexus.api.registry.component;
 
 import dev.satherov.nexus.api.registry.RegistryEntry;
 
+import net.neoforged.neoforge.attachment.IAttachmentHolder;
 import net.neoforged.neoforge.common.MutableDataComponentHolder;
 
 import net.minecraft.core.component.DataComponentGetter;
@@ -13,6 +14,10 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
 
+import java.util.Objects;
+import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
+
 ///
 /// An entry of one data component type that a [DataComponentBuilder] registered.
 ///
@@ -20,8 +25,6 @@ import org.jspecify.annotations.Nullable;
 ///
 public final class DataComponentEntry<VALUE> extends RegistryEntry<DataComponentType<?>, DataComponentType<VALUE>> {
     
-    ///
-    /// Binds to the given key.
     ///
     /// Should only ever be called from [DataComponentBuilder#createEntry(ResourceKey)].
     ///
@@ -65,8 +68,44 @@ public final class DataComponentEntry<VALUE> extends RegistryEntry<DataComponent
     /// @return The value it replaced, or `null` if there was none.
     ///
     @CanIgnoreReturnValue
-    public @Nullable VALUE set(MutableDataComponentHolder holder, VALUE value) {
+    public @Nullable VALUE set(MutableDataComponentHolder holder, @Nullable VALUE value) {
         return holder.set(this.value(), value);
+    }
+    
+    ///
+    /// Updates this attachment on the given holder with the given operator.
+    ///
+    /// @param holder   The holder of the attachment.
+    /// @param operator The operator to apply to the current value.
+    ///
+    /// @return The previous value of the attachment or `null` if the value did not change.
+    ///
+    public @Nullable VALUE update(MutableDataComponentHolder holder, UnaryOperator<@Nullable VALUE> operator) {
+        VALUE old = holder.get(this.value());
+        VALUE updated = operator.apply(old);
+        if (Objects.equals(old, updated)) {
+            return null;
+        }
+        
+        return holder.set(this.value(), updated);
+    }
+    
+    ///
+    /// Updates this attachment on the given holder by replacing it with the given value.
+    ///
+    /// @param holder   The holder of the attachment.
+    /// @param supplier The supplier to replace the value with.
+    ///
+    /// @return The previous value of the attachment or `null` if the value did not change.
+    ///
+    public @Nullable VALUE update(MutableDataComponentHolder holder, Supplier<@Nullable VALUE> supplier) {
+        VALUE old = holder.get(this.value());
+        VALUE updated = supplier.get();
+        if (Objects.equals(old, updated)) {
+            return null;
+        }
+        
+        return holder.set(this.value(), updated);
     }
     
     ///

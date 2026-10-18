@@ -12,18 +12,36 @@ import org.jetbrains.annotations.ApiStatus;
 import java.util.function.Function;
 
 ///
-/// A builder of one entity type and its spawn egg, reached through [EntityBuilder#egg(Function)].
+/// A builder of one entity type and its spawn egg.
+///
+/// Can be started through [EntityBuilder#egg(Function)].
 ///
 /// @param <ENTITY> The type of the entities of the type.
 /// @param <EGG>    The type of the spawn egg.
 /// @param <PARENT> The type of what [#end()] returns.
 ///
-public final class MobEntityBuilder<ENTITY extends Entity, EGG extends SpawnEggItem, PARENT> extends EntryBuilder<EntityType<?>, EntityType<ENTITY>, MobEntityEntry<ENTITY, EGG>, PARENT, MobEntityBuilder<ENTITY, EGG, PARENT>> {
+public final class MobEntityBuilder
+        // @formatter:off
+        <
+            ENTITY extends Entity,
+            EGG extends SpawnEggItem,
+            PARENT
+        >
+        extends EntryBuilder
+        <
+            EntityType<?>,
+            EntityType<ENTITY>,
+            MobEntityEntry<ENTITY, EGG>,
+            PARENT,
+            MobEntityBuilder<ENTITY, EGG, PARENT>
+        >
+        // @formatter:on
+{
     
     ///
     /// The builder of the entity type, which creates the type and its entry.
     ///
-    private final EntityBuilder<ENTITY, PARENT> entity;
+    private final EntityBuilder<ENTITY, PARENT, ?> entity;
     
     ///
     /// Takes over the given builder of the entity type, with everything recorded on it so far.
@@ -34,7 +52,7 @@ public final class MobEntityBuilder<ENTITY extends Entity, EGG extends SpawnEggI
     /// @param parent What [#end()] returns.
     ///
     @ApiStatus.Internal
-    public MobEntityBuilder(EntityBuilder<ENTITY, PARENT> entity, PARENT parent) {
+    public MobEntityBuilder(EntityBuilder<ENTITY, PARENT, ?> entity, PARENT parent) {
         super(entity, parent);
         this.entity = entity;
     }

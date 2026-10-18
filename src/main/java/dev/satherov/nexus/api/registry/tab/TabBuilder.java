@@ -31,7 +31,18 @@ import java.util.function.UnaryOperator;
 ///
 /// @param <PARENT> The type of what [#end()] returns.
 ///
-public final class TabBuilder<PARENT> extends EntryBuilder<CreativeModeTab, CreativeModeTab, TabEntry, PARENT, TabBuilder<PARENT>> {
+public final class TabBuilder<PARENT>
+        // @formatter:off
+        extends EntryBuilder
+        <
+            CreativeModeTab,
+            CreativeModeTab,
+            TabEntry,
+            PARENT,
+            TabBuilder<PARENT>
+        >
+        // @formatter:on
+{
     
     ///
     /// The translation of the title, declared on the first call.
@@ -49,7 +60,7 @@ public final class TabBuilder<PARENT> extends EntryBuilder<CreativeModeTab, Crea
     private @Nullable Supplier<ItemStack> icon;
     
     ///
-    /// The predicate of the item entries the tab shows, or `null` if it shows the ones recorded in it.
+    /// The predicate of the item entries the tab shows, or `null` if it only shows the ones recorded in it.
     ///
     private @Nullable Predicate<ItemEntry<? extends Item>> contents;
     
@@ -131,7 +142,7 @@ public final class TabBuilder<PARENT> extends EntryBuilder<CreativeModeTab, Crea
     }
     
     ///
-    /// Shows every item entry of the mod that the given predicate accepts, in place of the entries recorded in this tab.
+    /// Shows every item entry of the mod that the given predicate accepts, instead of only the entries recorded in this tab.
     ///
     /// @param filter The predicate of the shown item entries.
     ///
@@ -168,7 +179,7 @@ public final class TabBuilder<PARENT> extends EntryBuilder<CreativeModeTab, Crea
     /// Adds the stacks of the given generator after the mod's items.
     /// Replaces previous calls.
     ///
-    /// Meant to be used for vanilla items or stacks that no entry owns.
+    /// Meant to be used for vanilla items or stacks that do not belong to any entry.
     ///
     /// @param extra The generator of the stacks, called each time the tab is built.
     ///
@@ -204,7 +215,9 @@ public final class TabBuilder<PARENT> extends EntryBuilder<CreativeModeTab, Crea
     /// The first stack the tab shows, or an empty stack if it shows nothing.
     ///
     private ItemStack getFirstItem() {
-        return BuiltInRegistries.CREATIVE_MODE_TAB.getValueOrThrow(this.getKey()).getDisplayItems().stream()
+        return BuiltInRegistries.CREATIVE_MODE_TAB.getValueOrThrow(this.getKey())
+                .getDisplayItems()
+                .stream()
                 .findFirst()
                 .orElse(ItemStack.EMPTY);
     }

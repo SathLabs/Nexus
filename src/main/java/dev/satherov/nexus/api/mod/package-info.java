@@ -1,6 +1,3 @@
-///
-/// The handle a mod reaches every Nexus feature through.
-///
 @NullMarked
 @CheckReturnValue
 package dev.satherov.nexus.api.mod;

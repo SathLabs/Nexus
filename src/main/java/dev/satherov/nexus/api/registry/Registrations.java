@@ -12,6 +12,8 @@ import dev.satherov.nexus.api.registry.block.entity.BlockEntityBuilder;
 import dev.satherov.nexus.api.registry.component.DataComponentBuilder;
 import dev.satherov.nexus.api.registry.effect.EffectBuilder;
 import dev.satherov.nexus.api.registry.entity.EntityBuilder;
+import dev.satherov.nexus.api.registry.entity.LivingEntityBuilder;
+import dev.satherov.nexus.api.registry.entity.PlainEntityBuilder;
 import dev.satherov.nexus.api.registry.fluid.PlainFluidBuilder;
 import dev.satherov.nexus.api.registry.item.ItemBuilder;
 import dev.satherov.nexus.api.registry.menu.MenuBuilder;
@@ -26,6 +28,8 @@ import dev.satherov.nexus.internal.registry.tab.TabContents;
 
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.neoforge.common.BooleanAttribute;
+import net.neoforged.neoforge.common.PercentageAttribute;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.fluids.BaseFlowingFluid;
 import net.neoforged.neoforge.fluids.FluidType;
@@ -41,7 +45,10 @@ import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.MobCategory;
+import net.minecraft.world.entity.ai.attributes.Attribute;
+import net.minecraft.world.entity.ai.attributes.RangedAttribute;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.crafting.Recipe;
@@ -53,7 +60,7 @@ import net.minecraft.world.level.block.state.BlockBehaviour;
 import com.mojang.serialization.MapCodec;
 
 import org.jetbrains.annotations.ApiStatus;
-import org.jetbrains.annotations.Unmodifiable;
+import org.jetbrains.annotations.UnmodifiableView;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -65,9 +72,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 ///
-/// A table that holds every entry one mod registers, and starts the builders that register them.
-///
-/// Every builder should be registered from the mod's constructor, before the registry events run.
+/// A table that holds every entry one mod registers and starts the builders to register them.
 ///
 public final class Registrations {
     
@@ -105,8 +110,8 @@ public final class Registrations {
     }
     
     ///
-    /// Throws an [IllegalStateException] if the registry event of the given registry already ran or the given
-    /// identifier is already registered in it.
+    /// Throws an [IllegalStateException] if the registry event of the given registry already ran or
+    /// the given identifier is already registered in it.
     ///
     /// Should only ever be called from [EntryBuilder#register()].
     ///
@@ -136,8 +141,7 @@ public final class Registrations {
     }
     
     ///
-    /// Adds the given client hook to the given registry, called with the mod bus once the registry event of the
-    /// registry has run.
+    /// Adds the given client hook to the given registry, called with the mod bus once the registry event of the registry has run.
     ///
     /// Should only ever be called from [EntryBuilder#addClientHook(Consumer)].
     ///
@@ -160,23 +164,23 @@ public final class Registrations {
     }
     
     ///
-    /// Every entry registered so far, sub-objects included, in registration order.
+    /// Every registered entry.
     ///
     /// @return Every entry registered so far.
     ///
-    public @Unmodifiable List<RegistryEntry<?, ?>> getAll() {
+    public @UnmodifiableView List<RegistryEntry<?, ?>> getAll() {
         return List.copyOf(this.entries);
     }
     
     ///
-    /// Gets every entry of the given registry registered so far, in registration order.
+    /// Gets every registered entry so far from the registry with the given key.
     ///
     /// @param registry The key of the registry.
     ///
     /// @return Every entry of the registry registered so far.
     ///
-    public <REGISTRY> @Unmodifiable List<RegistryEntry<REGISTRY, ? extends REGISTRY>> getAll(ResourceKey<? extends Registry<REGISTRY>> registry) {
-        //noinspection unchecked An entry is of the registry that its key is for.
+    public <REGISTRY> @UnmodifiableView List<RegistryEntry<REGISTRY, ? extends REGISTRY>> getAll(ResourceKey<? extends Registry<REGISTRY>> registry) {
+        //noinspection unchecked An entry will always be of the registry that its key is for, obviously.
         return this.entries.stream()
                 .filter(entry -> entry.getKey().isFor(registry))
                 .<RegistryEntry<REGISTRY, ? extends REGISTRY>>map(entry -> (RegistryEntry<REGISTRY, ? extends REGISTRY>) entry)
@@ -201,8 +205,8 @@ public final class Registrations {
     }
     
     ///
-    /// Starts one map codec of a registry whose objects are map codecs, such as condition serializers or global loot
-    /// modifier serializers.
+    /// Starts one map codec of a registry whose objects are map codecs, such as condition serializers or
+    /// global loot modifier serializers.
     ///
     /// @param registry The key of the registry.
     /// @param name     The path of the identifier.
@@ -233,7 +237,24 @@ public final class Registrations {
     }
     
     ///
+    /// Starts an entity attribute of the given factory.
+    ///
+    /// @param <ATTRIBUTE> The type of the attribute.
+    /// @param name        The path of the identifier.
+    /// @param english     The English name.
+    /// @param factory     The factory of the attribute, called with the description id inside the registry event.
+    ///
+    /// @return The builder of the attribute.
+    ///
+    public <ATTRIBUTE extends Attribute> AttributeBuilder<ATTRIBUTE, Registrations> attribute(String name, String english, Function<String, ATTRIBUTE> factory) {
+        return new AttributeBuilder<>(this, name, english, this, factory);
+    }
+    
+    ///
     /// Starts a ranged entity attribute with the given default, minimum, and maximum value.
+    ///
+    /// If the minimum value is above the maximum value, or the default value isn't between them,
+    /// creating the attribute inside the registry event will throw an [IllegalArgumentException].
     ///
     /// @param name    The path of the identifier.
     /// @param english The English name.
@@ -243,8 +264,60 @@ public final class Registrations {
     ///
     /// @return The builder of the attribute.
     ///
-    public AttributeBuilder<Registrations> attribute(String name, String english, double initial, double min, double max) {
-        return new AttributeBuilder<>(this, name, english, this, initial, min, max);
+    public AttributeBuilder<RangedAttribute, Registrations> attribute(String name, String english, double initial, double min, double max) {
+        return this.attribute(name, english, id -> new RangedAttribute(id, initial, min, max));
+    }
+    
+    ///
+    /// Starts a boolean entity attribute, whose value on an entity is `1` for `true` and `0` for `false`.
+    ///
+    /// @param name    The path of the identifier.
+    /// @param english The English name.
+    /// @param initial The default value.
+    ///
+    /// @return The builder of the attribute.
+    ///
+    public AttributeBuilder<BooleanAttribute, Registrations> booleanAttribute(String name, String english, boolean initial) {
+        return this.attribute(name, english, id -> new BooleanAttribute(id, initial));
+    }
+    
+    ///
+    /// Starts a ranged entity attribute that tooltips show as a percentage, with the given default, minimum, and maximum
+    /// value, and the given scale from a value to its percentage.
+    ///
+    /// If the minimum value is above the maximum value, or the default value isn't between them,
+    /// creating the attribute inside the registry event will throw an [IllegalArgumentException].
+    ///
+    /// @param name    The path of the identifier.
+    /// @param english The English name.
+    /// @param initial The default value.
+    /// @param min     The minimum value.
+    /// @param max     The maximum value.
+    /// @param scale   The factor a value is multiplied by for its percentage, such as `100` if `1` is `100%`.
+    ///
+    /// @return The builder of the attribute.
+    ///
+    public AttributeBuilder<PercentageAttribute, Registrations> percentageAttribute(String name, String english, double initial, double min, double max, double scale) {
+        return this.attribute(name, english, id -> new PercentageAttribute(id, initial, min, max, scale));
+    }
+    
+    ///
+    /// Starts a ranged entity attribute that tooltips show as a percentage, with the given default, minimum, and maximum
+    /// value, where `1` is `100%`.
+    ///
+    /// If the minimum value is above the maximum value, or the default value isn't between them,
+    /// creating the attribute inside the registry event will throw an [IllegalArgumentException].
+    ///
+    /// @param name    The path of the identifier.
+    /// @param english The English name.
+    /// @param initial The default value.
+    /// @param min     The minimum value.
+    /// @param max     The maximum value.
+    ///
+    /// @return The builder of the attribute.
+    ///
+    public AttributeBuilder<PercentageAttribute, Registrations> percentageAttribute(String name, String english, double initial, double min, double max) {
+        return this.attribute(name, english, id -> new PercentageAttribute(id, initial, min, max));
     }
     
     ///
@@ -287,7 +360,7 @@ public final class Registrations {
     }
     
     ///
-    /// Starts a data component type, saved with the DFU codec of the given codec and synced with its stream codec.
+    /// Starts a data component type, saved and synced with the given codec.
     ///
     /// @param name  The path of the identifier.
     /// @param codec The codec of the values of the component.
@@ -321,14 +394,28 @@ public final class Registrations {
     ///
     /// @return The builder of the entity type.
     ///
-    public <ENTITY extends Entity> EntityBuilder<ENTITY, Registrations> entity(String name, String english, MobCategory category, EntityType.EntityFactory<ENTITY> factory) {
-        return new EntityBuilder<>(this, name, english, this, category, factory);
+    public <ENTITY extends Entity> PlainEntityBuilder<ENTITY, Registrations> entity(String name, String english, MobCategory category, EntityType.EntityFactory<ENTITY> factory) {
+        return new PlainEntityBuilder<>(this, name, english, this, category, factory);
+    }
+    
+    ///
+    /// Starts an entity type of living entities of the factory in the given category.
+    ///
+    /// @param name     The path of the identifier.
+    /// @param english  The English name.
+    /// @param category The category of the entity type.
+    /// @param factory  The factory of the entities, called each time an entity of the type is created.
+    ///
+    /// @return The builder of the entity type.
+    ///
+    public <ENTITY extends LivingEntity> LivingEntityBuilder<ENTITY, Registrations> livingEntity(String name, String english, MobCategory category, EntityType.EntityFactory<ENTITY> factory) {
+        return new LivingEntityBuilder<>(this, name, english, this, category, factory);
     }
     
     ///
     /// Starts a fluid with a plain [FluidType], a [BaseFlowingFluid.Source], and a [BaseFlowingFluid.Flowing].
     ///
-    /// [PlainFluidBuilder#type(Function)] and [PlainFluidBuilder#fluids(Function, Function)] replace them.
+    /// Call [PlainFluidBuilder#type(Function)] and [PlainFluidBuilder#fluids(Function, Function)] to replace them.
     ///
     /// @param name    The path of the identifier.
     /// @param english The English name.

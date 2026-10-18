@@ -17,7 +17,18 @@ import java.util.function.Function;
 ///
 /// @param <PARENT> The type of what [#end()] returns.
 ///
-public final class SoundBuilder<PARENT> extends EntryBuilder<SoundEvent, SoundEvent, SoundEntry, PARENT, SoundBuilder<PARENT>> {
+public final class SoundBuilder<PARENT>
+        // @formatter:off
+        extends EntryBuilder
+        <
+            SoundEvent,
+            SoundEvent,
+            SoundEntry,
+            PARENT,
+            SoundBuilder<PARENT>
+        >
+        // @formatter:on
+{
     
     ///
     /// The English subtitle.

@@ -32,20 +32,31 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 ///
-/// A builder of one block entity type, valid for the blocks given to [#blocks(Holder...)].
+/// A builder of one block entity type, valid for all blocks given to [#blocks(Holder...)].
 ///
 /// @param <ENTITY> The type of the block entities of the type.
 /// @param <PARENT> The type of what [#end()] returns.
 ///
-public final class BlockEntityBuilder<ENTITY extends BlockEntity, PARENT> extends EntryBuilder<BlockEntityType<?>, BlockEntityType<ENTITY>, BlockEntityEntry<ENTITY>, PARENT, BlockEntityBuilder<ENTITY, PARENT>> {
+public final class BlockEntityBuilder<ENTITY extends BlockEntity, PARENT>
+        // @formatter:off
+        extends EntryBuilder
+        <
+            BlockEntityType<?>,
+            BlockEntityType<ENTITY>,
+            BlockEntityEntry<ENTITY>,
+            PARENT,
+            BlockEntityBuilder<ENTITY, PARENT>
+        >
+        // @formatter:on
+{
     
     ///
-    /// The factory of the block entities of the type.
+    /// The factory for the block entities of the type.
     ///
     private final BlockEntityType.BlockEntitySupplier<ENTITY> factory;
     
     ///
-    /// The holders of the blocks the type is valid for.
+    /// The holders of the blocks that this type is valid for.
     ///
     private final List<Holder<Block>> blocks = new ArrayList<>();
     
@@ -55,8 +66,8 @@ public final class BlockEntityBuilder<ENTITY extends BlockEntity, PARENT> extend
     private final List<BiConsumer<RegisterCapabilitiesEvent, BlockEntityType<ENTITY>>> capabilities = new ArrayList<>();
     
     ///
-    /// The registration of the renderer, called on the client with the mod bus and the entry, or `null` if
-    /// [#renderer(ClientOnly)] was not called.
+    /// The registration of the renderer, called on the client with the mod bus and the entry,
+    /// or `null` if [#renderer(ClientOnly)] was not called.
     ///
     private @Nullable BiConsumer<IEventBus, BlockEntityEntry<ENTITY>> renderer;
     
@@ -82,7 +93,8 @@ public final class BlockEntityBuilder<ENTITY extends BlockEntity, PARENT> extend
     ///
     /// Stacks with previous calls, in the order they were written.
     ///
-    /// The holders are resolved once the type is created, so the entries of blocks may still be unbound.
+    /// The holders are only resolved once the type is built,
+    /// so the entries of blocks may still be unbound at this stage without causing issues.
     ///
     /// @param blocks The holders of the blocks.
     ///
@@ -118,7 +130,9 @@ public final class BlockEntityBuilder<ENTITY extends BlockEntity, PARENT> extend
     }
     
     ///
-    /// Registers the renderer of the given factory for the block entities of the type on the client.
+    /// Registers the block entity renderer with the given factory, called only on the client.
+    ///
+    /// May only be called once, otherwise previous calls will be replaced.
     ///
     /// @param renderer The factory of the renderer, called with the context of the renderer provider.
     ///
@@ -134,9 +148,9 @@ public final class BlockEntityBuilder<ENTITY extends BlockEntity, PARENT> extend
     }
     
     ///
-    /// Creates the type with the factory, valid for the blocks of the holders.
+    /// Creates the type with its factory and the set of valid holders.
     ///
-    /// @return The created type.
+    /// @return The created block entity type.
     ///
     @Override
     protected BlockEntityType<ENTITY> create() {
@@ -149,8 +163,8 @@ public final class BlockEntityBuilder<ENTITY extends BlockEntity, PARENT> extend
     }
     
     ///
-    /// Creates the entry for the given key, adds a listener for every capability to the event bus of the mod, and adds
-    /// the renderer as a client hook if [#renderer(ClientOnly)] was called.
+    /// Creates the entry for the given key, adds a listener for every capability to the event bus of the mod,
+    /// and adds the renderer as a client hook if [#renderer(ClientOnly)] was called.
     ///
     /// @param key The key of the block entity type.
     ///

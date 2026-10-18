@@ -11,7 +11,11 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.alchemy.Potion;
+import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.level.ItemLike;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
@@ -26,7 +30,18 @@ import java.util.function.Supplier;
 ///
 /// @param <PARENT> The type of what [#end()] returns.
 ///
-public final class PotionBuilder<PARENT> extends EntryBuilder<Potion, Potion, PotionEntry, PARENT, PotionBuilder<PARENT>> {
+public final class PotionBuilder<PARENT>
+        // @formatter:off
+        extends EntryBuilder
+        <
+            Potion,
+            Potion,
+            PotionEntry,
+            PARENT,
+            PotionBuilder<PARENT>
+        >
+        // @formatter:on
+{
     
     ///
     /// The English name of the effect of the potion.
@@ -48,7 +63,7 @@ public final class PotionBuilder<PARENT> extends EntryBuilder<Potion, Potion, Po
     /// - `<modid>` is the id of the mod of the given registrations.
     /// - `<name>` is the given name.
     ///
-    /// The potion is named under the four keys that vanilla derives from the name of the potion:
+    /// The potion will get four translation keys which vanilla derives from the name of the potion:
     /// - `item.minecraft.potion.effect.<modid>.<name>` as `Potion of <english>`.
     /// - `item.minecraft.splash_potion.effect.<modid>.<name>` as `Splash Potion of <english>`.
     /// - `item.minecraft.lingering_potion.effect.<modid>.<name>` as `Lingering Potion of <english>`.
@@ -92,7 +107,7 @@ public final class PotionBuilder<PARENT> extends EntryBuilder<Potion, Potion, Po
     ///
     /// Creates the potion of the effects, named `<modid>.<name>`.
     ///
-    /// @return The created potion.
+    /// @return The potion that was created.
     ///
     @Override
     protected Potion create() {
@@ -105,8 +120,8 @@ public final class PotionBuilder<PARENT> extends EntryBuilder<Potion, Potion, Po
     }
     
     ///
-    /// Creates the entry for the given key, declares the four names of the potion, and adds a listener for every
-    /// brewing recipe to the game event bus.
+    /// Creates the entry for the given key, declares the four names of the potion,
+    /// and adds a listener for every brewing recipe to the game event bus.
     ///
     /// @param key The key of the potion.
     ///
@@ -122,7 +137,9 @@ public final class PotionBuilder<PARENT> extends EntryBuilder<Potion, Potion, Po
         translations.defineKey("item.minecraft.tipped_arrow.effect." + name, "Arrow of " + this.english);
         
         PotionEntry entry = new PotionEntry(key, this);
-        this.recipes.forEach(recipe -> NeoForge.EVENT_BUS.addListener(RegisterBrewingRecipesEvent.class, event -> recipe.accept(event, entry)));
+        this.recipes.forEach(recipe ->
+                NeoForge.EVENT_BUS.addListener(RegisterBrewingRecipesEvent.class, event -> recipe.accept(event, entry))
+        );
         return entry;
     }
 }

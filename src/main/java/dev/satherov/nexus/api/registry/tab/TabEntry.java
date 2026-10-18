@@ -16,7 +16,11 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 ///
 /// An entry of one creative tab that a [TabBuilder] registered.
@@ -29,7 +33,7 @@ public final class TabEntry extends RegistryEntry<CreativeModeTab, CreativeModeT
     private final Translation translation;
     
     ///
-    /// The predicate of the item entries the tab shows, or `null` if it shows the ones recorded in it.
+    /// The predicate of the item entries the tab shows, or `null` if it only shows the ones recorded in it.
     ///
     private final @Nullable Predicate<ItemEntry<? extends Item>> contents;
     
@@ -44,14 +48,12 @@ public final class TabEntry extends RegistryEntry<CreativeModeTab, CreativeModeT
     private final CreativeModeTab.@Nullable DisplayItemsGenerator extra;
     
     ///
-    /// Binds to the given key.
-    ///
     /// Should only ever be called from [TabBuilder#createEntry(ResourceKey)].
     ///
     /// @param key         The key of the tab.
     /// @param builder     The builder that registers the tab.
     /// @param translation The translation of the title.
-    /// @param contents    The predicate of the item entries the tab shows, or `null` if it shows the ones recorded in it.
+    /// @param contents    The predicate of the item entries the tab shows, or `null` if it only shows the ones recorded in it.
     /// @param order       The order of the items of the tab, or `null` if they are in registration order.
     /// @param extra       The generator of the stacks after the mod's items, or `null` if the tab doesn't have any.
     ///
@@ -83,9 +85,15 @@ public final class TabEntry extends RegistryEntry<CreativeModeTab, CreativeModeT
             return List.of();
         }
         
-        List<ItemEntry<? extends Item>> entries = TabContents.getItemEntries(this.getMod().getRegistrations());
-        return this.value().getDisplayItems().stream()
-                .flatMap(stack -> entries.stream().filter(entry -> entry.is(stack)))
+        Map<Item, ItemEntry<? extends Item>> entriesByItem = TabContents.getItemEntries(this.getMod().getRegistrations())
+                .stream()
+                .collect(Collectors.toMap(ItemEntry::asItem, Function.identity()));
+        
+        return this.value()
+                .getDisplayItems()
+                .stream()
+                .<ItemEntry<? extends Item>>map(stack -> entriesByItem.get(stack.getItem()))
+                .filter(Objects::nonNull)
                 .distinct()
                 .toList();
     }

@@ -2,8 +2,8 @@ package dev.satherov.nexus.test.game.api.registry.entity;
 
 import dev.satherov.nexus.Nexus;
 import dev.satherov.nexus.api.registry.Registrations;
-import dev.satherov.nexus.api.registry.entity.EntityBuilder;
 import dev.satherov.nexus.api.registry.entity.EntityEntry;
+import dev.satherov.nexus.api.registry.entity.LivingEntityBuilder;
 import dev.satherov.nexus.api.registry.entity.MobEntityEntry;
 import dev.satherov.nexus.api.registry.item.ItemEntry;
 import dev.satherov.nexus.gametest.api.server.ServerTest;
@@ -57,7 +57,7 @@ public class EntityBuilderSamples {
     private static @Nullable EntityEntry<SampleEntity> refused;
     private static @Nullable MobEntityEntry<SampleMob, SpawnEggItem> mob;
     private static @Nullable MobEntityEntry<SampleMob, SampleEgg> custom;
-    private static @Nullable EntityBuilder<SampleMob, Registrations> takenOver;
+    private static @Nullable LivingEntityBuilder<SampleMob, Registrations> takenOver;
     private static boolean clientRequested;
     
     @ServerTest
@@ -209,7 +209,7 @@ public class EntityBuilderSamples {
     
     @ServerTest
     public static void refusesChangesToTheEntityBuilderAfterTheEgg(GameTestHelper helper) {
-        EntityBuilder<SampleMob, Registrations> builder = EntityBuilderSamples.takenOver();
+        LivingEntityBuilder<SampleMob, Registrations> builder = EntityBuilderSamples.takenOver();
         helper.assertTrue(Assertions.catchThrowable(() -> builder.size(1.0F, 1.0F)) instanceof IllegalStateException, "The size was replaced");
         helper.assertTrue(Assertions.catchThrowable(() -> builder.type(type -> type)) instanceof IllegalStateException, "The vanilla type builder was edited");
         helper.assertTrue(Assertions.catchThrowable(() -> builder.attributes(Mob::createMobAttributes)) instanceof IllegalStateException, "The attributes were replaced");
@@ -246,7 +246,7 @@ public class EntityBuilderSamples {
         return Objects.requireNonNull(EntityBuilderSamples.custom);
     }
     
-    private static EntityBuilder<SampleMob, Registrations> takenOver() {
+    private static LivingEntityBuilder<SampleMob, Registrations> takenOver() {
         return Objects.requireNonNull(EntityBuilderSamples.takenOver);
     }
     
@@ -311,7 +311,7 @@ public class EntityBuilderSamples {
             EntityBuilderSamples.slashed = registrations.entity("entity_builder_samples/slashed", "Slashed Sample Entity", MobCategory.MISC, SampleEntity::new).register();
             EntityBuilderSamples.refused = registrations.entity("entity_builder_samples_refused", "Refused Sample Entity", MobCategory.MISC, SampleEntity::new).register();
             
-            EntityBuilder<SampleMob, Registrations> builder = registrations.entity("entity_builder_samples_mob", "Sample Mob", MobCategory.CREATURE, SampleMob::new)
+            LivingEntityBuilder<SampleMob, Registrations> builder = registrations.livingEntity("entity_builder_samples_mob", "Sample Mob", MobCategory.CREATURE, SampleMob::new)
                     .attributes(() -> Mob.createMobAttributes().add(Attributes.MAX_HEALTH, 42.0D))
                     .spawnPlacement(SpawnPlacementTypes.ON_GROUND, Heightmap.Types.OCEAN_FLOOR, (_, _, _, _, _) -> false)
                     .renderer(() -> {
@@ -324,7 +324,7 @@ public class EntityBuilderSamples {
                     .register();
             EntityBuilderSamples.takenOver = builder;
             
-            EntityBuilderSamples.custom = registrations.entity("entity_builder_samples_custom", "Custom Sample Mob", MobCategory.CREATURE, SampleMob::new)
+            EntityBuilderSamples.custom = registrations.livingEntity("entity_builder_samples_custom", "Custom Sample Mob", MobCategory.CREATURE, SampleMob::new)
                     .attributes(Mob::createMobAttributes)
                     .renderer(() -> {
                         EntityBuilderSamples.clientRequested = true;

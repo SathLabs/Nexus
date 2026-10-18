@@ -42,8 +42,6 @@ public final class ItemEntry<ITEM extends Item> extends RegistryEntry<Item, ITEM
     private final @Nullable Set<ResourceKey<CreativeModeTab>> tabs;
     
     ///
-    /// Binds to the given key.
-    ///
     /// Should only ever be called from [ItemBuilder#createEntry(ResourceKey)].
     ///
     /// @param key         The key of the item.
@@ -121,8 +119,8 @@ public final class ItemEntry<ITEM extends Item> extends RegistryEntry<Item, ITEM
     }
     
     ///
-    /// The `item.<modid>.<name>` translation, or the derived one of a sub-object's item that was not
-    /// [ItemBuilder#named(String)], such as the block's on a block item.
+    /// The `item.<modid>.<name>` translation, or the derived translations of a sub-object,
+    /// e.g., the bucket of a liquid or block item of a block.
     ///
     /// @return The translation of the item.
     ///

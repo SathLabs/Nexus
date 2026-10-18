@@ -26,8 +26,6 @@ public final class RecipeTypeEntry<RECIPE extends Recipe<?>> extends RegistryEnt
     private final RegistryEntry<RecipeSerializer<?>, RecipeSerializer<RECIPE>> serializer;
     
     ///
-    /// Binds to the given key.
-    ///
     /// Should only ever be called from [RecipeTypeBuilder#createEntry(ResourceKey)].
     ///
     /// @param key        The key of the recipe type.

@@ -38,16 +38,26 @@ import java.util.function.Consumer;
 /// @param <PARENT>   The type of what [#end()] returns.
 /// @param <SELF>     The type of this builder.
 ///
-public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY extends RegistryEntry<REGISTRY, VALUE>, PARENT, SELF extends EntryBuilder<REGISTRY, VALUE, ENTRY, PARENT, SELF>> {
+public abstract class EntryBuilder
+        // @formatter:off
+        <
+            REGISTRY,
+            VALUE extends REGISTRY,
+            ENTRY extends RegistryEntry<REGISTRY, VALUE>,
+            PARENT,
+            SELF extends EntryBuilder<REGISTRY, VALUE, ENTRY, PARENT, SELF>
+        >
+        // @formatter:on
+{
     
     ///
-    /// The registrations this builder registers through.
+    /// The registrations this builder registers its entry to.
     ///
     @Getter
     private final Registrations registrations;
     
     ///
-    /// The key the object registers under.
+    /// The resource key this entry will be registered under.
     ///
     @Getter
     private final ResourceKey<REGISTRY> key;
@@ -123,13 +133,34 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
         this.tags.addAll(from.tags);
         this.factsByKind.putAll(from.factsByKind);
         this.callbacks.addAll(from.callbacks);
+        
         from.clientCode.forEach(code -> this.clientCode.add(() -> code.get()::accept));
         from.registered = true;
         from.successor = this;
     }
     
     ///
-    /// The name, the path of the identifier.
+    /// Registers the given sub-object, whose own [#register()] throws.
+    ///
+    /// If another builder took over the given one, the builder that took over last will register the object instead.
+    ///
+    /// Should only ever be called from [#createEntry(ResourceKey)].
+    ///
+    /// @param builder The builder of the sub-object.
+    ///
+    /// @return The still unbound entry of the sub-object.
+    ///
+    /// @throws IllegalStateException If the sub-object was already registered, if the registry event of its registry already ran, or if its identifier is already registered in the registry.
+    ///
+    @CanIgnoreReturnValue
+    protected static <SUB extends RegistryEntry<?, ?>> SUB registerSubObject(EntryBuilder<?, ?, SUB, ?, ?> builder) {
+        EntryBuilder<?, ?, ? extends SUB, ?, ?> successor = builder.successor;
+        //noinspection unchecked No clue why IntelliJ complains about this, this is literally the same function
+        return successor == null ? builder.registerEntry() : EntryBuilder.registerSubObject(successor);
+    }
+    
+    ///
+    /// The name, aka the path of the identifier.
     ///
     /// @return The name.
     ///
@@ -238,7 +269,7 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
     ///
     /// This builder as its own type.
     ///
-    private SELF self() {
+    protected SELF self() {
         //noinspection unchecked Every builder is the type it declares as its own.
         return (SELF) this;
     }
@@ -248,7 +279,12 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
     ///
     /// @return The still unbound entry of the object.
     ///
-    /// @throws IllegalStateException If [#end()] returns another builder, which registers this one, if this was already called, if another builder took over this one, if the registry event of the registry already ran, if the identifier is already registered in the registry, or if a translation key the object declares is already declared, such as by a name that differs only by a `/` in place of a `.`.
+    /// @throws IllegalStateException - If [#end()] returns another builder, which registers this one.
+    /// - If this was already called.
+    /// - If another builder took over this one.
+    /// - If the registry event of the registry already ran.
+    /// - If the identifier is already registered in the registry.
+    /// - If a translation key the object declares is already declared, such as by a name that differs only by a `/` in place of a `.`.
     ///
     @CanIgnoreReturnValue
     public ENTRY register() {
@@ -257,26 +293,6 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
         }
         
         return this.registerEntry();
-    }
-    
-    ///
-    /// Registers the given sub-object, whose own [#register()] throws.
-    ///
-    /// If another builder took over the given one, the builder that took over last registers instead, with everything
-    /// recorded on it.
-    ///
-    /// Should only ever be called from [#createEntry(ResourceKey)].
-    ///
-    /// @param builder The builder of the sub-object.
-    ///
-    /// @return The still unbound entry of the sub-object.
-    ///
-    /// @throws IllegalStateException If the sub-object was already registered, if the registry event of its registry already ran, or if its identifier is already registered in the registry.
-    ///
-    @CanIgnoreReturnValue
-    protected static <SUB extends RegistryEntry<?, ?>> SUB registerSubObject(EntryBuilder<?, ?, SUB, ?, ?> builder) {
-        EntryBuilder<?, ?, ? extends SUB, ?, ?> successor = builder.successor;
-        return successor == null ? builder.registerEntry() : EntryBuilder.registerSubObject(successor);
     }
     
     ///
@@ -299,7 +315,7 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
     }
     
     ///
-    /// Throws an [IllegalStateException] if [#register()] was already called or another builder took over this one.
+    /// Will throw if the key is already registered or was taken over by another builder.
     ///
     /// Meant to be used for the setters of a mod's own builders.
     ///
@@ -312,8 +328,7 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
     }
     
     ///
-    /// Adds the given client hook to the registry of the object, called with the mod bus once the registry event of the
-    /// registry has run.
+    /// Adds the given client hook to the registry of the object, called with the mod bus once the registry event of the registry has run.
     /// Stacks with previous calls, in the order they were written.
     ///
     /// Meant to be used for the client code of a mod's own builders.
@@ -345,15 +360,14 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
     /// - `<modid>` is the id of the mod.
     /// - `<name>` is the name of this builder, with every `/` replaced by `.`.
     ///
-    /// The key is the description id that vanilla derives from the identifier for the given category.
-    /// Two names that differ only by a `/` in place of a `.` share the key, as their vanilla description ids do.
+    /// Any two keys that differ only by a `/` in place of a `.` or the other way around, are considered the same and will throw.
     ///
     /// @param category The first part of the key.
     /// @param english  The English name.
     ///
     /// @return The declared translation.
     ///
-    /// @throws IllegalStateException If the key is already declared, such as by a name that differs from this one only by a `/` in place of a `.`.
+    /// @throws IllegalStateException If the key is already declared.
     ///
     @CanIgnoreReturnValue
     protected Translation define(String category, String english) {
@@ -371,8 +385,8 @@ public abstract class EntryBuilder<REGISTRY, VALUE extends REGISTRY, ENTRY exten
     protected abstract VALUE create();
     
     ///
-    /// Creates the still unbound entry for the given key and registers the sub-objects and the defaults that no
-    /// builder was opened for.
+    /// Creates the still unbound entry for the given key and registers the sub-objects and
+    /// defaults that did not get overwritten by another sub-builder.
     ///
     /// Should only ever be called from [#register()].
     ///

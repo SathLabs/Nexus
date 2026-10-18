@@ -28,7 +28,18 @@ import org.jetbrains.annotations.ApiStatus;
 /// @param <BLOCK>   The type of the block.
 /// @param <BUCKET>  The type of the bucket.
 ///
-public final class FluidEntry<TYPE extends FluidType, SOURCE extends FlowingFluid, FLOWING extends FlowingFluid, BLOCK extends LiquidBlock, BUCKET extends BucketItem> extends PlainFluidEntry<TYPE, SOURCE, FLOWING> {
+public final class FluidEntry
+        // @formatter:off
+        <
+            TYPE extends FluidType,
+            SOURCE extends FlowingFluid,
+            FLOWING extends FlowingFluid,
+            BLOCK extends LiquidBlock,
+            BUCKET extends BucketItem
+        >
+        extends PlainFluidEntry<TYPE, SOURCE, FLOWING>
+        // @formatter:on
+{
     
     ///
     /// The block's entry.
@@ -42,8 +53,6 @@ public final class FluidEntry<TYPE extends FluidType, SOURCE extends FlowingFlui
     @Getter
     private final ItemEntry<BUCKET> bucket;
     
-    ///
-    /// Binds to the given key.
     ///
     /// Should only ever be called from [PlainFluidBuilder#createEntry(ResourceKey)].
     ///

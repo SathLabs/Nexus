@@ -29,30 +29,39 @@ import java.util.function.BiConsumer;
 /// @param <MENU>   The type of the menu.
 /// @param <PARENT> The type of what [#end()] returns.
 ///
-public final class MenuBuilder<MENU extends AbstractContainerMenu, PARENT> extends EntryBuilder<MenuType<?>, MenuType<MENU>, MenuEntry<MENU>, PARENT, MenuBuilder<MENU, PARENT>> {
-
+public final class MenuBuilder<MENU extends AbstractContainerMenu, PARENT>
+        // @formatter:off
+        extends EntryBuilder
+        <
+            MenuType<?>,
+            MenuType<MENU>,
+            MenuEntry<MENU>,
+            PARENT,
+            MenuBuilder<MENU, PARENT>
+        >
+        // @formatter:on
+{
+    
     ///
     /// The English title.
     ///
     private final String english;
-
+    
     ///
     /// The factory of the menu on the client.
     ///
     private final IContainerFactory<MENU> factory;
-
+    
     ///
-    /// The registration of the screen, called on the client with the mod bus and the entry, or `null` if the menu has
-    /// no screen.
+    /// The registration of the screen, called on the client with the mod bus and the entry,
+    /// or `null` if the menu has no screen.
     ///
     private @Nullable BiConsumer<IEventBus, MenuEntry<MENU>> screen;
-
+    
     ///
-    /// Starts the menu type titled `container.<modid>.<name>`.
+    /// Starts the menu type with `container.<modid>.<name>` as its title.
     /// - `<modid>` is the id of the mod of the given registrations.
     /// - `<name>` is the given name.
-    ///
-    /// If the server doesn't write any extra data when it opens the menu, the factory will receive `null` instead of it.
     ///
     /// @param registrations The registrations to register through.
     /// @param name          The path of the identifier.
@@ -65,7 +74,7 @@ public final class MenuBuilder<MENU extends AbstractContainerMenu, PARENT> exten
         this.english = english;
         this.factory = factory;
     }
-
+    
     ///
     /// Registers the given screen for the menu on the client.
     ///
@@ -81,7 +90,7 @@ public final class MenuBuilder<MENU extends AbstractContainerMenu, PARENT> exten
         this.screen = (bus, entry) -> ClientDispatch.screen(bus, entry, screen);
         return this;
     }
-
+    
     ///
     /// Creates the menu type with the factory.
     ///
@@ -91,10 +100,10 @@ public final class MenuBuilder<MENU extends AbstractContainerMenu, PARENT> exten
     protected MenuType<MENU> create() {
         return IMenuTypeExtension.create(this.factory);
     }
-
+    
     ///
-    /// Creates the entry and declares its title `container.<modid>.<name>`, and adds the screen as a client hook if
-    /// [#screen(ClientOnly)] was called.
+    /// Creates the entry and declares its title `container.<modid>.<name>`,
+    /// and adds the screen as a client hook if [#screen(ClientOnly)] was called.
     ///
     /// @param key The key of the menu type.
     ///
@@ -107,7 +116,7 @@ public final class MenuBuilder<MENU extends AbstractContainerMenu, PARENT> exten
         if (screen != null) {
             this.addClientHook(bus -> screen.accept(bus, entry));
         }
-
+        
         return entry;
     }
 }

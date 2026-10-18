@@ -18,14 +18,24 @@ import net.minecraft.world.level.material.FluidState;
 import org.jetbrains.annotations.ApiStatus;
 
 ///
-/// A holder of one source fluid that a builder registered, bound once the fluid registry event has run, with the
-/// entries of its type and its flowing fluid.
+/// A holder of one source fluid that a builder registered, bound once the fluid registry event has run,
+/// with the entries of its type and its flowing fluid.
 ///
 /// @param <TYPE>    The type of the fluid type.
 /// @param <SOURCE>  The type of the source fluid.
 /// @param <FLOWING> The type of the flowing fluid.
 ///
-public class PlainFluidEntry<TYPE extends FluidType, SOURCE extends FlowingFluid, FLOWING extends FlowingFluid> extends RegistryEntry<Fluid, SOURCE> implements Translatable {
+public class PlainFluidEntry
+        // @formatter:off
+        <
+            TYPE extends FluidType,
+            SOURCE extends FlowingFluid,
+            FLOWING extends FlowingFluid
+        >
+        extends RegistryEntry<Fluid, SOURCE>
+        implements Translatable
+        // @formatter:on
+{
     
     ///
     /// The `fluid_type.<modid>.<name>` translation.
@@ -45,8 +55,6 @@ public class PlainFluidEntry<TYPE extends FluidType, SOURCE extends FlowingFluid
     private final RegistryEntry<Fluid, FLOWING> flowing;
     
     ///
-    /// Binds to the given key.
-    ///
     /// Should only ever be called from [PlainFluidBuilder#createEntry(ResourceKey)].
     ///
     /// @param key         The key of the source.
@@ -61,6 +69,15 @@ public class PlainFluidEntry<TYPE extends FluidType, SOURCE extends FlowingFluid
         this.translation = translation;
         this.type = type;
         this.flowing = flowing;
+    }
+    
+    ///
+    /// Creates a stack of the source with {@value FluidType#BUCKET_VOLUME} millibuckets.
+    ///
+    /// @return The created stack.
+    ///
+    public FluidStack stack() {
+        return new FluidStack(this.value(), FluidType.BUCKET_VOLUME);
     }
     
     ///

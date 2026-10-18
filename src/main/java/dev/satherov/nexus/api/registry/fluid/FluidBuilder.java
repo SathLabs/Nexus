@@ -29,7 +29,26 @@ import java.util.function.BiFunction;
 /// @param <BUCKET>  The type of the bucket.
 /// @param <PARENT>  The type of what [#end()] returns.
 ///
-public final class FluidBuilder<TYPE extends FluidType, SOURCE extends FlowingFluid, FLOWING extends FlowingFluid, BLOCK extends LiquidBlock, BUCKET extends BucketItem, PARENT> extends EntryBuilder<Fluid, SOURCE, FluidEntry<TYPE, SOURCE, FLOWING, BLOCK, BUCKET>, PARENT, FluidBuilder<TYPE, SOURCE, FLOWING, BLOCK, BUCKET, PARENT>> {
+public final class FluidBuilder
+        // @formatter:off
+        <
+            TYPE extends FluidType,
+            SOURCE extends FlowingFluid,
+            FLOWING extends FlowingFluid,
+            BLOCK extends LiquidBlock,
+            BUCKET extends BucketItem,
+            PARENT
+        >
+        extends EntryBuilder
+        <
+            Fluid,
+            SOURCE,
+            FluidEntry<TYPE, SOURCE, FLOWING, BLOCK, BUCKET>,
+            PARENT,
+            FluidBuilder<TYPE, SOURCE, FLOWING, BLOCK, BUCKET, PARENT>
+        >
+        // @formatter:on
+{
     
     ///
     /// The builder of the fluid, which creates the fluid and its entry.
@@ -47,8 +66,8 @@ public final class FluidBuilder<TYPE extends FluidType, SOURCE extends FlowingFl
     private ItemBuilder<BUCKET, FluidBuilder<TYPE, SOURCE, FLOWING, BLOCK, BUCKET, PARENT>> bucket;
     
     ///
-    /// Takes over the given builder of the fluid, with everything recorded on it so far, and opens the bucket of the
-    /// given factory.
+    /// Takes over the given builder of the fluid, with everything recorded on it so far,
+    /// and opens the bucket of the given factory.
     ///
     /// Should only ever be called from [PlainFluidBuilder#block(BiFunction)].
     ///
@@ -66,10 +85,9 @@ public final class FluidBuilder<TYPE extends FluidType, SOURCE extends FlowingFl
     }
     
     ///
-    /// Opens the bucket as an item of the factory's class, in place of the default bucket.
+    /// Starts a new bucket item builder, with the class of the provided factory result.
     ///
-    /// The factory receives the source and the properties with the id, `stacksTo(1)`, and `craftRemainder(BUCKET)` set.
-    /// Client code recorded earlier will receive the entry with the new bucket, so this is best called first.
+    /// Any callbacks or client code called before this will receive the new values despite the lambda claiming otherwise, so call this first to avoid issues!
     ///
     /// @param factory The factory of the bucket, called once inside the registry event.
     ///
@@ -95,8 +113,9 @@ public final class FluidBuilder<TYPE extends FluidType, SOURCE extends FlowingFl
     }
     
     ///
-    /// Creates the builder of a bucket of the given factory as `<modid>:<name>_bucket`, with `stacksTo(1)` and
-    /// `craftRemainder(BUCKET)` set.
+    /// Starts a new bucket item builder, with the class of the provided factory result as `<modid>:<name>_bucket`.
+    ///
+    /// The default properties will be set to `stacksTo(1)` and `craftRemainder(Items.BUCKET)`.
     ///
     private ItemBuilder<BUCKET, FluidBuilder<TYPE, SOURCE, FLOWING, BLOCK, BUCKET, PARENT>> openBucket(BiFunction<SOURCE, Item.Properties, BUCKET> factory) {
         DeferredHolder<Fluid, SOURCE> source = DeferredHolder.create(this.getKey());
@@ -130,7 +149,6 @@ public final class FluidBuilder<TYPE extends FluidType, SOURCE extends FlowingFl
     ///
     @Override
     protected FluidEntry<TYPE, SOURCE, FLOWING, BLOCK, BUCKET> createEntry(ResourceKey<Fluid> key) {
-        //noinspection unchecked The builder of the fluid creates the entry with the block and the bucket of this builder.
         return (FluidEntry<TYPE, SOURCE, FLOWING, BLOCK, BUCKET>) this.fluid.createEntry(key);
     }
 }

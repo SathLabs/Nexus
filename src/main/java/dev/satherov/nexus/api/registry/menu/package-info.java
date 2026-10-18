@@ -1,6 +1,3 @@
-///
-/// The builder of a menu type and the entry it returns.
-///
 @NullMarked
 @CheckReturnValue
 package dev.satherov.nexus.api.registry.menu;

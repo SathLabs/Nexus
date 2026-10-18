@@ -18,6 +18,7 @@ import org.jspecify.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -32,7 +33,18 @@ import java.util.function.UnaryOperator;
 /// @param <ITEM>   The type of the item.
 /// @param <PARENT> The type of what [#end()] returns.
 ///
-public final class ItemBuilder<ITEM extends Item, PARENT> extends EntryBuilder<Item, ITEM, ItemEntry<ITEM>, PARENT, ItemBuilder<ITEM, PARENT>> {
+public final class ItemBuilder<ITEM extends Item, PARENT>
+        // @formatter:off
+        extends EntryBuilder
+        <
+            Item,
+            ITEM,
+            ItemEntry<ITEM>,
+            PARENT,
+            ItemBuilder<ITEM, PARENT>
+        >
+        // @formatter:on
+{
     
     ///
     /// The factory of the item, called with the properties once the id is set.
@@ -79,8 +91,8 @@ public final class ItemBuilder<ITEM extends Item, PARENT> extends EntryBuilder<I
     }
     
     ///
-    /// Starts a sub-object's item under the given translation until it is [#named(String)], such as a block item under
-    /// the block's.
+    /// Starts an item as a sub-object, such as the block item of a block or the bucket of a fluid,
+    /// from which the translation is inherited unless [#named(String)] overrides it.
     ///
     /// The factory receives the properties with the id set.
     ///
@@ -101,7 +113,7 @@ public final class ItemBuilder<ITEM extends Item, PARENT> extends EntryBuilder<I
     ///
     /// Replaces previous calls, including the edits of [#properties(UnaryOperator)].
     ///
-    /// The id and the description of the translation will be set on the given properties, before any edits run.
+    /// The id and the description of the translation will be set on the given properties before any edits run.
     ///
     /// @param properties The properties.
     ///
@@ -198,8 +210,9 @@ public final class ItemBuilder<ITEM extends Item, PARENT> extends EntryBuilder<I
     }
     
     ///
-    /// Gives a sub-object's item its own name under `item.<modid>.<name>` in place of the derived one, such as the
-    /// block's key on a block item or `<english> Bucket` on a bucket.
+    /// Allows overriding previously declared translations.
+    ///
+    /// This is only really useful for overriding the name of sub-objects, such as buckets or block items.
     ///
     /// @param english The English name.
     ///
@@ -240,8 +253,8 @@ public final class ItemBuilder<ITEM extends Item, PARENT> extends EntryBuilder<I
     }
     
     ///
-    /// Creates the entry with the translation and the tabs, and declares `item.<modid>.<name>` if the item has its own
-    /// name.
+    /// Creates the entry with the translation, the creative tabs, and declares the english `item.<modid>.<name>` translation
+    /// if the item has its own name.
     ///
     /// @param key The key of the item.
     ///

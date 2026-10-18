@@ -28,12 +28,25 @@ import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
 ///
-/// A builder of one block, with no item until [#item()] opens one.
+/// A builder of one block without an item.
+///
+/// Calls [#item()] to open an item builder.
 ///
 /// @param <BLOCK>  The type of the block.
 /// @param <PARENT> The type of what [#end()] returns.
 ///
-public final class PlainBlockBuilder<BLOCK extends Block, PARENT> extends EntryBuilder<Block, BLOCK, PlainBlockEntry<BLOCK>, PARENT, PlainBlockBuilder<BLOCK, PARENT>> {
+public final class PlainBlockBuilder<BLOCK extends Block, PARENT>
+        // @formatter:off
+        extends EntryBuilder
+        <
+            Block,
+            BLOCK,
+            PlainBlockEntry<BLOCK>,
+            PARENT,
+            PlainBlockBuilder<BLOCK, PARENT>
+        >
+        // @formatter:on
+{
     
     ///
     /// The `block.<modid>.<name>` translation.
@@ -46,7 +59,7 @@ public final class PlainBlockBuilder<BLOCK extends Block, PARENT> extends EntryB
     private final Function<BlockBehaviour.Properties, BLOCK> factory;
     
     ///
-    /// The properties the factory receives, before the id is set.
+    /// The properties the factory receives before the id is set.
     ///
     private Supplier<BlockBehaviour.Properties> properties = BlockBehaviour.Properties::of;
     
@@ -81,7 +94,7 @@ public final class PlainBlockBuilder<BLOCK extends Block, PARENT> extends EntryB
     ///
     /// Replaces the properties the factory receives.
     ///
-    /// Replaces previous calls, including the edits of [#properties(UnaryOperator)].
+    /// Replaces all previous calls, including the edits of [#properties(UnaryOperator)].
     ///
     /// @param properties The properties of the block.
     ///
@@ -132,14 +145,12 @@ public final class PlainBlockBuilder<BLOCK extends Block, PARENT> extends EntryB
     }
     
     ///
-    /// Opens an item of the factory's class under the same name, which shows the block's translation until
-    /// [ItemBuilder#named(String)] gives it its own.
+    /// Starts a new item builder, with the class of the provided factory result.
     ///
-    /// The builder of block and item takes over everything recorded on this builder, and `end()` on the item builder
-    /// returns it.
+    /// The identifier and translation will be the same as those of the block.
+    /// The translation can be overwritten with [ItemBuilder#named(String)].
+    ///
     /// This builder will throw on every later call.
-    ///
-    /// The properties of the item start out requiring the features of the block.
     ///
     /// @param factory The factory of the item, called once inside the registry event with the block and the properties with the id set.
     ///
@@ -164,14 +175,12 @@ public final class PlainBlockBuilder<BLOCK extends Block, PARENT> extends EntryB
     }
     
     ///
-    /// Opens a [BlockItem] under the same name, which shows the block's translation until [ItemBuilder#named(String)]
-    /// gives it its own.
+    /// Starts a new item builder, with [BlockItem].
     ///
-    /// The builder of block and item takes over everything recorded on this builder, and `end()` on the item builder
-    /// returns it.
+    /// The identifier and translation will be the same as those of the block.
+    /// The translation can be overwritten with [ItemBuilder#named(String)].
+    ///
     /// This builder will throw on every later call.
-    ///
-    /// The properties of the item start out requiring the features of the block.
     ///
     /// @return The builder of the item.
     ///
@@ -192,8 +201,8 @@ public final class PlainBlockBuilder<BLOCK extends Block, PARENT> extends EntryB
     }
     
     ///
-    /// Creates the entry for the given key, registering the item first if [#item(BiFunction)] opened one, and adds the
-    /// tint sources as a client hook if [#tint(ClientOnly)] was called.
+    /// Creates the entry for the given key, registering the item first if [#item(BiFunction)] set one,
+    /// and then adds the tint sources as a client hook if [#tint(ClientOnly)] was called.
     ///
     /// @param key The key of the block.
     ///

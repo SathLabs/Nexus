@@ -12,6 +12,7 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.MenuConstructor;
 import net.minecraft.world.inventory.MenuType;
 
+import org.apache.commons.lang3.function.Consumers;
 import org.jetbrains.annotations.ApiStatus;
 
 import java.util.function.Consumer;
@@ -22,14 +23,12 @@ import java.util.function.Consumer;
 /// @param <MENU> The type of the menu.
 ///
 public final class MenuEntry<MENU extends AbstractContainerMenu> extends RegistryEntry<MenuType<?>, MenuType<MENU>> implements Translatable {
-
+    
     ///
     /// The translation of the title.
     ///
     private final Translation translation;
-
-    ///
-    /// Binds to the given key.
+    
     ///
     /// Should only ever be called from [MenuBuilder#createEntry(ResourceKey)].
     ///
@@ -42,7 +41,7 @@ public final class MenuEntry<MENU extends AbstractContainerMenu> extends Registr
         super(key, builder);
         this.translation = translation;
     }
-
+    
     ///
     /// Opens the menu that the given constructor creates for the given player under the title of this entry.
     ///
@@ -52,14 +51,14 @@ public final class MenuEntry<MENU extends AbstractContainerMenu> extends Registr
     /// @param menu   The constructor of the menu on the server.
     ///
     public void open(ServerPlayer player, MenuConstructor menu) {
-        this.open(player, menu, _ -> { });
+        this.open(player, menu, Consumers.nop());
     }
-
+    
     ///
-    /// Opens the menu that the given constructor creates for the given player under the title of this entry, and
-    /// writes the extra data that the factory of the menu type reads on the client.
+    /// Opens the menu that the given constructor creates for the given player under the title of this entry
+    /// and writes the extra data that the factory of the menu type reads on the client.
     ///
-    /// If the writer doesn't write anything, the factory will receive `null` instead of the extra data.
+    /// If the writer doesn't write anything, the factory will receive `null` instead of the byte buffer.
     ///
     /// @param player The player to open the menu for.
     /// @param menu   The constructor of the menu on the server.
@@ -68,7 +67,7 @@ public final class MenuEntry<MENU extends AbstractContainerMenu> extends Registr
     public void open(ServerPlayer player, MenuConstructor menu, Consumer<RegistryFriendlyByteBuf> extra) {
         player.openMenu(new SimpleMenuProvider(menu, this.component()), extra);
     }
-
+    
     ///
     /// The `container.<modid>.<name>` translation.
     ///

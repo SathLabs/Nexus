@@ -12,6 +12,10 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
 
+import java.util.Objects;
+import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
+
 ///
 /// An entry of one attachment type that an [AttachmentBuilder] registered.
 ///
@@ -19,8 +23,6 @@ import org.jspecify.annotations.Nullable;
 ///
 public final class AttachmentEntry<VALUE> extends RegistryEntry<AttachmentType<?>, AttachmentType<VALUE>> {
     
-    ///
-    /// Binds to the given key.
     ///
     /// Should only ever be called from [AttachmentBuilder#createEntry(ResourceKey)].
     ///
@@ -53,6 +55,42 @@ public final class AttachmentEntry<VALUE> extends RegistryEntry<AttachmentType<?
     ///
     public void set(IAttachmentHolder holder, VALUE value) {
         holder.setData(this.value(), value);
+    }
+    
+    ///
+    /// Updates this attachment on the given holder with the given operator.
+    ///
+    /// @param holder   The holder of the attachment.
+    /// @param operator The operator to apply to the current value.
+    ///
+    /// @return The previous value of the attachment or `null` if the value did not change.
+    ///
+    public @Nullable VALUE update(IAttachmentHolder holder, UnaryOperator<VALUE> operator) {
+        VALUE old = holder.getData(this.value());
+        VALUE updated = operator.apply(old);
+        if (Objects.equals(old, updated)) {
+            return null;
+        }
+        
+        return holder.setData(this.value(), updated);
+    }
+    
+    ///
+    /// Updates this attachment on the given holder by replacing it with the given value.
+    ///
+    /// @param holder   The holder of the attachment.
+    /// @param supplier The supplier to replace the value with.
+    ///
+    /// @return The previous value of the attachment or `null` if the value did not change.
+    ///
+    public @Nullable VALUE update(IAttachmentHolder holder, Supplier<VALUE> supplier) {
+        VALUE old = holder.getData(this.value());
+        VALUE updated = supplier.get();
+        if (Objects.equals(old, updated)) {
+            return null;
+        }
+        
+        return holder.setData(this.value(), updated);
     }
     
     ///

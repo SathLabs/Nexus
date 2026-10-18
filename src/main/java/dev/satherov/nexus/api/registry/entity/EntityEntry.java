@@ -31,8 +31,6 @@ public class EntityEntry<ENTITY extends Entity> extends RegistryEntry<EntityType
     private final Translation translation;
     
     ///
-    /// Binds to the given key.
-    ///
     /// Should only ever be called from [EntityBuilder#createEntry(ResourceKey)].
     ///
     /// @param key         The key of the entity type.
@@ -60,8 +58,8 @@ public class EntityEntry<ENTITY extends Entity> extends RegistryEntry<EntityType
     }
     
     ///
-    /// Spawns a new entity of this type at the given position, or `null` if the type is disabled in the level, an
-    /// event cancelled the spawn, or the entity could not be added to the level.
+    /// Spawns a new entity of this type at the given position, or `null` if the type is disabled in the level,
+    /// the event canceled the spawn, or the entity could not be added to the level.
     ///
     /// The returned entity will be in the level, centered on the bottom of the block at the given position.
     ///

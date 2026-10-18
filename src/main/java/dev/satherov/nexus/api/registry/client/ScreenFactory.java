@@ -2,12 +2,15 @@ package dev.satherov.nexus.api.registry.client;
 
 import dev.satherov.nexus.api.registry.menu.MenuBuilder;
 
+import net.minecraft.client.gui.screens.MenuScreens;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 
 ///
 /// A factory of the screen of a menu, called on the client each time the menu opens.
+///
+/// This is essentially [MenuScreens.ScreenConstructor] but without the client-only annotation.
 ///
 /// @param <MENU>   The type of the menu.
 /// @param <SCREEN> The type of the screen.
@@ -16,7 +19,7 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 ///
 @FunctionalInterface
 public interface ScreenFactory<MENU extends AbstractContainerMenu, SCREEN> {
-
+    
     ///
     /// Creates the screen of the given menu.
     ///

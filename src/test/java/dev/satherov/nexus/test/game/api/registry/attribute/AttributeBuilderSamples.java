@@ -16,6 +16,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.RangedAttribute;
 import net.minecraft.world.level.Level;
 
 import org.jspecify.annotations.Nullable;
@@ -30,12 +31,12 @@ public class AttributeBuilderSamples {
     
     private static @Nullable EntityEntry<SampleMob> mob;
     private static @Nullable EntityEntry<SampleMob> other;
-    private static @Nullable AttributeEntry added;
-    private static @Nullable AttributeEntry missing;
+    private static @Nullable AttributeEntry<RangedAttribute> added;
+    private static @Nullable AttributeEntry<RangedAttribute> missing;
     
     @ServerTest
     public static void addsTheAttributeWithItsDefaultToEveryType(GameTestHelper helper) {
-        AttributeEntry added = AttributeBuilderSamples.added();
+        AttributeEntry<RangedAttribute> added = AttributeBuilderSamples.added();
         for (EntityEntry<SampleMob> type : List.of(AttributeBuilderSamples.mob(), AttributeBuilderSamples.other())) {
             AttributeInstance instance = AttributeBuilderSamples.instance(helper, added, AttributeBuilderSamples.create(helper, type));
             helper.assertValueEqual(instance.getBaseValue(), 4.0D, "base value of the attribute on '" + type.getId() + "'");
@@ -46,7 +47,7 @@ public class AttributeBuilderSamples {
     
     @ServerTest
     public static void getIsTheCurrentValueOnTheEntity(GameTestHelper helper) {
-        AttributeEntry added = AttributeBuilderSamples.added();
+        AttributeEntry<RangedAttribute> added = AttributeBuilderSamples.added();
         SampleMob mob = AttributeBuilderSamples.create(helper, AttributeBuilderSamples.mob());
         AttributeInstance instance = AttributeBuilderSamples.instance(helper, added, mob);
         helper.assertValueEqual(added.get(mob), 4.0D, "default value of the attribute");
@@ -59,7 +60,7 @@ public class AttributeBuilderSamples {
     
     @ServerTest
     public static void getIsTheDefaultOnAnEntityWithoutTheAttribute(GameTestHelper helper) {
-        AttributeEntry missing = AttributeBuilderSamples.missing();
+        AttributeEntry<RangedAttribute> missing = AttributeBuilderSamples.missing();
         SampleMob mob = AttributeBuilderSamples.create(helper, AttributeBuilderSamples.mob());
         helper.assertTrue(missing.instance(mob) == null, "The mob has an attribute that was never added to its type");
         helper.assertValueEqual(missing.get(mob), 2.0D, "value of the missing attribute");
@@ -70,7 +71,7 @@ public class AttributeBuilderSamples {
         return Objects.requireNonNull(type.create(helper.getLevel(), EntitySpawnReason.COMMAND));
     }
     
-    private static AttributeInstance instance(GameTestHelper helper, AttributeEntry attribute, SampleMob mob) {
+    private static AttributeInstance instance(GameTestHelper helper, AttributeEntry<RangedAttribute> attribute, SampleMob mob) {
         AttributeInstance instance = attribute.instance(mob);
         if (instance == null) {
             throw helper.assertionException("The mob of '" + mob.getType() + "' doesn't have the attribute '" + attribute.getId() + "'");
@@ -87,11 +88,11 @@ public class AttributeBuilderSamples {
         return Objects.requireNonNull(AttributeBuilderSamples.other);
     }
     
-    private static AttributeEntry added() {
+    private static AttributeEntry<RangedAttribute> added() {
         return Objects.requireNonNull(AttributeBuilderSamples.added);
     }
     
-    private static AttributeEntry missing() {
+    private static AttributeEntry<RangedAttribute> missing() {
         return Objects.requireNonNull(AttributeBuilderSamples.missing);
     }
     
@@ -108,10 +109,10 @@ public class AttributeBuilderSamples {
         @SubscribeEvent
         public static void onConstruct(FMLConstructModEvent event) {
             Registrations registrations = Nexus.getMod().getRegistrations();
-            EntityEntry<SampleMob> mob = registrations.entity("attribute_builder_samples_mob", "Attribute Sample Mob", MobCategory.CREATURE, SampleMob::new)
+            EntityEntry<SampleMob> mob = registrations.livingEntity("attribute_builder_samples_mob", "Attribute Sample Mob", MobCategory.CREATURE, SampleMob::new)
                     .attributes(Mob::createMobAttributes)
                     .register();
-            EntityEntry<SampleMob> other = registrations.entity("attribute_builder_samples_other", "Other Attribute Sample Mob", MobCategory.CREATURE, SampleMob::new)
+            EntityEntry<SampleMob> other = registrations.livingEntity("attribute_builder_samples_other", "Other Attribute Sample Mob", MobCategory.CREATURE, SampleMob::new)
                     .attributes(Mob::createMobAttributes)
                     .register();
             

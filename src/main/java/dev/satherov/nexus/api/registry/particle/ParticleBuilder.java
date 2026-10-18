@@ -29,7 +29,23 @@ import java.util.function.Supplier;
 /// @param <TYPE>    The type of the particle type.
 /// @param <PARENT>  The type of what [#end()] returns.
 ///
-public final class ParticleBuilder<OPTIONS extends ParticleOptions, TYPE extends ParticleType<OPTIONS>, PARENT> extends EntryBuilder<ParticleType<?>, TYPE, ParticleEntry<OPTIONS, TYPE>, PARENT, ParticleBuilder<OPTIONS, TYPE, PARENT>> {
+public final class ParticleBuilder
+        // @formatter:off
+        <
+            OPTIONS extends ParticleOptions,
+            TYPE extends ParticleType<OPTIONS>,
+            PARENT
+        >
+        extends EntryBuilder
+        <
+            ParticleType<?>,
+            TYPE,
+            ParticleEntry<OPTIONS, TYPE>,
+            PARENT,
+            ParticleBuilder<OPTIONS, TYPE, PARENT>
+        >
+        // @formatter:on
+{
     
     ///
     /// The factory of the particle type.
@@ -37,8 +53,8 @@ public final class ParticleBuilder<OPTIONS extends ParticleOptions, TYPE extends
     private final Supplier<TYPE> factory;
     
     ///
-    /// The registration of the provider, called on the client with the mod bus and the entry, or `null` if neither
-    /// [#sprites(ClientOnly)] nor [#provider(ClientOnly)] was called.
+    /// The registration of the provider, called on the client with the mod bus and the entry,
+    /// or `null` if neither [#sprites(ClientOnly)] nor [#provider(ClientOnly)] was called.
     ///
     private @Nullable BiConsumer<IEventBus, ParticleEntry<OPTIONS, TYPE>> provider;
     
@@ -83,7 +99,7 @@ public final class ParticleBuilder<OPTIONS extends ParticleOptions, TYPE extends
     ///
     /// Replaces previous calls of this and of [#sprites(ClientOnly)].
     ///
-    /// Meant to be used for particles that draw no sprite set of their own.
+    /// Should be used for particles that have no own sprite set.
     ///
     /// @param provider The supplier of the provider.
     ///
@@ -109,8 +125,8 @@ public final class ParticleBuilder<OPTIONS extends ParticleOptions, TYPE extends
     }
     
     ///
-    /// Creates the entry for the given key and adds the provider as a client hook if [#sprites(ClientOnly)] or
-    /// [#provider(ClientOnly)] was called.
+    /// Creates the entry for the given key and adds the provider as a client hook if [#sprites(ClientOnly)]
+    /// or [#provider(ClientOnly)] was called.
     ///
     /// @param key The key of the particle type.
     ///

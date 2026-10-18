@@ -36,17 +36,21 @@ import java.util.function.Supplier;
 public final class EntryRegister<REGISTRY> {
     
     ///
-    /// Every registry whose registry event already ran.
+    /// Every registry whose registry events have already fired.
     ///
     private static final Set<ResourceKey<? extends Registry<?>>> FIRED_REGISTRIES = new HashSet<>();
     
     ///
-    /// The key of the registry.
+    /// The resource key of the registry.
     ///
     private final ResourceKey<? extends Registry<REGISTRY>> registryKey;
     
     ///
-    /// Every entry of the mod in registration order, shared by every register of the mod.
+    /// A reference to the list of all entries of the mod in registration order.
+    ///
+    /// This also contains entries which do not belong to this registry!
+    ///
+    /// @see Registrations#entries
     ///
     private final List<RegistryEntry<?, ?>> entries;
     
@@ -56,7 +60,7 @@ public final class EntryRegister<REGISTRY> {
     private final Set<Identifier> ids = new HashSet<>();
     
     ///
-    /// The entries of this register with the factories of their objects, in registration order.
+    /// All entries of this register with their factories, in registration order.
     ///
     private final List<Map.Entry<RegistryEntry<REGISTRY, ?>, Supplier<REGISTRY>>> factories = new ArrayList<>();
     
@@ -70,7 +74,7 @@ public final class EntryRegister<REGISTRY> {
     ///
     /// @param registryKey The key of the registry.
     /// @param bus         The event bus of the mod.
-    /// @param entries     Every entry of the mod, which this register adds its entries to.
+    /// @param entries     A reference to the list of all entries of the mod, which this register adds its entries to.
     ///
     public EntryRegister(ResourceKey<? extends Registry<REGISTRY>> registryKey, IEventBus bus, List<RegistryEntry<?, ?>> entries) {
         this.registryKey = registryKey;
@@ -164,6 +168,6 @@ public final class EntryRegister<REGISTRY> {
     /// Runs at the normal priority, so before [ClientDispatch] runs the client hooks at the lowest.
     ///
     private void onRegisterObjects(RegisterEvent event) {
-        this.factories.forEach(pair -> event.register(this.registryKey, pair.getKey().getId(), pair.getValue()));
+        this.factories.forEach(entry -> event.register(this.registryKey, entry.getKey().getId(), entry.getValue()));
     }
 }

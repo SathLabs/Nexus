@@ -18,8 +18,6 @@ import org.jetbrains.annotations.ApiStatus;
 public final class PotionEntry extends RegistryEntry<Potion, Potion> {
     
     ///
-    /// Binds to the given key.
-    ///
     /// Should only ever be called from [PotionBuilder#createEntry(ResourceKey)].
     ///
     /// @param key     The key of the potion.
@@ -34,6 +32,8 @@ public final class PotionEntry extends RegistryEntry<Potion, Potion> {
     /// Creates a stack of the given container that holds this potion.
     ///
     /// Meant to be used for [Items#POTION], [Items#SPLASH_POTION], [Items#LINGERING_POTION], and [Items#TIPPED_ARROW].
+    ///
+    /// Sets the [DataComponents#POTION_CONTENTS] component on the `container` item.
     ///
     /// @param container The item of the stack.
     ///

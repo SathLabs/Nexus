@@ -12,7 +12,6 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.Attribute;
-import net.minecraft.world.entity.ai.attributes.RangedAttribute;
 
 import com.google.common.base.Suppliers;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
@@ -20,14 +19,27 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 ///
-/// A builder of one ranged entity attribute.
+/// ATTRIBUTE builder of one entity attribute.
 ///
-/// @param <PARENT> The type of what [#end()] returns.
+/// @param <ATTRIBUTE> The type of the attribute.
+/// @param <PARENT>    The type of what [#end()] returns.
 ///
-public final class AttributeBuilder<PARENT> extends EntryBuilder<Attribute, RangedAttribute, AttributeEntry, PARENT, AttributeBuilder<PARENT>> {
+public final class AttributeBuilder<ATTRIBUTE extends Attribute, PARENT>
+        // @formatter:off
+        extends EntryBuilder
+        <
+            Attribute,
+            ATTRIBUTE,
+            AttributeEntry<ATTRIBUTE>,
+            PARENT,
+            AttributeBuilder<ATTRIBUTE, PARENT>
+        >
+        // @formatter:on
+{
     
     ///
     /// The `attribute.name.<modid>.<name>` translation, declared on the first call.
@@ -35,22 +47,12 @@ public final class AttributeBuilder<PARENT> extends EntryBuilder<Attribute, Rang
     private final Supplier<Translation> translation;
     
     ///
-    /// The default value.
+    /// The factory of the attribute, given its description id.
     ///
-    private final double initial;
+    private final Function<String, ATTRIBUTE> factory;
     
     ///
-    /// The minimum value.
-    ///
-    private final double min;
-    
-    ///
-    /// The maximum value.
-    ///
-    private final double max;
-    
-    ///
-    /// The suppliers of the entity types that get the attribute, in call order.
+    /// The suppliers of the entity types that get the attribute.
     ///
     private final List<Supplier<? extends EntityType<? extends LivingEntity>>> types = new ArrayList<>();
     
@@ -65,48 +67,41 @@ public final class AttributeBuilder<PARENT> extends EntryBuilder<Attribute, Rang
     private Attribute.Sentiment sentiment = Attribute.Sentiment.POSITIVE;
     
     ///
-    /// Starts the ranged attribute `<modid>:<name>` under `attribute.name.<modid>.<name>`.
+    /// Starts the attribute `<modid>:<name>` under `attribute.name.<modid>.<name>`.
     /// - `<modid>` is the id of the mod of the given registrations.
     /// - `<name>` is the given name.
     ///
     /// The attribute will have the translation key as its description id.
     ///
-    /// If the minimum value is above the maximum value, or the default value isn't between them, creating the attribute
-    /// inside the registry event will throw an [IllegalArgumentException].
-    ///
     /// @param registrations The registrations to register through.
     /// @param name          The path of the identifier.
     /// @param english       The English name.
     /// @param parent        What [#end()] returns.
-    /// @param initial       The default value.
-    /// @param min           The minimum value.
-    /// @param max           The maximum value.
+    /// @param factory       The factory of the attribute, called with the description id inside the registry event.
     ///
-    public AttributeBuilder(Registrations registrations, String name, String english, PARENT parent, double initial, double min, double max) {
+    public AttributeBuilder(Registrations registrations, String name, String english, PARENT parent, Function<String, ATTRIBUTE> factory) {
         super(registrations, Registries.ATTRIBUTE, name, parent);
-        this.initial = initial;
-        this.min = min;
-        this.max = max;
+        this.factory = factory;
         
         this.translation = Suppliers.memoize(() -> this.define("attribute.name", english));
     }
     
     ///
-    /// Syncs the value of the attribute on each entity to the clients.
+    /// Syncs the value of the attribute on each entity to the client.
     ///
     /// @return The builder for chaining.
     ///
     /// @throws IllegalStateException If [#register()] was already called or another builder took over this one.
     ///
     @CanIgnoreReturnValue
-    public AttributeBuilder<PARENT> synced() {
+    public AttributeBuilder<ATTRIBUTE, PARENT> synced() {
         this.checkUnregistered();
         this.synced = true;
         return this;
     }
     
     ///
-    /// Sets if a rise of the attribute is good, bad, or neither for the entity.
+    /// Sets if an increased value of the attribute is good, bad, or neutral for the entity.
     ///
     /// Defaults to [Attribute.Sentiment#POSITIVE].
     ///
@@ -117,7 +112,7 @@ public final class AttributeBuilder<PARENT> extends EntryBuilder<Attribute, Rang
     /// @throws IllegalStateException If [#register()] was already called or another builder took over this one.
     ///
     @CanIgnoreReturnValue
-    public AttributeBuilder<PARENT> sentiment(Attribute.Sentiment sentiment) {
+    public AttributeBuilder<ATTRIBUTE, PARENT> sentiment(Attribute.Sentiment sentiment) {
         this.checkUnregistered();
         this.sentiment = sentiment;
         return this;
@@ -125,9 +120,8 @@ public final class AttributeBuilder<PARENT> extends EntryBuilder<Attribute, Rang
     
     ///
     /// Adds the attribute with its default value to every entity of the given types.
-    /// Stacks with previous calls, in the order they were written.
     ///
-    /// A type may be given as the [EntityEntry] of a type of living entities, or as `() -> EntityType.ZOMBIE`.
+    /// ATTRIBUTE type may be given as the [EntityEntry] of a type of living entities, or simply `() -> EntityType.EXAMPLE`.
     ///
     /// @param types The suppliers of the entity types, called once when the attributes of the entity types are modified.
     ///
@@ -137,20 +131,20 @@ public final class AttributeBuilder<PARENT> extends EntryBuilder<Attribute, Rang
     ///
     @SafeVarargs
     @CanIgnoreReturnValue
-    public final AttributeBuilder<PARENT> on(Supplier<? extends EntityType<? extends LivingEntity>>... types) {
+    public final AttributeBuilder<ATTRIBUTE, PARENT> on(Supplier<? extends EntityType<? extends LivingEntity>>... types) {
         this.checkUnregistered();
         Collections.addAll(this.types, types);
         return this;
     }
     
     ///
-    /// Creates the ranged attribute with the translation key as its description id, synced and with the sentiment.
+    /// Creates the attribute with the translation key as its description id, synced and with the sentiment.
     ///
     /// @return The created attribute.
     ///
     @Override
-    protected RangedAttribute create() {
-        RangedAttribute attribute = new RangedAttribute(this.translation.get().getKey(), this.initial, this.min, this.max);
+    protected ATTRIBUTE create() {
+        ATTRIBUTE attribute = this.factory.apply(this.translation.get().getKey());
         attribute.setSyncable(this.synced).setSentiment(this.sentiment);
         return attribute;
     }
@@ -164,9 +158,12 @@ public final class AttributeBuilder<PARENT> extends EntryBuilder<Attribute, Rang
     /// @return The created entry.
     ///
     @Override
-    protected AttributeEntry createEntry(ResourceKey<Attribute> key) {
-        AttributeEntry entry = new AttributeEntry(key, this, this.translation.get());
-        this.getRegistrations().getMod().getEventBus().addListener(EntityAttributeModificationEvent.class, event -> this.types.forEach(type -> event.add(type.get(), entry)));
+    protected AttributeEntry<ATTRIBUTE> createEntry(ResourceKey<Attribute> key) {
+        AttributeEntry<ATTRIBUTE> entry = new AttributeEntry<>(key, this, this.translation.get());
+        this.getRegistrations()
+                .getMod()
+                .getEventBus()
+                .addListener(EntityAttributeModificationEvent.class, event -> this.types.forEach(type -> event.add(type.get(), entry)));
         return entry;
     }
 }

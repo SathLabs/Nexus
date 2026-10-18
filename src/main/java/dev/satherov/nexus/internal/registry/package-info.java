@@ -1,6 +1,3 @@
-///
-/// The registers behind the registrations of every mod.
-///
 @NullMarked
 @CheckReturnValue
 package dev.satherov.nexus.internal.registry;

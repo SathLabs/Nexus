@@ -15,7 +15,23 @@ import java.util.function.Supplier;
 /// @param <VALUE>    The type of the object.
 /// @param <PARENT>   The type of what [#end()] returns.
 ///
-public final class PlainBuilder<REGISTRY, VALUE extends REGISTRY, PARENT> extends EntryBuilder<REGISTRY, VALUE, RegistryEntry<REGISTRY, VALUE>, PARENT, PlainBuilder<REGISTRY, VALUE, PARENT>> {
+public final class PlainBuilder
+        // @formatter:off
+        <
+            REGISTRY,
+            VALUE extends REGISTRY,
+            PARENT
+        >
+        extends EntryBuilder
+        <
+            REGISTRY,
+            VALUE,
+            RegistryEntry<REGISTRY, VALUE>,
+            PARENT,
+            PlainBuilder<REGISTRY, VALUE, PARENT>
+        >
+        // @formatter:on
+{
     
     ///
     /// The supplier of the object, called inside the registry event.

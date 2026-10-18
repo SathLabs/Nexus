@@ -16,6 +16,8 @@ import org.jetbrains.annotations.ApiStatus;
 ///
 /// @param <BLOCK> The type of the block.
 ///
+/// @see BlockEntry
+///
 public class PlainBlockEntry<BLOCK extends Block> extends RegistryEntry<Block, BLOCK> implements Translatable {
     
     ///
@@ -23,8 +25,6 @@ public class PlainBlockEntry<BLOCK extends Block> extends RegistryEntry<Block, B
     ///
     private final Translation translation;
     
-    ///
-    /// Binds to the given key.
     ///
     /// Should only ever be called from [PlainBlockBuilder#createEntry(ResourceKey)].
     ///

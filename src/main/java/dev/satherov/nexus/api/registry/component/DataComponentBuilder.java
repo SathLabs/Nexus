@@ -16,20 +16,28 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 /// @param <VALUE>  The type of the values of the component.
 /// @param <PARENT> The type of what [#end()] returns.
 ///
-public final class DataComponentBuilder<VALUE, PARENT> extends EntryBuilder<DataComponentType<?>, DataComponentType<VALUE>, DataComponentEntry<VALUE>, PARENT, DataComponentBuilder<VALUE, PARENT>> {
+public final class DataComponentBuilder<VALUE, PARENT>
+        // @formatter:off
+        extends EntryBuilder
+        <
+            DataComponentType<?>,
+            DataComponentType<VALUE>,
+            DataComponentEntry<VALUE>,
+            PARENT,
+            DataComponentBuilder<VALUE, PARENT>
+        >
+        // @formatter:on
+{
     
     ///
     /// The vanilla builder of the type.
     ///
-    private final DataComponentType.Builder<VALUE> type;
+    private final DataComponentType.Builder<VALUE> builder;
     
     ///
-    /// Starts the data component type `<modid>:<name>`, saved with the DFU codec of the given codec and synced with its
-    /// stream codec.
+    /// Starts the data component type `<modid>:<name>` saved and synced with the given codec.
     /// - `<modid>` is the id of the mod of the given registrations.
     /// - `<name>` is the given name.
-    ///
-    /// The type has no translation.
     ///
     /// @param registrations The registrations to register through.
     /// @param name          The path of the identifier.
@@ -39,7 +47,7 @@ public final class DataComponentBuilder<VALUE, PARENT> extends EntryBuilder<Data
     public DataComponentBuilder(Registrations registrations, String name, PARENT parent, NexusCodec<VALUE, ?> codec) {
         super(registrations, Registries.DATA_COMPONENT_TYPE, name, parent);
         
-        this.type = DataComponentType.<VALUE>builder()
+        this.builder = DataComponentType.<VALUE>builder()
                 .persistent(codec.asDfu())
                 .networkSynchronized(codec.asStream());
     }
@@ -56,12 +64,12 @@ public final class DataComponentBuilder<VALUE, PARENT> extends EntryBuilder<Data
     @CanIgnoreReturnValue
     public DataComponentBuilder<VALUE, PARENT> cacheEncoding() {
         this.checkUnregistered();
-        this.type.cacheEncoding();
+        this.builder.cacheEncoding();
         return this;
     }
     
     ///
-    /// Skips the swap animation of a held item if only this component of it changes.
+    /// Skips the swap animation that normally plays when a component changes its value.
     ///
     /// @return The builder for chaining.
     ///
@@ -70,7 +78,7 @@ public final class DataComponentBuilder<VALUE, PARENT> extends EntryBuilder<Data
     @CanIgnoreReturnValue
     public DataComponentBuilder<VALUE, PARENT> ignoreSwapAnimation() {
         this.checkUnregistered();
-        this.type.ignoreSwapAnimation();
+        this.builder.ignoreSwapAnimation();
         return this;
     }
     
@@ -81,7 +89,7 @@ public final class DataComponentBuilder<VALUE, PARENT> extends EntryBuilder<Data
     ///
     @Override
     protected DataComponentType<VALUE> create() {
-        return this.type.build();
+        return this.builder.build();
     }
     
     ///

@@ -5,6 +5,7 @@ import dev.satherov.nexus.api.registry.Registrations;
 import dev.satherov.nexus.api.registry.RegistryEntry;
 import dev.satherov.nexus.api.registry.block.PlainBlockBuilder;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
+import dev.satherov.nexus.api.registry.item.ItemBuilder;
 import dev.satherov.nexus.api.text.Translation;
 import dev.satherov.nexus.internal.registry.client.ClientDispatch;
 
@@ -38,15 +39,33 @@ import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
 ///
-/// A builder of one source fluid with its type and its flowing fluid, with no block or bucket until [#block()] opens
-/// them.
+/// A builder of one source fluid with its type and its flowing fluid.
+///
+/// A block for in-world placement can be registered through [PlainFluidBuilder#block()].
 ///
 /// @param <TYPE>    The type of the fluid type.
 /// @param <SOURCE>  The type of the source fluid.
 /// @param <FLOWING> The type of the flowing fluid.
 /// @param <PARENT>  The type of what [#end()] returns.
 ///
-public final class PlainFluidBuilder<TYPE extends FluidType, SOURCE extends FlowingFluid, FLOWING extends FlowingFluid, PARENT> extends EntryBuilder<Fluid, SOURCE, PlainFluidEntry<TYPE, SOURCE, FLOWING>, PARENT, PlainFluidBuilder<TYPE, SOURCE, FLOWING, PARENT>> {
+public final class PlainFluidBuilder
+        // @formatter:off
+        <
+            TYPE extends FluidType,
+            SOURCE extends FlowingFluid,
+            FLOWING extends FlowingFluid,
+            PARENT
+        >
+        extends EntryBuilder
+        <
+            Fluid,
+            SOURCE,
+            PlainFluidEntry<TYPE, SOURCE, FLOWING>,
+            PARENT,
+            PlainFluidBuilder<TYPE, SOURCE, FLOWING, PARENT>
+        >
+        // @formatter:on
+{
     
     ///
     /// The English name of the fluid.
@@ -94,8 +113,7 @@ public final class PlainFluidBuilder<TYPE extends FluidType, SOURCE extends Flow
     private @Nullable ClientOnly<Supplier<IClientFluidTypeExtensions>> extensions;
     
     ///
-    /// The builder of the block, whose parent is the builder of the full fluid, or `null` if [#block(BiFunction)] was
-    /// not called.
+    /// The builder of the liquid block, or `null` if [#block(BiFunction)] was not called.
     ///
     private @Nullable PlainBlockBuilder<? extends LiquidBlock, ? extends FluidBuilder<TYPE, SOURCE, FLOWING, ?, ?, PARENT>> block;
     
@@ -105,13 +123,12 @@ public final class PlainFluidBuilder<TYPE extends FluidType, SOURCE extends Flow
     private @Nullable PlainFluidEntry<TYPE, SOURCE, FLOWING> entry;
     
     ///
-    /// Starts the fluid under `fluid_type.<modid>.<name>`, with the type and the source as `<modid>:<name>` and the
-    /// flowing fluid as `<modid>:flowing_<name>`.
+    /// Starts the fluid under `fluid_type.<modid>.<name>`, with the type and the source as `<modid>:<name>`,
+    /// and the flowing fluid as `<modid>:flowing_<name>`.
     /// - `<modid>` is the id of the mod of the given registrations.
     /// - `<name>` is the given name.
     ///
-    /// Both fluid factories receive the same properties, which link the type, the source, and the flowing fluid.
-    /// The flowing fluid has no translation key of its own.
+    /// Both fluid factories receive the same properties, which link the type, the source, and the flowing fluid together.
     ///
     /// @param registrations The registrations to register through.
     /// @param name          The path of the identifier.
@@ -138,10 +155,9 @@ public final class PlainFluidBuilder<TYPE extends FluidType, SOURCE extends Flow
     }
     
     ///
-    /// Replaces the type with the factory's class.
+    /// Replaces the fluid type with the custom one supplied through the factory.
     ///
-    /// The factory receives the properties with the description id set.
-    /// Client code recorded earlier will receive the entry with the new type, so this is best called first.
+    /// Any callbacks or client code called before this will receive the new type despite the lambda claiming otherwise, so call this first to avoid issues!
     ///
     /// @param factory The factory of the type, called once inside the registry event.
     ///
@@ -151,7 +167,7 @@ public final class PlainFluidBuilder<TYPE extends FluidType, SOURCE extends Flow
     ///
     public <CUSTOM extends FluidType> PlainFluidBuilder<CUSTOM, SOURCE, FLOWING, PARENT> type(Function<FluidType.Properties, CUSTOM> factory) {
         this.checkUnregistered();
-        //noinspection unchecked The old factory of the type is replaced right below.
+        //noinspection unchecked The old factory of the type is replaced below.
         PlainFluidBuilder<CUSTOM, SOURCE, FLOWING, PARENT> builder = (PlainFluidBuilder<CUSTOM, SOURCE, FLOWING, PARENT>) this;
         builder.typeFactory = factory;
         return builder;
@@ -178,10 +194,9 @@ public final class PlainFluidBuilder<TYPE extends FluidType, SOURCE extends Flow
     }
     
     ///
-    /// Replaces the source and the flowing fluid with the factories' classes.
+    /// Replaces the source fluid and flowing fluid with the custom ones supplied through the factories.
     ///
-    /// Both factories receive the linked properties.
-    /// Callbacks and client code recorded earlier will receive the new classes, so this is best called first.
+    /// Any callbacks or client code called before this will receive the new values despite the lambda claiming otherwise, so call this first to avoid issues!
     ///
     /// @param source  The factory of the source, called once inside the registry event.
     /// @param flowing The factory of the flowing fluid, called once inside the registry event.
@@ -195,7 +210,7 @@ public final class PlainFluidBuilder<TYPE extends FluidType, SOURCE extends Flow
             Function<BaseFlowingFluid.Properties, MOVING> flowing
     ) {
         this.checkUnregistered();
-        //noinspection unchecked The old factories of both fluids are replaced right below.
+        //noinspection unchecked The old factories of both fluids are replaced below.
         PlainFluidBuilder<TYPE, STILL, MOVING, PARENT> builder = (PlainFluidBuilder<TYPE, STILL, MOVING, PARENT>) this;
         builder.sourceFactory = source;
         builder.flowingFactory = flowing;
@@ -207,8 +222,7 @@ public final class PlainFluidBuilder<TYPE extends FluidType, SOURCE extends Flow
     ///
     /// Stacks with previous calls, in the order they were written.
     ///
-    /// Runs on the properties with the type, the source, and the flowing fluid already linked, and the block and the
-    /// bucket if [#block(BiFunction)] opened them.
+    /// Fluid type, source, and flowing fluid will already be linked when this is called, bucket and block will be set if they exist.
     ///
     /// @param edit The edit, called with the properties inside the registry event.
     ///
@@ -242,7 +256,7 @@ public final class PlainFluidBuilder<TYPE extends FluidType, SOURCE extends Flow
     }
     
     ///
-    /// Registers the given client extensions of the type on the client, such as its overlay and its fog.
+    /// Registers the given client extensions for the fluid type on the client.
     ///
     /// @param extensions The client extensions of the type.
     ///
@@ -258,14 +272,11 @@ public final class PlainFluidBuilder<TYPE extends FluidType, SOURCE extends Flow
     }
     
     ///
-    /// Opens a [LiquidBlock] under the same name and English name, with the properties of water.
+    /// Starts a new liquid block builder, with [LiquidBlock].
     ///
-    /// The builder of the full fluid takes over everything recorded on this builder, and `end()` on the block builder
-    /// returns it.
+    /// A [BucketItem] will be created as `<modid>:<name>_bucket`, named `<english> Bucket`, unless [FluidBuilder#bucket(BiFunction)] is called with a custom value.
+    ///
     /// This builder will throw on every later call.
-    ///
-    /// The full fluid comes with a [BucketItem] as `<modid>:<name>_bucket`, named `<english> Bucket`, until
-    /// [FluidBuilder#bucket(BiFunction)] replaces it.
     ///
     /// @return The builder of the block.
     ///
@@ -276,14 +287,11 @@ public final class PlainFluidBuilder<TYPE extends FluidType, SOURCE extends Flow
     }
     
     ///
-    /// Opens a block of the factory's class under the same name and English name, with the properties of water.
+    /// Starts a new liquid block builder, with the class of the provided factory result.
     ///
-    /// The builder of the full fluid takes over everything recorded on this builder, and `end()` on the block builder
-    /// returns it.
+    /// A [BucketItem] will be created as `<modid>:<name>_bucket`, named `<english> Bucket`, unless [FluidBuilder#bucket(BiFunction)] is called with a custom value.
+    ///
     /// This builder will throw on every later call.
-    ///
-    /// The full fluid comes with a [BucketItem] as `<modid>:<name>_bucket`, named `<english> Bucket`, until
-    /// [FluidBuilder#bucket(BiFunction)] replaces it.
     ///
     /// @param factory The factory of the block, called once inside the registry event with the source and the properties with the id set.
     ///
@@ -317,8 +325,8 @@ public final class PlainFluidBuilder<TYPE extends FluidType, SOURCE extends Flow
     }
     
     ///
-    /// Links the type, the source, the flowing fluid, and the block and the bucket if there are any, and then applies
-    /// the edits.
+    /// Links the type, source and flowing fluid, as well as the block and the bucket if there are any,
+    /// and then applies any property edits.
     ///
     private BaseFlowingFluid.Properties link() {
         PlainFluidEntry<TYPE, SOURCE, FLOWING> entry = Objects.requireNonNull(this.entry);
@@ -335,8 +343,8 @@ public final class PlainFluidBuilder<TYPE extends FluidType, SOURCE extends Flow
     }
     
     ///
-    /// Creates the entry for the given key, registering the type, the flowing fluid, and the block and the bucket if
-    /// [#block(BiFunction)] opened them.
+    /// Creates the entry for the given key, registering the type, the flowing fluid, and the block and the bucket if set.
+    ///
     /// Adds the model and the client extensions as client hooks if they were given.
     ///
     /// @param key The key of the source.
@@ -369,8 +377,8 @@ public final class PlainFluidBuilder<TYPE extends FluidType, SOURCE extends Flow
     }
     
     ///
-    /// Creates the type with the factory, from the properties with the description id of the given translation set and
-    /// then the edits applied.
+    /// Creates the type with the factory applying the properties with the description id of the given translation set
+    /// and then applies any type edits.
     ///
     private TYPE createType(Translation translation) {
         FluidType.Properties properties = FluidType.Properties.create().descriptionId(translation.getKey());

@@ -8,6 +8,7 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.tags.TagKey;
 
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
 import org.jspecify.annotations.Nullable;
 
@@ -27,8 +28,6 @@ public class RegistryEntry<REGISTRY, VALUE extends REGISTRY> extends DeferredHol
     private final EntryBuilder<REGISTRY, VALUE, ?, ?, ?> builder;
     
     ///
-    /// Binds to the given key.
-    ///
     /// Should only ever be called from [EntryBuilder#createEntry(ResourceKey)].
     ///
     /// @param key     The key of the object.
@@ -44,6 +43,7 @@ public class RegistryEntry<REGISTRY, VALUE extends REGISTRY> extends DeferredHol
     ///
     /// @return The handle of the mod.
     ///
+    @ApiStatus.Internal
     public NexusMod getMod() {
         return this.builder.getRegistrations().getMod();
     }
@@ -73,6 +73,7 @@ public class RegistryEntry<REGISTRY, VALUE extends REGISTRY> extends DeferredHol
     ///
     /// @return The recorded fact, or `null` if the builder didn't record one.
     ///
+    @ApiStatus.Internal
     public <FACT> @Nullable FACT getDatagen(ProviderKind<FACT> kind) {
         return this.builder.getDatagen(kind);
     }

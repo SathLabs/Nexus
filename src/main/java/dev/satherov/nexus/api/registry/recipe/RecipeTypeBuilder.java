@@ -16,7 +16,18 @@ import net.minecraft.world.item.crafting.RecipeType;
 /// @param <RECIPE> The type of the recipes of the type.
 /// @param <PARENT> The type of what [#end()] returns.
 ///
-public final class RecipeTypeBuilder<RECIPE extends Recipe<?>, PARENT> extends EntryBuilder<RecipeType<?>, RecipeType<RECIPE>, RecipeTypeEntry<RECIPE>, PARENT, RecipeTypeBuilder<RECIPE, PARENT>> {
+public final class RecipeTypeBuilder<RECIPE extends Recipe<?>, PARENT>
+        // @formatter:off
+        extends EntryBuilder
+        <
+            RecipeType<?>,
+            RecipeType<RECIPE>,
+            RecipeTypeEntry<RECIPE>,
+            PARENT,
+            RecipeTypeBuilder<RECIPE, PARENT>
+        >
+        // @formatter:on
+{
     
     ///
     /// The codec of the recipes of the type.
@@ -24,8 +35,8 @@ public final class RecipeTypeBuilder<RECIPE extends Recipe<?>, PARENT> extends E
     private final StructCodec<RECIPE, ?> codec;
     
     ///
-    /// Starts the recipe type `<modid>:<name>` and the recipe serializer `<modid>:<name>`, which reads and writes the
-    /// recipes with the map codec and the stream codec of the given codec.
+    /// Starts the recipe type and recipe serializer `<modid>:<name>`,
+    /// which reads and writes the recipes with the given codec.
     /// - `<modid>` is the id of the mod of the given registrations.
     /// - `<name>` is the given name.
     ///

@@ -14,8 +14,7 @@ import net.minecraft.world.item.SpawnEggItem;
 import org.jetbrains.annotations.ApiStatus;
 
 ///
-/// A holder of one entity type and its spawn egg that a builder registered, bound once the entity type registry event
-/// has run.
+/// A holder of one entity type and its spawn egg, bound once the entity type registry event has run.
 ///
 /// @param <ENTITY> The type of the entities of the type.
 /// @param <EGG>    The type of the spawn egg.
@@ -28,8 +27,6 @@ public final class MobEntityEntry<ENTITY extends Entity, EGG extends SpawnEggIte
     @Getter
     private final ItemEntry<EGG> egg;
     
-    ///
-    /// Binds to the given key.
     ///
     /// Should only ever be called from [EntityBuilder#createEntry(ResourceKey)].
     ///

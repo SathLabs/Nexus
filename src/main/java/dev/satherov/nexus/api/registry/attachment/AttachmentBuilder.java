@@ -25,10 +25,21 @@ import java.util.function.Supplier;
 /// @param <VALUE>  The type of the values of the attachment.
 /// @param <PARENT> The type of what [#end()] returns.
 ///
-public final class AttachmentBuilder<VALUE, PARENT> extends EntryBuilder<AttachmentType<?>, AttachmentType<VALUE>, AttachmentEntry<VALUE>, PARENT, AttachmentBuilder<VALUE, PARENT>> {
+public final class AttachmentBuilder<VALUE, PARENT>
+        // @formatter:off
+        extends EntryBuilder
+        <
+            AttachmentType<?>,
+            AttachmentType<VALUE>,
+            AttachmentEntry<VALUE>,
+            PARENT,
+            AttachmentBuilder<VALUE, PARENT>
+        >
+        // @formatter:on
+{
     
     ///
-    /// The supplier of the initial value, called each time the attachment is read from a holder that doesn't have it.
+    /// The supplier of the initial value, called each time the attachment is read from a holder that doesn't have a value.
     ///
     private final Supplier<VALUE> initial;
     
@@ -49,8 +60,6 @@ public final class AttachmentBuilder<VALUE, PARENT> extends EntryBuilder<Attachm
     
     ///
     /// Starts the attachment type `<modid>:<name>` with the given initial value.
-    /// - `<modid>` is the id of the mod of the given registrations.
-    /// - `<name>` is the given name.
     ///
     /// The type has no translation.
     ///
