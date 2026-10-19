@@ -2,6 +2,7 @@ package dev.satherov.nexus.api.mod;
 
 import lombok.Getter;
 
+import dev.satherov.nexus.api.network.Network;
 import dev.satherov.nexus.api.registry.Registrations;
 import dev.satherov.nexus.api.text.Translations;
 import dev.satherov.nexus.internal.text.tooltip.TooltipDispatch;
@@ -58,6 +59,14 @@ public final class NexusMod {
     ///
     @Getter(lazy = true)
     private final Registrations registrations = new Registrations(this);
+    
+    ///
+    /// The mod's network, created when its getter is first called.
+    ///
+    /// The getter throws an [IllegalStateException] if first called after the payload handlers events ran.
+    ///
+    @Getter(lazy = true)
+    private final Network network = new Network(this);
     
     ///
     /// Creates the handle of the mod the given container belongs to.
