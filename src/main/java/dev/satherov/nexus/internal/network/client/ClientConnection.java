@@ -14,12 +14,14 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 
 import org.jetbrains.annotations.ApiStatus;
 
+import java.util.Objects;
+
 ///
-/// The play connection of the client, for the sending of payloads to the server.
+/// Utility class around for sending payloads to the server.
+/// 
+/// Basically just [ClientPacketDistributor] with some extras.
 ///
-/// The only class that references the connection of the client and [ClientPacketDistributor].
-///
-/// Should only ever be loaded on the client, behind the dist checks of [Payload#sendToServer(Object)] and [Channel#canSendToServer()].
+/// Should only ever be loaded on the client, through [Payload#sendToServer(Object)] and [Channel#canSendToServer()].
 ///
 @UtilityClass
 @ApiStatus.Internal
@@ -31,13 +33,17 @@ public class ClientConnection {
     /// @param payload The payload to send.
     ///
     /// @throws IllegalStateException If the client has no play connection open.
+    /// 
+    /// @see ClientPacketDistributor#sendToServer(CustomPacketPayload, CustomPacketPayload...) 
     ///
     public static void sendToServer(CustomPacketPayload payload) {
-        if (Minecraft.getInstance().getConnection() == null) {
+        ClientPacketListener connection = Minecraft.getInstance().getConnection();
+        if (connection == null) {
             throw new IllegalStateException("Could not send the payload '" + payload.type().id() + "', the client has no play connection open");
         }
         
-        ClientPacketDistributor.sendToServer(payload);
+        Objects.requireNonNull(payload, "Cannot send null payload");
+        connection.send(payload);
     }
     
     ///
@@ -49,7 +55,10 @@ public class ClientConnection {
     ///
     public static ICommonPacketListener getListener() {
         ClientPacketListener connection = Minecraft.getInstance().getConnection();
-        if (connection == null) throw new IllegalStateException("The client has no play connection open");
+        if (connection == null) {
+            throw new IllegalStateException("The client has no play connection open");
+        }
+        
         return connection;
     }
 }
