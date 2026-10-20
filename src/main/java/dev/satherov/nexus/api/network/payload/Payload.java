@@ -10,7 +10,6 @@ import dev.satherov.nexus.internal.network.Envelope;
 import dev.satherov.nexus.internal.network.client.ClientConnection;
 
 import net.neoforged.fml.loading.FMLEnvironment;
-import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.PacketFlow;
@@ -113,12 +112,11 @@ public final class Payload<VALUE> implements ClientboundPayload<VALUE>, Serverbo
     @Override
     public void reply(VALUE value, HandlerContext context) {
         this.checkServerbound();
-        IPayloadContext platform = context.getPlatformContext();
-        if (platform.flow() != PacketFlow.CLIENTBOUND) {
+        if (context.getFlow() != PacketFlow.CLIENTBOUND) {
             throw new IllegalStateException("Could not reply with the payload '" + this.type.id() + "', the context is not of a client handler");
         }
-        
-        platform.reply(new Envelope<>(this.type, value));
+
+        context.reply(new Envelope<>(this.type, value));
     }
     
     ///

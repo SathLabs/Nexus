@@ -7,7 +7,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import org.jetbrains.annotations.ApiStatus;
 
 ///
-/// A neoforge payload that holds one value of a mod under the type of its handle.
+/// A mod payload that holds one encoded value and the identifier of its payload type.
 ///
 /// @param type    The type of the payload, built from the identifier of its handle.
 /// @param value   The value of the mod.
@@ -17,9 +17,7 @@ import org.jetbrains.annotations.ApiStatus;
 public record Envelope<VALUE>(CustomPacketPayload.Type<Envelope<VALUE>> type, VALUE value) implements CustomPacketPayload {
     
     ///
-    /// Creates the stream codec of the envelopes of the given type over the given stream codec of their values.
-    ///
-    /// The stream codec only writes the value, since neoforge writes the identifier of the type itself.
+    /// Creates the stream codec for envelopes of the given type using the stream codec of their values.
     ///
     /// @param type  The type of the envelopes.
     /// @param codec The stream codec of the values.

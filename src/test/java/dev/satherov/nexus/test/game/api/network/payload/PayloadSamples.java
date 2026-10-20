@@ -268,7 +268,7 @@ public class PayloadSamples {
         
         private static void onAnswer(String value, ServerHandlerContext context) {
             PayloadSamples.ANSWERS.add(value);
-            context.getPlatformContext().finishCurrentTask(PayloadSamples.QuestionTask.TYPE);
+            context.finishCurrentTask(PayloadSamples.QuestionTask.TYPE);
         }
     }
     

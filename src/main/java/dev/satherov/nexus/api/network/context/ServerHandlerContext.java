@@ -9,12 +9,10 @@ import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.ApiStatus;
 
 ///
-/// A context that a payload handler receives along with a payload the server received.
+/// The context that a payload handler on the server receives together with the payload itself.
 ///
 public final class ServerHandlerContext extends HandlerContext {
 
-    ///
-    /// Wraps the given neoforge context of a payload the server received.
     ///
     /// Should only ever be called from the handler adapters of [PayloadBuilder].
     ///

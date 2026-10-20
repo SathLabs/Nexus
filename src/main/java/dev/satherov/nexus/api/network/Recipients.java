@@ -172,7 +172,7 @@ public interface Recipients {
     /// @return The recipients of the client that sent the payload.
     ///
     static Recipients sender(ServerHandlerContext context) {
-        return Recipients.listener(context.getPlatformContext().listener());
+        return Recipients.listener(context.getListener());
     }
     
     ///
