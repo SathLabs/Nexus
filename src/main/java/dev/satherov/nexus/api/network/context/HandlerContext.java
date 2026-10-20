@@ -1,6 +1,7 @@
 package dev.satherov.nexus.api.network.context;
 
-import dev.satherov.nexus.api.network.PayloadBuilder;
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
 
 import net.neoforged.neoforge.common.extensions.ICommonPacketListener;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
@@ -17,30 +18,22 @@ import net.minecraft.world.entity.player.Player;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import io.netty.channel.ChannelHandlerContext;
 
-import org.jetbrains.annotations.ApiStatus;
-
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 
 ///
 /// The context that a payload handler receives together with the payload itself.
 ///
-public class HandlerContext {
+/// @see ClientHandlerContext
+/// @see ServerHandlerContext
+///
+@RequiredArgsConstructor(access = AccessLevel.PROTECTED)
+public abstract sealed class HandlerContext permits ClientHandlerContext, ServerHandlerContext {
 
     ///
     /// The neoforge context of the payload.
     ///
     private final IPayloadContext platformContext;
-
-    ///
-    /// Should only ever be called from the handler adapters of [PayloadBuilder].
-    ///
-    /// @param platform The neoforge context of the payload.
-    ///
-    @ApiStatus.Internal
-    public HandlerContext(IPayloadContext platform) {
-        this.platformContext = platform;
-    }
 
     ///
     /// @return The packet listener of the connection.

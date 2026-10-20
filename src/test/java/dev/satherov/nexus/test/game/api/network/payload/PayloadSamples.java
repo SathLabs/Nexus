@@ -4,7 +4,7 @@ import dev.satherov.nexus.Nexus;
 import dev.satherov.nexus.api.network.Channel;
 import dev.satherov.nexus.api.network.Network;
 import dev.satherov.nexus.api.network.ClientRecipients;
-import dev.satherov.nexus.api.network.context.HandlerContext;
+import dev.satherov.nexus.api.network.context.ClientHandlerContext;
 import dev.satherov.nexus.api.network.context.ServerHandlerContext;
 import dev.satherov.nexus.api.network.payload.ClientboundPayload;
 import dev.satherov.nexus.api.network.payload.Payload;
@@ -229,27 +229,23 @@ public class PayloadSamples {
         @SubscribeEvent
         public static void onConstruct(FMLConstructModEvent event) {
             Network network = Nexus.getMod().getNetwork();
-            PayloadSamples.clientbound = network.play("payload_samples_clientbound", ByteBufCodecs.STRING_UTF8).toClient(() -> PayloadSamples.Registered::onClientValue);
+            PayloadSamples.clientbound = network.play("payload_samples_clientbound", ByteBufCodecs.STRING_UTF8).toClient(() -> PayloadSamples.ClientHandlers::onClientValue);
             PayloadSamples.serverbound = network.play("payload_samples_serverbound", ByteBufCodecs.STRING_UTF8).toServer(PayloadSamples.Registered::reply);
             PayloadSamples.bidirectional = network.play("payload_samples_bidirectional", ByteBufCodecs.STRING_UTF8).bidirectional(
-                    () -> PayloadSamples.Registered::onClientValue,
+                    () -> PayloadSamples.ClientHandlers::onClientValue,
                     PayloadSamples.Registered::record
             );
             PayloadSamples.optional = network.channel("payload_samples")
                     .optional()
                     .play("optional", ByteBufCodecs.STRING_UTF8)
-                    .bidirectional(() -> PayloadSamples.Registered::onClientValue, PayloadSamples.Registered::record);
-            PayloadSamples.question = network.configuration("payload_samples_question", ByteBufCodecs.STRING_UTF8).toClient(() -> PayloadSamples.Registered::onQuestion);
+                    .bidirectional(() -> PayloadSamples.ClientHandlers::onClientValue, PayloadSamples.Registered::record);
+            PayloadSamples.question = network.configuration("payload_samples_question", ByteBufCodecs.STRING_UTF8).toClient(() -> PayloadSamples.ClientHandlers::onQuestion);
             PayloadSamples.answer = network.configuration("payload_samples_answer", ByteBufCodecs.STRING_UTF8).toServer(PayloadSamples.Registered::onAnswer);
         }
         
         @SubscribeEvent
         public static void onRegisterConfigurationTasks(RegisterConfigurationTasksEvent event) {
             event.register(new PayloadSamples.QuestionTask(event.getListener()));
-        }
-        
-        private static void onClientValue(String value, HandlerContext context) {
-            PayloadSamples.RECEIVED.add(value);
         }
         
         private static void record(String value, ServerHandlerContext context) {
@@ -261,14 +257,21 @@ public class PayloadSamples {
             Objects.requireNonNull(PayloadSamples.clientbound).send(value, ClientRecipients.sender(context));
         }
         
-        private static void onQuestion(String value, HandlerContext context) {
-            PayloadSamples.playerFailure = Assertions.catchThrowable(context::getPlayer);
-            Objects.requireNonNull(PayloadSamples.answer).reply(value, context);
-        }
-        
         private static void onAnswer(String value, ServerHandlerContext context) {
             PayloadSamples.ANSWERS.add(value);
             context.finishCurrentTask(PayloadSamples.QuestionTask.TYPE);
+        }
+    }
+    
+    private static final class ClientHandlers {
+        
+        private static void onClientValue(String value, ClientHandlerContext context) {
+            PayloadSamples.RECEIVED.add(value);
+        }
+        
+        private static void onQuestion(String value, ClientHandlerContext context) {
+            PayloadSamples.playerFailure = Assertions.catchThrowable(context::getPlayer);
+            Objects.requireNonNull(PayloadSamples.answer).reply(value, context);
         }
     }
     

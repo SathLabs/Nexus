@@ -3,6 +3,7 @@ package dev.satherov.nexus.api.network;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 
+import dev.satherov.nexus.api.network.context.ClientHandlerContext;
 import dev.satherov.nexus.api.network.context.HandlerContext;
 import dev.satherov.nexus.api.network.context.ServerHandlerContext;
 import dev.satherov.nexus.api.network.payload.ClientboundPayload;
@@ -10,6 +11,7 @@ import dev.satherov.nexus.api.network.payload.Payload;
 import dev.satherov.nexus.api.network.payload.ServerboundPayload;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
 import dev.satherov.nexus.internal.network.Envelope;
+import dev.satherov.nexus.internal.network.client.ClientConnection;
 
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.network.handling.IPayloadHandler;
@@ -90,13 +92,13 @@ public final class PayloadBuilder<VALUE> {
     ///
     /// @throws IllegalStateException If the identifier is already taken, or if the payload handlers event already ran.
     ///
-    public ClientboundPayload<VALUE> toClient(ClientOnly<BiConsumer<VALUE, HandlerContext>> handler) {
+    public ClientboundPayload<VALUE> toClient(ClientOnly<BiConsumer<VALUE, ClientHandlerContext>> handler) {
         return this.declare(Payload.Direction.CLIENTBOUND, registrar -> switch (this.protocol) {
             case PayloadBuilder.Play(StreamCodec<RegistryFriendlyByteBuf, Envelope<VALUE>> codec) -> FMLEnvironment.getDist().isClient() ?
-                    registrar.playToClient(this.type, codec, PayloadBuilder.adaptClient(handler)) :
+                    registrar.playToClient(this.type, codec, ClientConnection.adaptHandler(handler)) :
                     registrar.playToClient(this.type, codec);
             case PayloadBuilder.Configuration(StreamCodec<FriendlyByteBuf, Envelope<VALUE>> codec) -> FMLEnvironment.getDist().isClient() ?
-                    registrar.configurationToClient(this.type, codec, PayloadBuilder.adaptClient(handler)) :
+                    registrar.configurationToClient(this.type, codec, ClientConnection.adaptHandler(handler)) :
                     registrar.configurationToClient(this.type, codec);
         });
     }
@@ -137,19 +139,19 @@ public final class PayloadBuilder<VALUE> {
     ///
     /// @throws IllegalStateException If the identifier is already taken, or if the payload handlers event already ran.
     ///
-    public Payload<VALUE> bidirectional(ClientOnly<BiConsumer<VALUE, HandlerContext>> clientHandler, BiConsumer<VALUE, ServerHandlerContext> serverHandler) {
+    public Payload<VALUE> bidirectional(ClientOnly<BiConsumer<VALUE, ClientHandlerContext>> clientHandler, BiConsumer<VALUE, ServerHandlerContext> serverHandler) {
         return this.declare(Payload.Direction.BIDIRECTIONAL, registrar -> switch (this.protocol) {
             case PayloadBuilder.Play(StreamCodec<RegistryFriendlyByteBuf, Envelope<VALUE>> codec) -> registrar.playBidirectional(
                     this.type,
                     codec,
                     PayloadBuilder.adaptServer(serverHandler),
-                    FMLEnvironment.getDist().isClient() ? PayloadBuilder.adaptClient(clientHandler) : null
+                    FMLEnvironment.getDist().isClient() ? ClientConnection.adaptHandler(clientHandler) : null
             );
             case PayloadBuilder.Configuration(StreamCodec<FriendlyByteBuf, Envelope<VALUE>> codec) -> registrar.configurationBidirectional(
                     this.type,
                     codec,
                     PayloadBuilder.adaptServer(serverHandler),
-                    FMLEnvironment.getDist().isClient() ? PayloadBuilder.adaptClient(clientHandler) : null
+                    FMLEnvironment.getDist().isClient() ? ClientConnection.adaptHandler(clientHandler) : null
             );
         });
     }
@@ -161,14 +163,6 @@ public final class PayloadBuilder<VALUE> {
         Identifier id = this.getId();
         this.channel.declare(id, new PayloadBuilder.Declaration(this.protocol, this.thread, registration));
         return new Payload<>(this.channel, id, direction);
-    }
-    
-    ///
-    /// Opens the given client handler and wraps it into a neoforge handler of envelopes.
-    ///
-    private static <VALUE> IPayloadHandler<Envelope<VALUE>> adaptClient(ClientOnly<BiConsumer<VALUE, HandlerContext>> handler) {
-        BiConsumer<VALUE, HandlerContext> opened = handler.get();
-        return (envelope, context) -> opened.accept(envelope.value(), new HandlerContext(context));
     }
     
     ///
