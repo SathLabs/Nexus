@@ -1,6 +1,6 @@
 package dev.satherov.nexus.api.network.payload;
 
-import dev.satherov.nexus.api.network.Recipients;
+import dev.satherov.nexus.api.network.ClientRecipients;
 
 import net.minecraft.resources.Identifier;
 
@@ -26,5 +26,5 @@ public interface ClientboundPayload<VALUE> {
     /// @param value      The value to send.
     /// @param recipients The recipients to deliver the value to.
     ///
-    void send(VALUE value, Recipients recipients);
+    void send(VALUE value, ClientRecipients recipients);
 }

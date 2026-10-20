@@ -4,7 +4,7 @@ import lombok.Getter;
 
 import dev.satherov.nexus.api.network.Channel;
 import dev.satherov.nexus.api.network.PayloadBuilder;
-import dev.satherov.nexus.api.network.Recipients;
+import dev.satherov.nexus.api.network.ClientRecipients;
 import dev.satherov.nexus.api.network.context.HandlerContext;
 import dev.satherov.nexus.internal.network.Envelope;
 import dev.satherov.nexus.internal.network.client.ClientConnection;
@@ -79,7 +79,7 @@ public final class Payload<VALUE> implements ClientboundPayload<VALUE>, Serverbo
     /// @throws IllegalStateException If the payload is not clientbound.
     ///
     @Override
-    public void send(VALUE value, Recipients recipients) {
+    public void send(VALUE value, ClientRecipients recipients) {
         if (this.direction == Payload.Direction.SERVERBOUND) {
             throw new IllegalStateException("The payload '" + this.type.id() + "' is not clientbound");
         }

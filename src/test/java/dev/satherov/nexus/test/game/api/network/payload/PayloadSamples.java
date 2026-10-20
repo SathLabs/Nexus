@@ -3,7 +3,7 @@ package dev.satherov.nexus.test.game.api.network.payload;
 import dev.satherov.nexus.Nexus;
 import dev.satherov.nexus.api.network.Channel;
 import dev.satherov.nexus.api.network.Network;
-import dev.satherov.nexus.api.network.Recipients;
+import dev.satherov.nexus.api.network.ClientRecipients;
 import dev.satherov.nexus.api.network.context.HandlerContext;
 import dev.satherov.nexus.api.network.context.ServerHandlerContext;
 import dev.satherov.nexus.api.network.payload.ClientboundPayload;
@@ -76,7 +76,7 @@ public class PayloadSamples {
         String toServer = "bidirectional to the server";
         String toClient = "bidirectional to the client";
         bidirectional.sendToServer(toServer);
-        player.level().getServer().execute(() -> bidirectional.send(toClient, Recipients.player(player)));
+        player.level().getServer().execute(() -> bidirectional.send(toClient, ClientRecipients.player(player)));
         client.until("the value to reach the server", () -> PayloadSamples.SENDERS_BY_VALUE.containsKey(toServer));
         client.until("the value to reach the client", () -> PayloadSamples.RECEIVED.contains(toClient));
         Assertions.assertThat(PayloadSamples.SENDERS_BY_VALUE).containsEntry(toServer, player);
@@ -114,28 +114,28 @@ public class PayloadSamples {
     @ClientTest
     public static void playerReachesTheClient(Client client) {
         client.joinWorld();
-        PayloadSamples.assertReaches(client, "player", Recipients.player(PayloadSamples.getPlayer(client)));
+        PayloadSamples.assertReaches(client, "player", ClientRecipients.player(PayloadSamples.getPlayer(client)));
         client.leaveWorld();
     }
     
     @ClientTest
     public static void playersReachesTheClient(Client client) {
         client.joinWorld();
-        PayloadSamples.assertReaches(client, "players", Recipients.players(List.of(PayloadSamples.getPlayer(client))));
+        PayloadSamples.assertReaches(client, "players", ClientRecipients.players(List.of(PayloadSamples.getPlayer(client))));
         client.leaveWorld();
     }
     
     @ClientTest
     public static void allReachesTheClient(Client client) {
         client.joinWorld();
-        PayloadSamples.assertReaches(client, "all", Recipients.all(client.serverLevel().getServer()));
+        PayloadSamples.assertReaches(client, "all", ClientRecipients.all(client.serverLevel().getServer()));
         client.leaveWorld();
     }
     
     @ClientTest
     public static void dimensionReachesTheClient(Client client) {
         client.joinWorld();
-        PayloadSamples.assertReaches(client, "dimension", Recipients.dimension(client.serverLevel()));
+        PayloadSamples.assertReaches(client, "dimension", ClientRecipients.dimension(client.serverLevel()));
         client.leaveWorld();
     }
     
@@ -144,7 +144,7 @@ public class PayloadSamples {
         client.joinWorld();
         ServerPlayer player = PayloadSamples.getPlayer(client);
         Vec3 center = player.position().add(PayloadSamples.RADIUS / 2.0D, 0.0D, 0.0D);
-        PayloadSamples.assertReaches(client, "near inside the radius", Recipients.near(player.level(), center, PayloadSamples.RADIUS));
+        PayloadSamples.assertReaches(client, "near inside the radius", ClientRecipients.near(player.level(), center, PayloadSamples.RADIUS));
         client.leaveWorld();
     }
     
@@ -153,7 +153,7 @@ public class PayloadSamples {
         client.joinWorld();
         ServerPlayer player = PayloadSamples.getPlayer(client);
         Vec3 center = player.position().add(PayloadSamples.RADIUS * 2.0D, 0.0D, 0.0D);
-        PayloadSamples.assertSkips(client, "near outside the radius", Recipients.near(player.level(), center, PayloadSamples.RADIUS));
+        PayloadSamples.assertSkips(client, "near outside the radius", ClientRecipients.near(player.level(), center, PayloadSamples.RADIUS));
         client.leaveWorld();
     }
     
@@ -161,7 +161,7 @@ public class PayloadSamples {
     public static void trackingChunkReachesTheClient(Client client) {
         client.joinWorld();
         ServerPlayer player = PayloadSamples.getPlayer(client);
-        PayloadSamples.assertReaches(client, "tracking chunk", Recipients.trackingChunk(player.level(), player.chunkPosition()));
+        PayloadSamples.assertReaches(client, "tracking chunk", ClientRecipients.trackingChunk(player.level(), player.chunkPosition()));
         client.leaveWorld();
     }
     
@@ -170,7 +170,7 @@ public class PayloadSamples {
         client.joinWorld();
         ServerPlayer player = PayloadSamples.getPlayer(client);
         BlockPos middle = player.chunkPosition().getMiddleBlockPosition(player.getBlockY());
-        PayloadSamples.assertReaches(client, "tracking position", Recipients.trackingPosition(player.level(), middle));
+        PayloadSamples.assertReaches(client, "tracking position", ClientRecipients.trackingPosition(player.level(), middle));
         client.leaveWorld();
     }
     
@@ -183,37 +183,37 @@ public class PayloadSamples {
         stand.setNoGravity(true);
         level.getServer().execute(() -> level.addFreshEntity(stand));
         client.until("the client to see the armor stand", () -> Objects.requireNonNull(client.minecraft().level).getEntity(stand.getId()) != null);
-        PayloadSamples.assertReaches(client, "tracking entity", Recipients.trackingEntity(stand));
+        PayloadSamples.assertReaches(client, "tracking entity", ClientRecipients.trackingEntity(stand));
         client.leaveWorld();
     }
     
     @ClientTest
     public static void trackingEntitySkipsThePlayerItself(Client client) {
         client.joinWorld();
-        PayloadSamples.assertSkips(client, "tracking the player", Recipients.trackingEntity(PayloadSamples.getPlayer(client)));
+        PayloadSamples.assertSkips(client, "tracking the player", ClientRecipients.trackingEntity(PayloadSamples.getPlayer(client)));
         client.leaveWorld();
     }
     
     @ClientTest
     public static void trackingEntityAndSelfReachesThePlayerItself(Client client) {
         client.joinWorld();
-        PayloadSamples.assertReaches(client, "tracking the player and itself", Recipients.trackingEntityAndSelf(PayloadSamples.getPlayer(client)));
+        PayloadSamples.assertReaches(client, "tracking the player and itself", ClientRecipients.trackingEntityAndSelf(PayloadSamples.getPlayer(client)));
         client.leaveWorld();
     }
     
-    private static void assertReaches(Client client, String value, Recipients recipients) {
+    private static void assertReaches(Client client, String value, ClientRecipients recipients) {
         ClientboundPayload<String> clientbound = Objects.requireNonNull(PayloadSamples.clientbound);
         client.serverLevel().getServer().execute(() -> clientbound.send(value, recipients));
         client.until("'" + value + "' to reach the client", () -> PayloadSamples.RECEIVED.contains(value));
     }
     
-    private static void assertSkips(Client client, String value, Recipients recipients) {
+    private static void assertSkips(Client client, String value, ClientRecipients recipients) {
         ClientboundPayload<String> clientbound = Objects.requireNonNull(PayloadSamples.clientbound);
         ServerPlayer player = PayloadSamples.getPlayer(client);
         String next = "after " + value;
         client.serverLevel().getServer().execute(() -> {
             clientbound.send(value, recipients);
-            clientbound.send(next, Recipients.player(player));
+            clientbound.send(next, ClientRecipients.player(player));
         });
         client.until("'" + next + "' to reach the client", () -> PayloadSamples.RECEIVED.contains(next));
         Assertions.assertThat(PayloadSamples.RECEIVED).doesNotContain(value);
@@ -258,7 +258,7 @@ public class PayloadSamples {
         
         private static void reply(String value, ServerHandlerContext context) {
             PayloadSamples.Registered.record(value, context);
-            Objects.requireNonNull(PayloadSamples.clientbound).send(value, Recipients.sender(context));
+            Objects.requireNonNull(PayloadSamples.clientbound).send(value, ClientRecipients.sender(context));
         }
         
         private static void onQuestion(String value, HandlerContext context) {
@@ -278,7 +278,7 @@ public class PayloadSamples {
         
         @Override
         public void run(Consumer<CustomPacketPayload> sender) {
-            Objects.requireNonNull(PayloadSamples.question).send(PayloadSamples.ASKED, Recipients.listener(this.listener));
+            Objects.requireNonNull(PayloadSamples.question).send(PayloadSamples.ASKED, ClientRecipients.listener(this.listener));
         }
         
         @Override

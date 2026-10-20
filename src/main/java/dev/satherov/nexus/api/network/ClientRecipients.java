@@ -20,15 +20,15 @@ import java.util.Collection;
 import java.util.function.Predicate;
 
 ///
-/// A group of connections that the packet of a clientbound payload is delivered to.
+/// A group of connections that the packet of a client-bound payload is delivered to.
 ///
 @FunctionalInterface
-public interface Recipients {
+public interface ClientRecipients {
     
     ///
     /// Delivers the given packet to every recipient whose listener the given test accepts.
     ///
-    /// Called once by every [ClientboundPayload#send(Object, Recipients)], with the one packet it built.
+    /// Called once for every call of [ClientboundPayload#send(Object, ClientRecipients)], with one packet for all recipients.
     ///
     /// @param packet  The packet to deliver.
     /// @param accepts The test of the listener of every recipient, `true` to deliver the packet to it.
@@ -42,8 +42,8 @@ public interface Recipients {
     ///
     /// @return The recipients of the player.
     ///
-    static Recipients player(ServerPlayer player) {
-        return (packet, accepts) -> Recipients.deliver(player.connection, packet, accepts);
+    static ClientRecipients player(ServerPlayer player) {
+        return (packet, accepts) -> ClientRecipients.deliver(player.connection, packet, accepts);
     }
     
     ///
@@ -53,8 +53,8 @@ public interface Recipients {
     ///
     /// @return The recipients of the players.
     ///
-    static Recipients players(Collection<ServerPlayer> players) {
-        return (packet, accepts) -> Recipients.deliver(players, packet, accepts);
+    static ClientRecipients players(Collection<ServerPlayer> players) {
+        return (packet, accepts) -> ClientRecipients.deliver(players, packet, accepts);
     }
     
     ///
@@ -64,8 +64,8 @@ public interface Recipients {
     ///
     /// @return The recipients of every player on the server.
     ///
-    static Recipients all(MinecraftServer server) {
-        return (packet, accepts) -> Recipients.deliver(server.getPlayerList().getPlayers(), packet, accepts);
+    static ClientRecipients all(MinecraftServer server) {
+        return (packet, accepts) -> ClientRecipients.deliver(server.getPlayerList().getPlayers(), packet, accepts);
     }
     
     ///
@@ -75,8 +75,8 @@ public interface Recipients {
     ///
     /// @return The recipients of every player in the level.
     ///
-    static Recipients dimension(ServerLevel level) {
-        return (packet, accepts) -> Recipients.deliver(level.players(), packet, accepts);
+    static ClientRecipients dimension(ServerLevel level) {
+        return (packet, accepts) -> ClientRecipients.deliver(level.players(), packet, accepts);
     }
     
     ///
@@ -88,8 +88,8 @@ public interface Recipients {
     ///
     /// @return The recipients of every player near the center.
     ///
-    static Recipients near(ServerLevel level, Vec3 center, double radius) {
-        return (packet, accepts) -> Recipients.deliver(level.getPlayers(player -> player.distanceToSqr(center) <= radius * radius), packet, accepts);
+    static ClientRecipients near(ServerLevel level, Vec3 center, double radius) {
+        return (packet, accepts) -> ClientRecipients.deliver(level.getPlayers(player -> player.distanceToSqr(center) <= radius * radius), packet, accepts);
     }
     
     ///
@@ -101,7 +101,7 @@ public interface Recipients {
     ///
     /// @return The recipients of every player tracking the entity.
     ///
-    static Recipients trackingEntity(Entity entity) {
+    static ClientRecipients trackingEntity(Entity entity) {
         return (packet, accepts) -> {
             ServerLevel level = (ServerLevel) entity.level();
             //noinspection unchecked The chunk map only passes the packet on to connections, which take any packet.
@@ -116,11 +116,11 @@ public interface Recipients {
     ///
     /// @return The recipients of every player tracking the entity and the entity itself.
     ///
-    static Recipients trackingEntityAndSelf(Entity entity) {
+    static ClientRecipients trackingEntityAndSelf(Entity entity) {
         return (packet, accepts) -> {
-            Recipients.trackingEntity(entity).send(packet, accepts);
+            ClientRecipients.trackingEntity(entity).send(packet, accepts);
             if (entity instanceof ServerPlayer player) {
-                Recipients.deliver(player.connection, packet, accepts);
+                ClientRecipients.deliver(player.connection, packet, accepts);
             }
         };
     }
@@ -133,8 +133,8 @@ public interface Recipients {
     ///
     /// @return The recipients of every player that has the chunk loaded.
     ///
-    static Recipients trackingChunk(ServerLevel level, ChunkPos chunk) {
-        return (packet, accepts) -> Recipients.deliver(level.getChunkSource().chunkMap.getPlayers(chunk, false), packet, accepts);
+    static ClientRecipients trackingChunk(ServerLevel level, ChunkPos chunk) {
+        return (packet, accepts) -> ClientRecipients.deliver(level.getChunkSource().chunkMap.getPlayers(chunk, false), packet, accepts);
     }
     
     ///
@@ -145,8 +145,8 @@ public interface Recipients {
     ///
     /// @return The recipients of every player that has the chunk of the position loaded.
     ///
-    static Recipients trackingPosition(ServerLevel level, BlockPos pos) {
-        return Recipients.trackingChunk(level, ChunkPos.containing(pos));
+    static ClientRecipients trackingPosition(ServerLevel level, BlockPos pos) {
+        return ClientRecipients.trackingChunk(level, ChunkPos.containing(pos));
     }
     
     ///
@@ -158,8 +158,8 @@ public interface Recipients {
     ///
     /// @return The recipients of the other side of the connection.
     ///
-    static Recipients listener(ICommonPacketListener listener) {
-        return (packet, accepts) -> Recipients.deliver(listener, packet, accepts);
+    static ClientRecipients listener(ICommonPacketListener listener) {
+        return (packet, accepts) -> ClientRecipients.deliver(listener, packet, accepts);
     }
     
     ///
@@ -171,8 +171,8 @@ public interface Recipients {
     ///
     /// @return The recipients of the client that sent the payload.
     ///
-    static Recipients sender(ServerHandlerContext context) {
-        return Recipients.listener(context.getListener());
+    static ClientRecipients sender(ServerHandlerContext context) {
+        return ClientRecipients.listener(context.getListener());
     }
     
     ///
@@ -180,7 +180,7 @@ public interface Recipients {
     ///
     private static void deliver(Collection<ServerPlayer> players, Packet<?> packet, Predicate<? super ICommonPacketListener> accepts) {
         for (ServerPlayer player : players) {
-            Recipients.deliver(player.connection, packet, accepts);
+            ClientRecipients.deliver(player.connection, packet, accepts);
         }
     }
     
