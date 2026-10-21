@@ -1,6 +1,7 @@
 [versions]
 assertj = "3.27.7"
 junit = "5.14.1"
+mcdev-annotations = "2.1.0"
 zelqro = "1.0.3"
 
 foojay = "1.0.0"
@@ -15,6 +16,7 @@ junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
 junit-platform-commons = { module = "org.junit.platform:junit-platform-commons" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+mcdev-annotations = { module = "com.demonwav.mcdev:annotations", version.ref = "mcdev-annotations" }
 zelqro = { module = "dev.satherov:zelqro", version.ref = "zelqro" }
 
 [plugins]

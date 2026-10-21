@@ -117,6 +117,7 @@ sourceSets.main.resources {
 dependencies {
     implementation libs.zelqro
     jarJar libs.zelqro
+    compileOnly libs.mcdev.annotations
 
     gametestApi project(':')
     gametestApi libs.assertj.core

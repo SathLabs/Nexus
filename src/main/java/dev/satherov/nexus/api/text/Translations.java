@@ -3,6 +3,7 @@ package dev.satherov.nexus.api.text;
 import dev.satherov.nexus.api.mod.NexusMod;
 import dev.satherov.zelqro.utils.StringUtils;
 
+import com.demonwav.mcdev.annotations.Translatable;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 
 import org.jetbrains.annotations.ApiStatus;
@@ -91,7 +92,7 @@ public final class Translations {
     /// @throws IllegalStateException If the key is already declared.
     ///
     @CanIgnoreReturnValue
-    public Translation defineKey(String key, String english) {
+    public Translation defineKey(@Translatable(required = false) String key, String english) {
         if (this.translationsByKey.containsKey(key)) {
             throw new IllegalStateException("Key '" + key + "' is already declared");
         }
