@@ -16,6 +16,7 @@ import net.minecraft.server.network.ConfigurationTask;
 import net.minecraft.world.entity.player.Player;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+
 import io.netty.channel.ChannelHandlerContext;
 
 import java.util.concurrent.CompletableFuture;
@@ -29,47 +30,47 @@ import java.util.function.Supplier;
 ///
 @RequiredArgsConstructor(access = AccessLevel.PROTECTED)
 public abstract sealed class HandlerContext permits ClientHandlerContext, ServerHandlerContext {
-
+    
     ///
     /// The neoforge context of the payload.
     ///
     private final IPayloadContext platformContext;
-
+    
     ///
     /// @return The packet listener of the connection.
     ///
     public ICommonPacketListener getListener() {
         return this.platformContext.listener();
     }
-
+    
     ///
     /// @return The connection the payload was received on.
     ///
     public Connection getConnection() {
         return this.platformContext.connection();
     }
-
+    
     ///
     /// @return The netty channel handler context of the connection.
     ///
     public ChannelHandlerContext getChannelHandlerContext() {
         return this.platformContext.channelHandlerContext();
     }
-
+    
     ///
     /// @return The protocol of the connection.
     ///
     public ConnectionProtocol getProtocol() {
         return this.platformContext.protocol();
     }
-
+    
     ///
     /// @return The packet flow of the payload.
     ///
     public PacketFlow getFlow() {
         return this.platformContext.flow();
     }
-
+    
     ///
     /// @return The player of the connection.
     ///
@@ -79,10 +80,10 @@ public abstract sealed class HandlerContext permits ClientHandlerContext, Server
         if (this.platformContext.protocol().isConfiguration()) {
             throw new IllegalStateException("There is no player during the configuration phase");
         }
-
+        
         return this.platformContext.player();
     }
-
+    
     ///
     /// Sends the given payload back over the connection.
     ///
@@ -91,7 +92,7 @@ public abstract sealed class HandlerContext permits ClientHandlerContext, Server
     public void reply(CustomPacketPayload payload) {
         this.platformContext.reply(payload);
     }
-
+    
     ///
     /// Handles the given packet as if it had been received on the connection.
     ///
@@ -100,7 +101,7 @@ public abstract sealed class HandlerContext permits ClientHandlerContext, Server
     public void handle(Packet<?> packet) {
         this.platformContext.handle(packet);
     }
-
+    
     ///
     /// Handles the given payload as if it had been received on the connection.
     ///
@@ -109,7 +110,7 @@ public abstract sealed class HandlerContext permits ClientHandlerContext, Server
     public void handle(CustomPacketPayload payload) {
         this.platformContext.handle(payload);
     }
-
+    
     ///
     /// Finishes the current configuration task of the server.
     ///
@@ -121,10 +122,10 @@ public abstract sealed class HandlerContext permits ClientHandlerContext, Server
         if (this.platformContext.flow() != PacketFlow.SERVERBOUND || !this.platformContext.protocol().isConfiguration()) {
             throw new IllegalStateException("There is no configuration task outside the configuration phase of the server");
         }
-
+        
         this.platformContext.finishCurrentTask(type);
     }
-
+    
     ///
     /// Closes the connection with the given reason.
     ///
@@ -133,7 +134,7 @@ public abstract sealed class HandlerContext permits ClientHandlerContext, Server
     public void disconnect(Component reason) {
         this.platformContext.disconnect(reason);
     }
-
+    
     ///
     /// Runs the given task on the main thread of this side.
     ///
@@ -150,7 +151,7 @@ public abstract sealed class HandlerContext permits ClientHandlerContext, Server
     public CompletableFuture<Void> enqueue(Runnable task) {
         return this.platformContext.enqueueWork(task);
     }
-
+    
     ///
     /// Runs the given task on the main thread of this side.
     ///

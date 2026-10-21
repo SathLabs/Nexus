@@ -2,20 +2,20 @@ package dev.satherov.nexus.api.network.payload;
 
 import lombok.Getter;
 
-import dev.satherov.nexus.api.network.Channel;
-import dev.satherov.nexus.api.network.PayloadBuilder;
 import dev.satherov.nexus.api.network.ClientRecipients;
-import dev.satherov.nexus.api.network.context.HandlerContext;
+import dev.satherov.nexus.api.network.PayloadBuilder;
+import dev.satherov.nexus.api.network.context.ClientHandlerContext;
 import dev.satherov.nexus.internal.network.Envelope;
 import dev.satherov.nexus.internal.network.client.ClientConnection;
 
 import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.neoforge.common.extensions.ICommonPacketListener;
 
 import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.PacketFlow;
 import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ServerPlayer;
 
 import org.jetbrains.annotations.ApiStatus;
 
@@ -25,12 +25,6 @@ import org.jetbrains.annotations.ApiStatus;
 /// @param <VALUE> The type of the values that the payload sends.
 ///
 public final class Payload<VALUE> implements ClientboundPayload<VALUE>, ServerboundPayload<VALUE> {
-    
-    ///
-    /// The channel the payload registered through.
-    ///
-    @Getter
-    private final Channel channel;
     
     ///
     /// The direction the payload was declared with.
@@ -44,18 +38,30 @@ public final class Payload<VALUE> implements ClientboundPayload<VALUE>, Serverbo
     private final CustomPacketPayload.Type<Envelope<VALUE>> type;
     
     ///
-    /// Creates the handle of a payload on the given channel.
+    /// The version neoforge negotiates for the payload.
+    ///
+    @Getter
+    private final String version;
+    
+    ///
+    /// If a client or server lacking the payload still connects.
+    ///
+    @Getter
+    private final boolean optional;
+    
     ///
     /// Should only ever be called from the terminals of [PayloadBuilder].
     ///
-    /// @param channel   The channel the payload registered through.
     /// @param id        The identifier the payload is registered under.
     /// @param direction The direction the payload was declared with.
+    /// @param version   The version neoforge negotiates for the payload.
+    /// @param optional  If a client or server lacking the payload still connects.
     ///
     @ApiStatus.Internal
-    public Payload(Channel channel, Identifier id, Payload.Direction direction) {
-        this.channel = channel;
+    public Payload(Identifier id, Payload.Direction direction, String version, boolean optional) {
         this.direction = direction;
+        this.version = version;
+        this.optional = optional;
         
         this.type = new CustomPacketPayload.Type<>(id);
     }
@@ -76,16 +82,42 @@ public final class Payload<VALUE> implements ClientboundPayload<VALUE>, Serverbo
     /// @param value      The value to send.
     /// @param recipients The recipients to deliver the value to.
     ///
-    /// @throws IllegalStateException If the payload is not clientbound.
+    /// @throws IllegalStateException If the payload is not client-bound.
     ///
     @Override
     public void send(VALUE value, ClientRecipients recipients) {
-        if (this.direction == Payload.Direction.SERVERBOUND) {
-            throw new IllegalStateException("The payload '" + this.type.id() + "' is not clientbound");
-        }
-        
+        this.checkClientbound();
         Packet<?> packet = new ClientboundCustomPayloadPacket(new Envelope<>(this.type, value));
-        recipients.send(packet, this.channel.isOptional() ? listener -> listener.hasChannel(this.type) : _ -> true);
+        recipients.send(packet, this.optional ? listener -> listener.hasChannel(this.type) : _ -> true);
+    }
+    
+    ///
+    /// If the client of the given player has registered the payload for the play protocol.
+    ///
+    /// @param player The player to check the client of.
+    ///
+    /// @return `true` if the client of the player has registered the payload for the play protocol.
+    ///
+    /// @throws IllegalStateException If the payload is not client-bound.
+    ///
+    @Override
+    public boolean canSend(ServerPlayer player) {
+        return this.canSend(player.connection);
+    }
+    
+    ///
+    /// If the other side of the given listener has registered the payload for the current protocol of the connection.
+    ///
+    /// @param listener The listener of the connection to check.
+    ///
+    /// @return `true` if the other side of the listener has registered the payload.
+    ///
+    /// @throws IllegalStateException If the payload is not client-bound.
+    ///
+    @Override
+    public boolean canSend(ICommonPacketListener listener) {
+        this.checkClientbound();
+        return !this.optional || listener.hasChannel(this.type);
     }
     
     ///
@@ -93,7 +125,7 @@ public final class Payload<VALUE> implements ClientboundPayload<VALUE>, Serverbo
     ///
     /// @param value The value to send.
     ///
-    /// @throws IllegalStateException If the payload is not serverbound or this is a dedicated server.
+    /// @throws IllegalStateException If the payload is not server-bound or this is a dedicated server.
     ///
     @Override
     public void sendToServer(VALUE value) {
@@ -102,33 +134,51 @@ public final class Payload<VALUE> implements ClientboundPayload<VALUE>, Serverbo
     }
     
     ///
-    /// Wraps the given value and sends it back over the connection of the neoforge context of the given context.
+    /// If the server that this client is connected to has registered the payload for the play protocol.
+    ///
+    /// @return `true` if the server registered the payload.
+    ///
+    /// @throws IllegalStateException If the payload is not server-bound, this is a dedicated server, or the client is not in play.
+    ///
+    @Override
+    public boolean canSendToServer() {
+        this.checkServerbound();
+        return !this.optional || ClientConnection.getListener().hasChannel(this.type);
+    }
+    
+    ///
+    /// Wraps the given value into an [Envelope] and sends it back over the connection of the given context.
     ///
     /// @param value   The value to send.
     /// @param context The context of the client handler.
     ///
-    /// @throws IllegalStateException If the payload is not serverbound, this is a dedicated server, or the context is not of a client handler.
+    /// @throws IllegalStateException If the payload is not server-bound or this is a dedicated server.
     ///
     @Override
-    public void reply(VALUE value, HandlerContext context) {
+    public void reply(VALUE value, ClientHandlerContext context) {
         this.checkServerbound();
-        if (context.getFlow() != PacketFlow.CLIENTBOUND) {
-            throw new IllegalStateException("Could not reply with the payload '" + this.type.id() + "', the context is not of a client handler");
-        }
-
         context.reply(new Envelope<>(this.type, value));
     }
     
     ///
-    /// Throws an [IllegalStateException] if the payload is not serverbound or this is a dedicated server.
+    /// Throws an [IllegalStateException] if the payload is not client-bound.
+    ///
+    private void checkClientbound() {
+        if (this.direction == Payload.Direction.SERVERBOUND) {
+            throw new IllegalStateException("The payload '" + this.type.id() + "' is not client-bound");
+        }
+    }
+    
+    ///
+    /// Throws an [IllegalStateException] if the payload is not server-bound or this is a dedicated server.
     ///
     private void checkServerbound() {
         if (this.direction == Payload.Direction.CLIENTBOUND) {
-            throw new IllegalStateException("The payload '" + this.type.id() + "' is not serverbound");
+            throw new IllegalStateException("The payload '" + this.type.id() + "' is not server-bound");
         }
         
         if (!FMLEnvironment.getDist().isClient()) {
-            throw new IllegalStateException("The payload '" + this.type.id() + "' can't be sent from a dedicated server");
+            throw new IllegalStateException("The payload '" + this.type.id() + "' cannot be sent from a dedicated server");
         }
     }
     

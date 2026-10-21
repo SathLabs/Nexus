@@ -1,6 +1,6 @@
 package dev.satherov.nexus.api.network.payload;
 
-import dev.satherov.nexus.api.network.context.HandlerContext;
+import dev.satherov.nexus.api.network.context.ClientHandlerContext;
 
 import net.minecraft.resources.Identifier;
 
@@ -19,7 +19,7 @@ public interface ServerboundPayload<VALUE> {
     Identifier getId();
     
     ///
-    /// Wraps the given value and sends it over the game connection of this client, which exists in play only.
+    /// Wraps the given value and sends it over the game connection of this client.
     ///
     /// @param value The value to send.
     ///
@@ -28,12 +28,23 @@ public interface ServerboundPayload<VALUE> {
     void sendToServer(VALUE value);
     
     ///
+    /// If the server that this client is connected to has registered the payload for the play protocol.
+    ///
+    /// Will always be `true` for a required payload.
+    ///
+    /// @return `true` if the server registered the payload.
+    ///
+    /// @throws IllegalStateException If this is a dedicated server or the client is not in play.
+    ///
+    boolean canSendToServer();
+    
+    ///
     /// Wraps the given value and sends it back over the connection that a client handler received on, in play or configuration.
     ///
     /// @param value   The value to send.
     /// @param context The context of the client handler.
     ///
-    /// @throws IllegalStateException If this is a dedicated server or the context is not of a client handler.
+    /// @throws IllegalStateException If this is a dedicated server.
     ///
-    void reply(VALUE value, HandlerContext context);
+    void reply(VALUE value, ClientHandlerContext context);
 }

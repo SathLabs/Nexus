@@ -26,16 +26,6 @@ import java.util.function.Predicate;
 public interface ClientRecipients {
     
     ///
-    /// Delivers the given packet to every recipient whose listener the given test accepts.
-    ///
-    /// Called once for every call of [ClientboundPayload#send(Object, ClientRecipients)], with one packet for all recipients.
-    ///
-    /// @param packet  The packet to deliver.
-    /// @param accepts The test of the listener of every recipient, `true` to deliver the packet to it.
-    ///
-    void send(Packet<?> packet, Predicate<? super ICommonPacketListener> accepts);
-    
-    ///
     /// Creates the recipients of the given player.
     ///
     /// @param player The player to deliver to.
@@ -192,4 +182,14 @@ public interface ClientRecipients {
             listener.send(packet);
         }
     }
+    
+    ///
+    /// Delivers the given packet to every recipient whose listener the given test accepts.
+    ///
+    /// Called once for every call of [ClientboundPayload#send(Object, ClientRecipients)], with one packet for all recipients.
+    ///
+    /// @param packet  The packet to deliver.
+    /// @param accepts The test of the listener of every recipient, `true` to deliver the packet to it.
+    ///
+    void send(Packet<?> packet, Predicate<? super ICommonPacketListener> accepts);
 }

@@ -6,6 +6,7 @@ import dev.satherov.nexus.Nexus;
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.mod.NexusMod;
+import dev.satherov.nexus.internal.network.Envelope;
 
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -15,17 +16,16 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
 
 import org.jetbrains.annotations.ApiStatus;
 
-import java.util.HashMap;
-import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 
 ///
-/// A table that holds the channels of one mod and opens payloads on its default channel.
+/// A table that holds the payloads of one mod and starts their builders.
 ///
 @EventBusSubscriber(modid = Nexus.MOD_ID)
 public final class Network {
@@ -42,23 +42,10 @@ public final class Network {
     private final NexusMod mod;
     
     ///
-    /// Every channel of the mod by its name, the default channel included.
+    /// The declared payloads of the mod by their identifiers.
     ///
-    private final Map<String, Channel> channelsByName = new HashMap<>();
+    private final Map<Identifier, PayloadBuilder.Declaration> declarationsById = new LinkedHashMap<>();
     
-    ///
-    /// The identifiers of every payload declared on any channel of the mod.
-    ///
-    private final Set<Identifier> payloadIds = new HashSet<>();
-    
-    ///
-    /// The channel named after the mod, which the openers of this type declare on.
-    ///
-    @Getter
-    private final Channel defaultChannel;
-    
-    ///
-    /// Creates the empty network of the given mod with its default channel and subscribes it to the payload handlers event on the event bus of the mod.
     ///
     /// Should only ever be called from [NexusMod#getNetwork()].
     ///
@@ -71,7 +58,6 @@ public final class Network {
         Network.checkBeforeEvent("create the network of '" + mod.getModId() + "'");
         this.mod = mod;
         
-        this.defaultChannel = this.channel(mod.getModId());
         mod.getEventBus().addListener(RegisterPayloadHandlersEvent.class, this::onRegisterPayloads);
     }
     
@@ -83,25 +69,6 @@ public final class Network {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     private static void onRegisterPayloadHandlers(RegisterPayloadHandlersEvent event) {
         Network.fired = true;
-    }
-    
-    ///
-    /// Creates a channel of the given name at version `1`.
-    ///
-    /// @param name The name of the channel.
-    ///
-    /// @return The created channel.
-    ///
-    /// @throws IllegalStateException If the name is already taken, or if the payload handlers event already ran.
-    ///
-    public Channel channel(String name) {
-        Network.checkBeforeEvent("create the channel '" + name + "' of '" + this.mod.getModId() + "'");
-        Channel channel = new Channel(this.mod, name, this.payloadIds);
-        if (this.channelsByName.putIfAbsent(name, channel) != null) {
-            throw new IllegalStateException("The channel '" + name + "' of '" + this.mod.getModId() + "' already exists");
-        }
-        
-        return channel;
     }
     
     ///
@@ -118,7 +85,9 @@ public final class Network {
     }
     
     ///
-    /// Opens a play payload of the given name on the default channel, encoded by the registry-aware stream codec of the given codec.
+    /// Starts a new play payload builder with the given codec.
+    ///
+    /// The identifier will be `<modid>:<name>`.
     ///
     /// @param name  The name of the payload.
     /// @param codec The codec of the values of the payload.
@@ -127,14 +96,14 @@ public final class Network {
     ///
     /// @throws IllegalStateException If the payload handlers event already ran.
     ///
-    /// @see Channel#play(String, NexusCodec)
-    ///
     public <VALUE> PayloadBuilder<VALUE> play(String name, NexusCodec<VALUE, ?> codec) {
-        return this.defaultChannel.play(name, codec);
+        return this.play(name, codec.asStream());
     }
     
     ///
-    /// Opens a play payload of the given name on the default channel, encoded by the given stream codec.
+    /// Starts a new play payload builder with the given stream codec.
+    ///
+    /// The identifier will be `<modid>:<name>`.
     ///
     /// @param name  The name of the payload.
     /// @param codec The stream codec of the values of the payload.
@@ -142,31 +111,32 @@ public final class Network {
     /// @return The builder of the payload.
     ///
     /// @throws IllegalStateException If the payload handlers event already ran.
-    ///
-    /// @see Channel#play(String, StreamCodec)
     ///
     public <VALUE> PayloadBuilder<VALUE> play(String name, StreamCodec<? super RegistryFriendlyByteBuf, VALUE> codec) {
-        return this.defaultChannel.play(name, codec);
+        CustomPacketPayload.Type<Envelope<VALUE>> type = this.createType(name);
+        return new PayloadBuilder<>(this, type, new PayloadBuilder.Play<>(Envelope.codec(type, codec)));
     }
     
     ///
-    /// Opens a configuration payload of the given name on the default channel, encoded by the plain stream codec of the given codec.
+    /// Starts a new configuration payload builder with the given codec.
+    ///
+    /// The identifier will be `<modid>:<name>`.
     ///
     /// @param name  The name of the payload.
-    /// @param codec The codec of the values of the payload, which needs no registries.
+    /// @param codec The codec of the values of the payload, which does not require registries.
     ///
     /// @return The builder of the payload.
     ///
     /// @throws IllegalStateException If the payload handlers event already ran.
     ///
-    /// @see Channel#configuration(String, NexusCodec)
-    ///
     public <VALUE> PayloadBuilder<VALUE> configuration(String name, NexusCodec<VALUE, Access.Plain> codec) {
-        return this.defaultChannel.configuration(name, codec);
+        return this.configuration(name, NexusCodec.plainStream(codec));
     }
     
     ///
-    /// Opens a configuration payload of the given name on the default channel, encoded by the given stream codec.
+    /// Starts a new configuration payload builder with the given stream codec.
+    ///
+    /// The identifier will be `<modid>:<name>`.
     ///
     /// @param name  The name of the payload.
     /// @param codec The stream codec of the values of the payload.
@@ -175,16 +145,41 @@ public final class Network {
     ///
     /// @throws IllegalStateException If the payload handlers event already ran.
     ///
-    /// @see Channel#configuration(String, StreamCodec)
-    ///
     public <VALUE> PayloadBuilder<VALUE> configuration(String name, StreamCodec<? super FriendlyByteBuf, VALUE> codec) {
-        return this.defaultChannel.configuration(name, codec);
+        CustomPacketPayload.Type<Envelope<VALUE>> type = this.createType(name);
+        return new PayloadBuilder<>(this, type, new PayloadBuilder.Configuration<>(Envelope.codec(type, codec)));
     }
     
     ///
-    /// Registers the payloads of every channel of the mod.
+    /// Creates the type of the payload of the given name and throws if the payload handlers event already ran.
+    ///
+    private <VALUE> CustomPacketPayload.Type<Envelope<VALUE>> createType(String name) {
+        Identifier id = this.mod.id(name);
+        Network.checkBeforeEvent("start the payload '" + id + "'");
+        return new CustomPacketPayload.Type<>(id);
+    }
+    
+    ///
+    /// Adds the given declaration of the payload with the given identifier.
+    ///
+    /// Should only ever be called from the declaration methods in [PayloadBuilder].
+    ///
+    /// @param id          The identifier of the payload.
+    /// @param declaration The declaration of the payload.
+    ///
+    /// @throws IllegalStateException If the identifier is already declared, or if the payload handlers event already ran.
+    ///
+    void declare(Identifier id, PayloadBuilder.Declaration declaration) {
+        Network.checkBeforeEvent("declare the payload '" + id + "'");
+        if (this.declarationsById.putIfAbsent(id, declaration) != null) {
+            throw new IllegalStateException("'" + id + "' is already declared");
+        }
+    }
+    
+    ///
+    /// Registers every payload of the mod.
     ///
     private void onRegisterPayloads(RegisterPayloadHandlersEvent event) {
-        this.channelsByName.values().forEach(channel -> channel.register(event));
+        this.declarationsById.values().forEach(declaration -> declaration.register(event));
     }
 }

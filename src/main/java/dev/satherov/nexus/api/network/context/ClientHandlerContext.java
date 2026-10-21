@@ -16,7 +16,7 @@ import org.jetbrains.annotations.ApiStatus;
 /// Should only ever be loaded on the client, through the handler adapter of [ClientConnection].
 ///
 public final class ClientHandlerContext extends HandlerContext {
-
+    
     ///
     /// Should only ever be called from [ClientConnection#adaptHandler(ClientOnly)].
     ///
@@ -26,7 +26,7 @@ public final class ClientHandlerContext extends HandlerContext {
     public ClientHandlerContext(IPayloadContext platform) {
         super(platform);
     }
-
+    
     ///
     /// @return The packet listener of the connection.
     ///
@@ -34,7 +34,7 @@ public final class ClientHandlerContext extends HandlerContext {
     public ClientCommonPacketListener getListener() {
         return (ClientCommonPacketListener) super.getListener();
     }
-
+    
     ///
     /// The player of this client.
     ///

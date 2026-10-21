@@ -2,7 +2,6 @@ package dev.satherov.nexus.internal.network.client;
 
 import lombok.experimental.UtilityClass;
 
-import dev.satherov.nexus.api.network.Channel;
 import dev.satherov.nexus.api.network.PayloadBuilder;
 import dev.satherov.nexus.api.network.context.ClientHandlerContext;
 import dev.satherov.nexus.api.network.payload.Payload;
@@ -24,10 +23,10 @@ import java.util.function.BiConsumer;
 
 ///
 /// Utility class around for sending payloads to the server.
-/// 
+///
 /// Basically just [ClientPacketDistributor] with some extras.
 ///
-/// Should only ever be loaded on the client, through [Payload#sendToServer(Object)], [Channel#canSendToServer()] and the openers of [PayloadBuilder].
+/// Should only ever be loaded on the client, through [Payload#sendToServer(Object)], [Payload#canSendToServer()] and the openers of [PayloadBuilder].
 ///
 @UtilityClass
 @ApiStatus.Internal
@@ -39,8 +38,7 @@ public class ClientConnection {
     /// @param payload The payload to send.
     ///
     /// @throws IllegalStateException If the client has no play connection open.
-    /// 
-    /// @see ClientPacketDistributor#sendToServer(CustomPacketPayload, CustomPacketPayload...) 
+    /// @see ClientPacketDistributor#sendToServer(CustomPacketPayload, CustomPacketPayload...)
     ///
     public static void sendToServer(CustomPacketPayload payload) {
         ClientPacketListener connection = Minecraft.getInstance().getConnection();
@@ -67,7 +65,7 @@ public class ClientConnection {
         
         return connection;
     }
-
+    
     ///
     /// Opens the given client handler and wraps it into a neoforge handler of envelopes.
     ///

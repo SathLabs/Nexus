@@ -15,7 +15,7 @@ import java.util.function.BiConsumer;
 /// The context that a payload handler on the server receives together with the payload itself.
 ///
 public final class ServerHandlerContext extends HandlerContext {
-
+    
     ///
     /// Should only ever be called from [PayloadBuilder#adaptServer(BiConsumer)].
     ///
@@ -25,7 +25,7 @@ public final class ServerHandlerContext extends HandlerContext {
     public ServerHandlerContext(IPayloadContext platform) {
         super(platform);
     }
-
+    
     ///
     /// @return The packet listener of the connection.
     ///
@@ -33,7 +33,7 @@ public final class ServerHandlerContext extends HandlerContext {
     public ServerCommonPacketListener getListener() {
         return (ServerCommonPacketListener) super.getListener();
     }
-
+    
     ///
     /// The player that sent the payload.
     ///

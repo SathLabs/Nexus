@@ -14,6 +14,7 @@ import dev.satherov.nexus.internal.network.Envelope;
 import dev.satherov.nexus.internal.network.client.ClientConnection;
 
 import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadHandler;
 import net.neoforged.neoforge.network.registration.HandlerThread;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
@@ -30,7 +31,7 @@ import java.util.function.BiConsumer;
 import java.util.function.UnaryOperator;
 
 ///
-/// A builder that declares one payload on a channel once one of its terminals is called.
+/// A builder that declares one payload on the network.
 ///
 /// @param <VALUE> The type of the values of the payload.
 ///
@@ -38,9 +39,9 @@ import java.util.function.UnaryOperator;
 public final class PayloadBuilder<VALUE> {
     
     ///
-    /// The channel the payload is declared on.
+    /// The network the payload is declared on.
     ///
-    private final Channel channel;
+    private final Network network;
     
     ///
     /// The type of the envelopes of the payload, built from its identifier.
@@ -53,14 +54,33 @@ public final class PayloadBuilder<VALUE> {
     private final PayloadBuilder.Protocol<VALUE> protocol;
     
     ///
+    /// The version neoforge negotiates for the payload.
+    ///
+    /// Defaults to `1`.
+    ///
+    private String version = "1";
+    
+    ///
+    /// If a client or server lacking the payload should still be allowed to connect.
+    ///
+    private boolean optional;
+    
+    ///
     /// The thread the handlers of the payload run on.
+    ///
+    /// Defaults to [HandlerThread#MAIN].
     ///
     private HandlerThread thread = HandlerThread.MAIN;
     
     ///
-    /// The identifier the payload registers under.
+    /// Wraps the given server handler into a neoforge handler of envelopes.
     ///
-    /// It's `<modid>:<name>` on the default channel and `<modid>:<channel>/<name>` on any other.
+    private static <VALUE> IPayloadHandler<Envelope<VALUE>> adaptServer(BiConsumer<VALUE, ServerHandlerContext> handler) {
+        return (envelope, context) -> handler.accept(envelope.value(), new ServerHandlerContext(context));
+    }
+    
+    ///
+    /// The identifier the payload will be registered under.
     ///
     /// @return The identifier of the payload.
     ///
@@ -69,7 +89,41 @@ public final class PayloadBuilder<VALUE> {
     }
     
     ///
-    /// Makes the handlers run on the network thread instead of the main thread of the receiving side.
+    /// Sets the version of the payload.
+    ///
+    /// A client and a server only connect if both registered the payload with the same version.
+    ///
+    /// @param version The version neoforge negotiates for the payload.
+    ///
+    /// @return The builder for chaining.
+    ///
+    /// @throws IllegalArgumentException If the version is blank.
+    ///
+    @CanIgnoreReturnValue
+    public PayloadBuilder<VALUE> version(String version) {
+        if (version.isBlank()) {
+            throw new IllegalArgumentException("The version of the payload '" + this.type.id() + "' is blank");
+        }
+        
+        this.version = version;
+        return this;
+    }
+    
+    ///
+    /// Lets a client or server lacking the payload connect.
+    ///
+    /// Sending the payload will skip every recipient that doesn't have it registered.
+    ///
+    /// @return The builder for chaining.
+    ///
+    @CanIgnoreReturnValue
+    public PayloadBuilder<VALUE> optional() {
+        this.optional = true;
+        return this;
+    }
+    
+    ///
+    /// Makes the handlers on the receiving run on the network thread instead of the main thread.
     ///
     /// @return The builder for chaining.
     ///
@@ -157,19 +211,12 @@ public final class PayloadBuilder<VALUE> {
     }
     
     ///
-    /// Declares the payload on the channel with the given registration and creates its handle.
+    /// Declares the payload on the network with the given registration and creates its handle.
     ///
     private Payload<VALUE> declare(Payload.Direction direction, UnaryOperator<PayloadRegistrar> registration) {
         Identifier id = this.getId();
-        this.channel.declare(id, new PayloadBuilder.Declaration(this.protocol, this.thread, registration));
-        return new Payload<>(this.channel, id, direction);
-    }
-    
-    ///
-    /// Wraps the given server handler into a neoforge handler of envelopes.
-    ///
-    private static <VALUE> IPayloadHandler<Envelope<VALUE>> adaptServer(BiConsumer<VALUE, ServerHandlerContext> handler) {
-        return (envelope, context) -> handler.accept(envelope.value(), new ServerHandlerContext(context));
+        this.network.declare(id, new PayloadBuilder.Declaration(this.version, this.optional, this.thread, registration));
+        return new Payload<>(id, direction, this.version, this.optional);
     }
     
     ///
@@ -196,21 +243,23 @@ public final class PayloadBuilder<VALUE> {
     record Configuration<VALUE>(StreamCodec<FriendlyByteBuf, Envelope<VALUE>> codec) implements PayloadBuilder.Protocol<VALUE> { }
     
     ///
-    /// The declaration of one payload, which its channel registers inside the payload handlers event.
+    /// The declaration of one payload.
     ///
-    /// @param protocol     The protocol of the payload.
+    /// @param version      The version neoforge negotiates for the payload.
+    /// @param optional     If a client or server lacking the payload should still connect.
     /// @param thread       The thread the handlers of the payload run on.
-    /// @param registration The registration of the payload, called with the registrar of its channel.
+    /// @param registration The registration of the payload, called with the registrar of the payload.
     ///
-    record Declaration(PayloadBuilder.Protocol<?> protocol, HandlerThread thread, UnaryOperator<PayloadRegistrar> registration) {
+    record Declaration(String version, boolean optional, HandlerThread thread, UnaryOperator<PayloadRegistrar> registration) {
         
         ///
-        /// Registers the payload with the given registrar, on the thread of the declaration.
+        /// Registers the payload with a registrar of its version, optional flag and thread.
         ///
-        /// @param registrar The registrar of the channel.
+        /// @param event The payload handlers event.
         ///
-        void register(PayloadRegistrar registrar) {
-            this.registration.apply(registrar.executesOn(this.thread));
+        void register(RegisterPayloadHandlersEvent event) {
+            PayloadRegistrar registrar = event.registrar(this.version).executesOn(this.thread);
+            this.registration.apply(this.optional ? registrar.optional() : registrar);
         }
     }
 }

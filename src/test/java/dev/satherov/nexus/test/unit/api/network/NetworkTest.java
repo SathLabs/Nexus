@@ -2,7 +2,6 @@ package dev.satherov.nexus.test.unit.api.network;
 
 import dev.satherov.nexus.Nexus;
 import dev.satherov.nexus.api.codec.NexusCodec;
-import dev.satherov.nexus.api.network.Channel;
 import dev.satherov.nexus.api.network.Network;
 import dev.satherov.nexus.api.network.PayloadBuilder;
 import dev.satherov.nexus.api.network.payload.ClientboundPayload;
@@ -23,110 +22,92 @@ import org.junit.jupiter.api.Test;
 import java.util.Objects;
 
 ///
-/// Checks the channels and payloads that a mod declares on its network.
+/// Checks the payloads that a mod declares on its network.
 ///
 public class NetworkTest {
-    
-    private static @Nullable Channel channel;
-    private static @Nullable Throwable duplicateChannelRefusal;
-    private static @Nullable Throwable collisionRefusal;
-    private static @Nullable Identifier defaultChannelId;
-    private static @Nullable Identifier namedChannelId;
+
+    private static @Nullable Throwable duplicateRefusal;
+    private static @Nullable Throwable blankVersionRefusal;
     private static @Nullable ServerboundPayload<Integer> serverbound;
     private static @Nullable ClientboundPayload<String> clientbound;
     private static @Nullable Payload<Integer> bidirectional;
     private static @Nullable PayloadBuilder<Integer> unfinished;
-    
+
     @Test
-    public void namesTheDefaultChannelAfterTheMod() {
-        Channel channel = Nexus.getMod().getNetwork().getDefaultChannel();
-        Assertions.assertThat(channel.getName()).isEqualTo(Nexus.MOD_ID);
-        Assertions.assertThat(channel.getVersion()).isEqualTo("1");
-        Assertions.assertThat(channel.isOptional()).isFalse();
+    public void namesAPayloadAfterTheModAndTheName() {
+        Assertions.assertThat(Objects.requireNonNull(NetworkTest.serverbound).getId()).isEqualTo(Identifier.fromNamespaceAndPath(Nexus.MOD_ID, "network_test_serverbound"));
     }
-    
+
     @Test
-    public void holdsTheVersionAndOptionalOfACreatedChannel() {
-        Channel channel = Objects.requireNonNull(NetworkTest.channel);
-        Assertions.assertThat(channel.getName()).isEqualTo("network_test");
-        Assertions.assertThat(channel.getVersion()).isEqualTo("2");
-        Assertions.assertThat(channel.isOptional()).isTrue();
+    public void defaultsToVersionOneAndRequired() {
+        Payload<Integer> serverbound = (Payload<Integer>) Objects.requireNonNull(NetworkTest.serverbound);
+        Assertions.assertThat(serverbound.getVersion()).isEqualTo("1");
+        Assertions.assertThat(serverbound.isOptional()).isFalse();
     }
-    
+
     @Test
-    public void refusesASecondChannelOfOneName() {
-        Assertions.assertThat(NetworkTest.duplicateChannelRefusal).isInstanceOf(IllegalStateException.class);
+    public void holdsTheVersionAndOptionalOfItsBuilder() {
+        Payload<String> clientbound = (Payload<String>) Objects.requireNonNull(NetworkTest.clientbound);
+        Assertions.assertThat(clientbound.getVersion()).isEqualTo("2");
+        Assertions.assertThat(clientbound.isOptional()).isTrue();
     }
-    
+
     @Test
-    public void namesAPayloadOnTheDefaultChannelAfterTheModAndTheName() {
-        Assertions.assertThat(NetworkTest.defaultChannelId).isEqualTo(Identifier.fromNamespaceAndPath(Nexus.MOD_ID, "network_test_serverbound"));
+    public void refusesABlankVersion() {
+        Assertions.assertThat(NetworkTest.blankVersionRefusal).isInstanceOf(IllegalArgumentException.class);
     }
-    
+
     @Test
-    public void namesAPayloadOnANamedChannelAfterTheModTheChannelAndTheName() {
-        Assertions.assertThat(NetworkTest.namedChannelId).isEqualTo(Identifier.fromNamespaceAndPath(Nexus.MOD_ID, "network_test/network_test_clientbound"));
+    public void refusesASecondPayloadOfOneName() {
+        Assertions.assertThat(NetworkTest.duplicateRefusal).isInstanceOf(IllegalStateException.class);
     }
-    
+
     @Test
-    public void refusesAPayloadWhoseIdAnotherChannelAlreadyDeclared() {
-        Assertions.assertThat(NetworkTest.collisionRefusal).isInstanceOf(IllegalStateException.class);
-    }
-    
-    @Test
-    public void returnsHandlesOfTheIdAndTheDirectionOfTheirTerminal() {
+    public void returnsHandlesOfTheDirectionOfTheirTerminal() {
         Payload<Integer> serverbound = (Payload<Integer>) Objects.requireNonNull(NetworkTest.serverbound);
         Payload<String> clientbound = (Payload<String>) Objects.requireNonNull(NetworkTest.clientbound);
         Payload<Integer> bidirectional = Objects.requireNonNull(NetworkTest.bidirectional);
-        
-        Assertions.assertThat(serverbound.getId()).isEqualTo(NetworkTest.defaultChannelId);
+
         Assertions.assertThat(serverbound.getDirection()).isEqualTo(Payload.Direction.SERVERBOUND);
-        Assertions.assertThat(clientbound.getId()).isEqualTo(NetworkTest.namedChannelId);
         Assertions.assertThat(clientbound.getDirection()).isEqualTo(Payload.Direction.CLIENTBOUND);
         Assertions.assertThat(bidirectional.getId()).isEqualTo(Identifier.fromNamespaceAndPath(Nexus.MOD_ID, "network_test_bidirectional"));
         Assertions.assertThat(bidirectional.getDirection()).isEqualTo(Payload.Direction.BIDIRECTIONAL);
     }
-    
+
     @Test
-    public void refusesAChannelAfterTheEvent() {
+    public void refusesAnOpenerAfterTheEvent() {
         Network network = Nexus.getMod().getNetwork();
-        Assertions.assertThatThrownBy(() -> network.channel("network_test_late")).isInstanceOf(IllegalStateException.class);
+        Assertions.assertThatThrownBy(() -> network.play("network_test_late", NexusCodec.INT)).isInstanceOf(IllegalStateException.class);
     }
-    
+
     @Test
     public void refusesATerminalAfterTheEvent() {
         PayloadBuilder<Integer> builder = Objects.requireNonNull(NetworkTest.unfinished);
         Assertions.assertThatThrownBy(() -> builder.toServer((_, _) -> { })).isInstanceOf(IllegalStateException.class);
     }
-    
+
     @Test
     public void refusesANewNetworkAfterTheEvent() {
         Assertions.assertThatThrownBy(() -> new Network(Nexus.getMod())).isInstanceOf(IllegalStateException.class);
     }
-    
+
     @EventBusSubscriber(modid = Nexus.MOD_ID)
     public static final class Declared {
-        
+
         @SubscribeEvent
         public static void onConstruct(FMLConstructModEvent event) {
             Network network = Nexus.getMod().getNetwork();
-            Channel channel = network.channel("network_test").version("2").optional();
-            PayloadBuilder<Integer> serverbound = network.play("network_test_serverbound", NexusCodec.INT);
-            PayloadBuilder<String> clientbound = channel.configuration("network_test_clientbound", NexusCodec.STRING);
-            
-            NetworkTest.channel = channel;
-            NetworkTest.duplicateChannelRefusal = Assertions.catchThrowable(() -> network.channel("network_test"));
-            NetworkTest.defaultChannelId = serverbound.getId();
-            NetworkTest.namedChannelId = clientbound.getId();
-            NetworkTest.serverbound = serverbound.toServer((_, _) -> { });
-            NetworkTest.clientbound = clientbound.toClient(() -> (_, _) -> { });
+            NetworkTest.serverbound = network.play("network_test_serverbound", NexusCodec.INT).toServer((_, _) -> { });
+            NetworkTest.clientbound = network.configuration("network_test_clientbound", NexusCodec.STRING)
+                    .version("2")
+                    .optional()
+                    .toClient(() -> (_, _) -> { });
             NetworkTest.bidirectional = network.play("network_test_bidirectional", ByteBufCodecs.VAR_INT)
                     .onNetworkThread()
                     .bidirectional(() -> (_, _) -> { }, (_, _) -> { });
             NetworkTest.unfinished = network.play("network_test_unfinished", NexusCodec.INT);
-            
-            network.play("network_test/collision", NexusCodec.INT).toServer((_, _) -> { });
-            NetworkTest.collisionRefusal = Assertions.catchThrowable(() -> channel.play("collision", NexusCodec.INT).toServer((_, _) -> { }));
+            NetworkTest.blankVersionRefusal = Assertions.catchThrowable(() -> network.play("network_test_blank", NexusCodec.INT).version(" "));
+            NetworkTest.duplicateRefusal = Assertions.catchThrowable(() -> network.play("network_test_serverbound", NexusCodec.INT).toServer((_, _) -> { }));
         }
     }
 }

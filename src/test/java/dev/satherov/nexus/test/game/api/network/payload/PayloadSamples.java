@@ -1,7 +1,6 @@
 package dev.satherov.nexus.test.game.api.network.payload;
 
 import dev.satherov.nexus.Nexus;
-import dev.satherov.nexus.api.network.Channel;
 import dev.satherov.nexus.api.network.Network;
 import dev.satherov.nexus.api.network.ClientRecipients;
 import dev.satherov.nexus.api.network.context.ClientHandlerContext;
@@ -84,12 +83,12 @@ public class PayloadSamples {
     }
     
     @ClientTest
-    public static void optionalChannelCanSendBothWays(Client client) {
+    public static void optionalPayloadCanSendBothWays(Client client) {
         client.joinWorld();
-        Channel channel = Objects.requireNonNull(PayloadSamples.optional).getChannel();
-        Assertions.assertThat(channel.isOptional()).isTrue();
-        Assertions.assertThat(channel.canSend(PayloadSamples.getPlayer(client))).isTrue();
-        Assertions.assertThat(channel.canSendToServer()).isTrue();
+        Payload<String> optional = Objects.requireNonNull(PayloadSamples.optional);
+        Assertions.assertThat(optional.isOptional()).isTrue();
+        Assertions.assertThat(optional.canSend(PayloadSamples.getPlayer(client))).isTrue();
+        Assertions.assertThat(optional.canSendToServer()).isTrue();
         client.leaveWorld();
     }
     
@@ -235,9 +234,9 @@ public class PayloadSamples {
                     () -> PayloadSamples.ClientHandlers::onClientValue,
                     PayloadSamples.Registered::record
             );
-            PayloadSamples.optional = network.channel("payload_samples")
+            PayloadSamples.optional = network.play("payload_samples_optional", ByteBufCodecs.STRING_UTF8)
+                    .version("2")
                     .optional()
-                    .play("optional", ByteBufCodecs.STRING_UTF8)
                     .bidirectional(() -> PayloadSamples.ClientHandlers::onClientValue, PayloadSamples.Registered::record);
             PayloadSamples.question = network.configuration("payload_samples_question", ByteBufCodecs.STRING_UTF8).toClient(() -> PayloadSamples.ClientHandlers::onQuestion);
             PayloadSamples.answer = network.configuration("payload_samples_answer", ByteBufCodecs.STRING_UTF8).toServer(PayloadSamples.Registered::onAnswer);
