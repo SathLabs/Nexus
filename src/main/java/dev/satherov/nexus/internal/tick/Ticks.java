@@ -1,6 +1,5 @@
 package dev.satherov.nexus.internal.tick;
 
-import dev.satherov.nexus.api.tick.Scheduler;
 import dev.satherov.nexus.api.tick.TickScope;
 
 import net.neoforged.neoforge.common.NeoForge;
@@ -10,6 +9,7 @@ import net.neoforged.neoforge.event.tick.LevelTickEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelAccessor;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
@@ -22,7 +22,7 @@ import java.util.function.Supplier;
 /// The game bus listeners of one scheduler, which hold its scopes.
 ///
 /// Passes the level scopes on the level tick and the server scope on the server tick.
-/// Drops the scope of a level when the level unloads and the server scope when the server stops.
+/// Drops the scope and the bindings of a level when the level unloads, and the server scope when the server stops.
 ///
 /// Registered by the scheduler's constructor.
 ///
@@ -40,11 +40,9 @@ public final class Ticks {
     private @Nullable TickScope server;
     
     ///
-    /// Subscribes the listeners for the given scheduler.
+    /// Subscribes the listeners.
     ///
-    /// @param scheduler The scheduler.
-    ///
-    public Ticks(Scheduler scheduler) {
+    public Ticks() {
         NeoForge.EVENT_BUS.addListener(LevelTickEvent.Post.class, this::onLevelTick);
         NeoForge.EVENT_BUS.addListener(ServerTickEvent.Post.class, this::onServerTick);
         NeoForge.EVENT_BUS.addListener(LevelEvent.Unload.class, this::onLevelUnload);
@@ -99,12 +97,17 @@ public final class Ticks {
     }
     
     ///
-    /// Ends and forgets the scope of the level if it has one.
+    /// Ends and forgets the scope of the level if it has one and then forgets the bindings of the level.
     ///
     private void onLevelUnload(LevelEvent.Unload event) {
-        TickScope scope = this.scopesByLevel.remove(event.getLevel());
+        LevelAccessor level = event.getLevel();
+        TickScope scope = this.scopesByLevel.remove(level);
         if (scope != null) {
             scope.end();
+        }
+        
+        if (level instanceof Level unloaded) {
+            Bindings.drop(unloaded);
         }
     }
     

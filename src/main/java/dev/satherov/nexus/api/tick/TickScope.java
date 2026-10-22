@@ -2,21 +2,25 @@ package dev.satherov.nexus.api.tick;
 
 import dev.satherov.nexus.api.tick.budget.Budget;
 import dev.satherov.nexus.api.tick.ticker.Tickable;
+import dev.satherov.nexus.internal.tick.Bindings;
 
 import net.neoforged.fml.LogicalSide;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import net.minecraft.CrashReport;
+import net.minecraft.CrashReportCategory;
 import net.minecraft.ReportedException;
 import net.minecraft.util.Util;
 import net.minecraft.util.profiling.Profiler;
 import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.BlockEntity;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Range;
+import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -28,6 +32,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 
 ///
 /// A tick loop that work runs in after vanilla's own tick, the loop of a level, of the server, or of the client.
@@ -50,12 +55,17 @@ public final class TickScope {
     /// The name of the scope in crash reports, the identifier of its level's dimension or the name of its side.
     ///
     private final String name;
-
+    
+    ///
+    /// The level of the scope, or `null` if it is the server or client scope.
+    ///
+    private final @Nullable Level level;
+    
     ///
     /// The side the scope runs on.
     ///
     private final LogicalSide side;
-
+    
     ///
     /// The thread the scope runs on.
     ///
@@ -70,18 +80,18 @@ public final class TickScope {
     /// The started tickers, in order, oldest first.
     ///
     private final List<Ticker> tickers = new ArrayList<>();
-
+    
     ///
     /// The jobs that first step on the next pass, in order, oldest first.
     ///
     private final List<Job> pendingJobs = new ArrayList<>();
-
+    
     ///
     /// The stepping jobs by their budget, in the order the budgets were first used on the scope.
     /// Each queue starts with the job that steps next.
     ///
     private final Map<Budget, Deque<Job>> jobsByBudget = new LinkedHashMap<>();
-
+    
     ///
     /// How many passes have started so far.
     ///
@@ -100,7 +110,7 @@ public final class TickScope {
     ///
     @ApiStatus.Internal
     public TickScope(Scheduler scheduler, Level level) {
-        this(scheduler, level.dimension().identifier().toString(), level.isClientSide() ? LogicalSide.CLIENT : LogicalSide.SERVER);
+        this(scheduler, level.dimension().identifier().toString(), level, level.isClientSide() ? LogicalSide.CLIENT : LogicalSide.SERVER);
     }
     
     ///
@@ -111,17 +121,18 @@ public final class TickScope {
     ///
     @ApiStatus.Internal
     public TickScope(Scheduler scheduler, LogicalSide side) {
-        this(scheduler, side.name().toLowerCase(Locale.ROOT), side);
+        this(scheduler, side.name().toLowerCase(Locale.ROOT), null, side);
     }
     
     ///
     /// Creates a scope that runs on the thread of the given side.
     ///
-    private TickScope(Scheduler scheduler, String name, LogicalSide side) {
+    private TickScope(Scheduler scheduler, String name, @Nullable Level level, LogicalSide side) {
         this.scheduler = scheduler;
         this.name = name;
+        this.level = level;
         this.side = side;
-
+        
         this.thread = switch (side) {
             case SERVER -> Objects.requireNonNull(ServerLifecycleHooks.getCurrentServer(), "No server is running").getRunningThread();
             case CLIENT -> throw new IllegalArgumentException("The client side has no tick scope");
@@ -136,7 +147,7 @@ public final class TickScope {
     /// @param hasTime The time flag of the tick, read between job steps.
     ///
     /// @throws IllegalStateException If called off the scope's thread or after the scope ended.
-    /// @throws ReportedException     If any work throws, with a crash report on the mod, the scope, the kind of work, and its name.
+    /// @throws ReportedException     If any work throws, with a crash report on the mod, the scope, the kind of work, and its name or the block entity it is bound to.
     ///
     @ApiStatus.Internal
     public void pass(BooleanSupplier hasTime) {
@@ -151,7 +162,7 @@ public final class TickScope {
         this.stepJobs(profiler, hasTime);
         profiler.pop();
     }
-
+    
     ///
     /// Moves every pending job to the end of its budget's queue.
     ///
@@ -159,10 +170,10 @@ public final class TickScope {
         for (Job job : this.pendingJobs) {
             this.jobsByBudget.computeIfAbsent(job.budget, _ -> new ArrayDeque<>()).add(job);
         }
-
+        
         this.pendingJobs.clear();
     }
-
+    
     ///
     /// Runs every due task, in order, oldest first, and then forgets the inactive ones.
     ///
@@ -174,7 +185,7 @@ public final class TickScope {
                 try {
                     task.run();
                 } catch (Throwable throwable) {
-                    throw this.crash(throwable, "task", task.action.getClass().getName());
+                    throw this.crash(throwable, "task", category -> category.setDetail("Name", task.action.getClass().getName()));
                 }
             }
         }
@@ -194,7 +205,7 @@ public final class TickScope {
                 try {
                     ticker.tick();
                 } catch (Throwable throwable) {
-                    throw this.crash(throwable, "ticker", ticker.getName());
+                    throw this.crash(throwable, "ticker", ticker::fillCrashReportCategory);
                 }
                 
                 profiler.pop();
@@ -203,7 +214,7 @@ public final class TickScope {
         
         this.tickers.removeIf(ticker -> !ticker.isActive());
     }
-
+    
     ///
     /// Steps the jobs of every budget in turn, each budget in a profiler section of its name, for as long as the budget allows.
     ///
@@ -214,7 +225,7 @@ public final class TickScope {
             if (jobs.isEmpty()) {
                 continue;
             }
-
+            
             Budget budget = entry.getKey();
             long minimum = TimeUnit.NANOSECONDS.convert(budget.getMinimum());
             long maximum = this.side == LogicalSide.SERVER ? TimeUnit.NANOSECONDS.convert(budget.getMaximum()) : minimum;
@@ -227,31 +238,32 @@ public final class TickScope {
                     try {
                         job.step();
                     } catch (Throwable throwable) {
-                        throw this.crash(throwable, "job", budget.getName());
+                        throw this.crash(throwable, "job", category -> category.setDetail("Name", budget.getName()));
                     }
-
+                    
                     if (job.isActive()) {
                         jobs.add(job);
                     }
                 }
-
+                
                 elapsed = Util.getNanos() - start;
             } while (!jobs.isEmpty() && (elapsed < minimum || (elapsed < maximum && hasTime.getAsBoolean())));
-
+            
             profiler.pop();
         }
     }
-
+    
     ///
-    /// Wraps the given throwable into a crash report with a category on the mod, the scope, and the work that threw it.
+    /// Wraps the given throwable into a crash report with a category on the mod, the scope, the kind of work, and the given details.
     ///
-    private ReportedException crash(Throwable throwable, String kind, String name) {
+    private ReportedException crash(Throwable throwable, String kind, Consumer<CrashReportCategory> details) {
         CrashReport report = CrashReport.forThrowable(throwable, "Ticking " + kind);
-        report.addCategory("Work being ticked")
+        CrashReportCategory category = report.addCategory("Work being ticked")
                 .setDetail("Mod", this.scheduler.getMod().getModId())
                 .setDetail("Scope", this.name)
-                .setDetail("Kind", kind)
-                .setDetail("Name", name);
+                .setDetail("Kind", kind);
+        
+        details.accept(category);
         return new ReportedException(report);
     }
     
@@ -333,11 +345,52 @@ public final class TickScope {
     ///
     public Ticker ticker(String name, Tickable tickable) {
         this.checkUsable();
-        Ticker ticker = new Ticker(this, this.scheduler.getMod().getModId() + ":" + name, tickable);
+        Ticker ticker = new Ticker(this, this.scheduler.getMod().getModId() + ":" + name, null, tickable);
         this.tickers.add(ticker);
         return ticker;
     }
-
+    
+    ///
+    /// Starts a new ticker bound to the given block entity under the identifier of its block entity type, awake and first ticked on the next pass.
+    ///
+    /// If the level does not tick blocks at the position of the block entity, a due tick will be skipped and retried after the interval that the last tick returned.
+    /// The ticker will be dropped once the block entity is removed or its chunk unloads.
+    ///
+    /// Can be woken through [Scheduler#wake(BlockEntity)].
+    ///
+    /// @param entity   The block entity to bind the ticker to.
+    /// @param tickable The tick of the ticker.
+    ///
+    /// @return The started ticker.
+    ///
+    /// @throws IllegalStateException - If called off the scope's thread.
+    /// - If the scope ended.
+    /// - If the block entity is not in the level of the scope.
+    /// - If the block entity was removed.
+    /// - If this mod already bound a ticker to the block entity.
+    ///
+    @CanIgnoreReturnValue
+    public Ticker ticker(BlockEntity entity, Tickable tickable) {
+        this.checkUsable();
+        String name = entity.typeHolder().getRegisteredName();
+        if (this.level == null || entity.getLevel() != this.level) {
+            throw new IllegalStateException("Block entity '" + name + "' at '" + entity.getBlockPos().toShortString() + "' is not in tick scope '" + this.name + "'");
+        }
+        
+        if (entity.isRemoved()) {
+            throw new IllegalStateException("Block entity '" + name + "' at '" + entity.getBlockPos().toShortString() + "' was removed");
+        }
+        
+        if (Bindings.find(entity, this.scheduler) != null) {
+            throw new IllegalStateException("Block entity '" + name + "' at '" + entity.getBlockPos().toShortString() + "' already has a ticker of '" + this.scheduler.getMod().getModId() + "'");
+        }
+        
+        Ticker ticker = new Ticker(this, name, entity, tickable);
+        this.tickers.add(ticker);
+        Bindings.add(entity, this.scheduler, ticker);
+        return ticker;
+    }
+    
     ///
     /// Starts a new job that steps in turn with the other jobs of the given budget, for as long as the budget allows on each pass.
     ///
@@ -357,12 +410,12 @@ public final class TickScope {
         if (budget.getScheduler() != this.scheduler) {
             throw new IllegalArgumentException("Budget '" + budget.getName() + "' does not belong to '" + this.scheduler.getMod().getModId() + "'");
         }
-
+        
         Job job = new Job(budget, step);
         this.pendingJobs.add(job);
         return job;
     }
-
+    
     ///
     /// Throws an [IllegalStateException] if called off the scope's thread or after the scope ended.
     ///

@@ -4,6 +4,8 @@ import lombok.Getter;
 
 import dev.satherov.nexus.api.mod.NexusMod;
 import dev.satherov.nexus.api.tick.budget.Budget;
+import dev.satherov.nexus.api.tick.ticker.Tickable;
+import dev.satherov.nexus.internal.tick.Bindings;
 import dev.satherov.nexus.internal.tick.Ticks;
 
 import net.neoforged.fml.LogicalSide;
@@ -11,6 +13,7 @@ import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.BlockEntity;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
@@ -38,12 +41,12 @@ public final class Scheduler {
     /// The game bus listeners of the scheduler, which hold its scopes.
     ///
     private final Ticks ticks;
-
+    
     ///
     /// The names of the budgets created so far, without the mod id.
     ///
     private final Set<String> budgetNames = new HashSet<>();
-
+    
     ///
     /// Should only ever be called from [NexusMod#getScheduler()].
     ///
@@ -52,7 +55,7 @@ public final class Scheduler {
     @ApiStatus.Internal
     public Scheduler(NexusMod mod) {
         this.mod = mod;
-        this.ticks = new Ticks(this);
+        this.ticks = new Ticks();
     }
     
     ///
@@ -94,7 +97,23 @@ public final class Scheduler {
         if (Scheduler.runningServer() == null) throw new IllegalStateException("No server is running");
         return this.ticks.getServerScope(() -> new TickScope(this, LogicalSide.SERVER));
     }
-
+    
+    ///
+    /// Ticks the ticker that this mod bound to the given block entity on the next pass of its level at the latest, whatever it waits for.
+    ///
+    /// Does nothing if this mod didn't bind a ticker to the block entity.
+    ///
+    /// @param entity The block entity.
+    ///
+    /// @see TickScope#ticker(BlockEntity, Tickable)
+    ///
+    public void wake(BlockEntity entity) {
+        Ticker ticker = Bindings.find(entity, this);
+        if (ticker != null) {
+            ticker.wake();
+        }
+    }
+    
     ///
     /// Creates a new budget under the name `<modid>:<name>`.
     ///
@@ -111,15 +130,15 @@ public final class Scheduler {
         if (minimum.isNegative() || maximum.isNegative()) {
             throw new IllegalArgumentException("Budget '" + name + "' of '" + modId + "' has the negative minimum '" + minimum + "' or maximum '" + maximum + "'");
         }
-
+        
         if (minimum.compareTo(maximum) > 0) {
             throw new IllegalArgumentException("Budget '" + name + "' of '" + modId + "' has the minimum '" + minimum + "' above its maximum '" + maximum + "'");
         }
-
+        
         if (!this.budgetNames.add(name)) {
             throw new IllegalArgumentException("Budget '" + name + "' of '" + modId + "' already exists");
         }
-
+        
         return new Budget(this, name, minimum, maximum);
     }
 }

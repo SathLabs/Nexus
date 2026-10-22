@@ -5,10 +5,15 @@ import lombok.Getter;
 import dev.satherov.nexus.api.tick.ticker.Next;
 import dev.satherov.nexus.api.tick.ticker.Tickable;
 
+import net.minecraft.CrashReportCategory;
+import net.minecraft.world.level.block.entity.BlockEntity;
+
+import org.jspecify.annotations.Nullable;
+
 ///
 /// A ticker that a scope ticks at the rate its own tick returns.
 ///
-/// Can be started through [TickScope#ticker(String, Tickable)].
+/// Can be started through [TickScope#ticker(String, Tickable)] and [TickScope#ticker(BlockEntity, Tickable)].
 ///
 public final class Ticker {
     
@@ -26,6 +31,11 @@ public final class Ticker {
     private final String name;
     
     ///
+    /// The block entity the ticker is bound to, or `null` if it is not bound.
+    ///
+    private final @Nullable BlockEntity entity;
+    
+    ///
     /// The tick of the ticker.
     ///
     private final Tickable tickable;
@@ -34,6 +44,11 @@ public final class Ticker {
     /// The pass of the last tick, or the last pass before the start if it never ticked.
     ///
     private long lastTick;
+    
+    ///
+    /// The number of passes until a skipped tick is retried, which is the number that the last tick returned, or `1` if none did.
+    ///
+    private int interval = 1;
     
     ///
     /// The pass the ticker ticks on next, or [Long#MAX_VALUE] while it sleeps.
@@ -47,15 +62,17 @@ public final class Ticker {
     private boolean active = true;
     
     ///
-    /// Should only ever be called from [TickScope#ticker(String, Tickable)].
+    /// Should only ever be called from [TickScope#ticker(String, Tickable)] and [TickScope#ticker(BlockEntity, Tickable)].
     ///
     /// @param scope    The scope that ticks the ticker.
     /// @param name     The name of the ticker.
+    /// @param entity   The block entity the ticker is bound to, or `null` if it is not bound.
     /// @param tickable The tick of the ticker.
     ///
-    Ticker(TickScope scope, String name, Tickable tickable) {
+    Ticker(TickScope scope, String name, @Nullable BlockEntity entity, Tickable tickable) {
         this.scope = scope;
         this.name = name;
+        this.entity = entity;
         this.tickable = tickable;
         
         this.lastTick = scope.passes;
@@ -88,17 +105,40 @@ public final class Ticker {
     ///
     /// Ticks the ticker on the current pass of its scope and then sets the pass of its next tick.
     ///
+    /// If the ticker is bound and its level does not tick blocks at the position of its block entity,
+    /// the tick will be skipped and retried after [#interval] passes.
+    ///
     void tick() {
         long pass = this.scope.passes;
+        //noinspection DataFlowIssue A bound block entity is always in a level.
+        if (this.entity != null && !this.entity.getLevel().shouldTickBlocksAt(this.entity.getBlockPos())) {
+            this.due = pass + this.interval;
+            return;
+        }
+        
         int elapsed = Math.clamp(pass - this.lastTick, 1, Integer.MAX_VALUE);
         this.lastTick = pass;
         
         // A wake during the tick sets the next pass, and no tick can return an earlier one.
         this.due = Long.MAX_VALUE;
         long requested = switch (this.tickable.tick(elapsed)) {
-            case Next.In(int ticks) -> pass + ticks;
+            case Next.In(int ticks) -> {
+                this.interval = ticks;
+                yield pass + ticks;
+            }
             case Next.Sleep() -> Long.MAX_VALUE;
         };
         this.due = Math.min(this.due, requested);
+    }
+    
+    ///
+    /// Adds the name of the ticker to the given crash report category, or the type and position of its block entity if it is bound.
+    ///
+    void fillCrashReportCategory(CrashReportCategory category) {
+        if (this.entity == null) {
+            category.setDetail("Name", this.name);
+        } else {
+            category.setDetail("Block entity type", this.name).setDetail("Position", this.entity.getBlockPos().toShortString());
+        }
     }
 }

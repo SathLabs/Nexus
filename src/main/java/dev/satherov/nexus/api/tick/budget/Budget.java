@@ -22,14 +22,14 @@ import java.util.function.BooleanSupplier;
 /// @see TickScope#job(Budget, BooleanSupplier)
 ///
 public final class Budget {
-
+    
     ///
     /// The scheduler that created the budget.
     /// Only the scopes of this scheduler accept the budget.
     ///
     @Getter
     private final Scheduler scheduler;
-
+    
     ///
     /// The name that the profiler section and the crash reports of the budget's jobs use.
     ///
@@ -37,19 +37,19 @@ public final class Budget {
     ///
     @Getter
     private final String name;
-
+    
     ///
     /// The time spent on every pass.
     ///
     @Getter
     private final Duration minimum;
-
+    
     ///
     /// The time spent on a pass while the tick has time left.
     ///
     @Getter
     private final Duration maximum;
-
+    
     ///
     /// Should only ever be called from [Scheduler#budget(String, Duration, Duration)].
     ///
@@ -63,7 +63,7 @@ public final class Budget {
         this.scheduler = scheduler;
         this.minimum = minimum;
         this.maximum = maximum;
-
+        
         this.name = scheduler.getMod().getModId() + ":" + name;
     }
 }

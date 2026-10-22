@@ -12,23 +12,23 @@ import java.util.function.BooleanSupplier;
 /// Can be started through [TickScope#job(Budget, BooleanSupplier)].
 ///
 public final class Job {
-
+    
     ///
     /// The budget the job spends.
     ///
     final Budget budget;
-
+    
     ///
     /// The step of the job, which returns `false` once the job is finished.
     ///
     private final BooleanSupplier step;
-
+    
     ///
     /// `true` until a step returned `false`, the job was cancelled, or its scope dropped it.
     ///
     @Getter
     private boolean active = true;
-
+    
     ///
     /// `true` once a step returned `false`.
     ///
@@ -36,7 +36,7 @@ public final class Job {
     ///
     @Getter
     private boolean finished;
-
+    
     ///
     /// Should only ever be called from [TickScope#job(Budget, BooleanSupplier)].
     ///
@@ -47,7 +47,7 @@ public final class Job {
         this.budget = budget;
         this.step = step;
     }
-
+    
     ///
     /// Stops the job before its next step.
     ///
@@ -58,7 +58,7 @@ public final class Job {
     public void cancel() {
         this.active = false;
     }
-
+    
     ///
     /// Steps the job once and then finishes it if the step returned `false` and the job is still active.
     ///
