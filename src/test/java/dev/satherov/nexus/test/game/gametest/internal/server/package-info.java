@@ -2,6 +2,9 @@
 /// The gametests of [dev.satherov.nexus.gametest.internal.server].
 ///
 @NullMarked
+@CheckReturnValue
 package dev.satherov.nexus.test.game.gametest.internal.server;
+
+import com.google.errorprone.annotations.CheckReturnValue;
 
 import org.jspecify.annotations.NullMarked;
