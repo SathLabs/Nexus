@@ -30,7 +30,7 @@ import java.util.function.UnaryOperator;
 ///
 /// A builder of one block without an item.
 ///
-/// Calls [#item()] to open an item builder.
+/// Call [#item()] to start an item builder.
 ///
 /// @param <BLOCK>  The type of the block.
 /// @param <PARENT> The type of what [#end()] returns.

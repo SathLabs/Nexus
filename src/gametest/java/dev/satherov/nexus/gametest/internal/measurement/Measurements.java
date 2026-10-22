@@ -29,9 +29,9 @@ import java.util.List;
 import java.util.Locale;
 
 ///
-/// Manages the measurements of a test case.
+/// The measurements of a test case.
 ///
-/// Writes the results into a json file under the report directory, adds the vanilla profiler's summary and a comparison if one was given with `-Pcompare`.
+/// Writes the results into a JSON file under the report directory, adds the vanilla profiler's summary and a comparison if one was given with `-Pcompare`.
 ///
 @Slf4j
 @ApiStatus.Internal
@@ -44,7 +44,7 @@ public final class Measurements {
     public static final Identifier BASELINE = Identifier.fromNamespaceAndPath("nexus_gametest", "baseline");
     
     ///
-    /// The json writer to use for the result files.
+    /// The JSON writer to use for the result files.
     ///
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     
@@ -232,7 +232,7 @@ public final class Measurements {
         ///
         /// The summary the JSON holds.
         ///
-        /// @param json The summary as JSON.
+        /// @param JSON The summary as JSON.
         ///
         /// @return The summary the JSON holds.
         ///

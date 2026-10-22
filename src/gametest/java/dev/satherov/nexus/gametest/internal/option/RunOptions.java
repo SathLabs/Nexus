@@ -18,7 +18,7 @@ import java.util.Objects;
 /// @param realtime If the ticks / frames should run as fast as the computer can or at minecraft's regular rates.
 /// @param show     If the client window is visible.
 /// @param compare  The directory of an earlier run's measurement files, or `null` if we don't want to compare anything.
-/// @param record   If golden images should be recoded instead of compared against.
+/// @param record   If golden images should be recorded instead of compared against.
 /// @param goldens  The directory that the goldens are recorded into or `null` if none was given.
 /// @param report   The path to place the report file of the run at.
 ///

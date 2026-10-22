@@ -30,7 +30,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 ///
-/// Responsible for running all client tests, writing the reports, and exiting.
+/// The run that runs all client tests, writes the reports, and then exits.
 ///
 /// @see MinecraftMixin
 /// @see LogoRendererMixin

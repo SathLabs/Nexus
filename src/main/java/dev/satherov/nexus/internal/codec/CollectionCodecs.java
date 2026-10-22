@@ -81,7 +81,7 @@ public class CollectionCodecs {
     );
     
     ///
-    /// The json operations, which turn a key into its string form and back.
+    /// The JSON operations, which turn a key into its string form and back.
     ///
     private static final Operations<JsonElement> JSON = Operations.of(CodecFormat.JSON);
     

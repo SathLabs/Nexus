@@ -24,8 +24,6 @@ public final class SoundEntry extends RegistryEntry<SoundEvent, SoundEvent> impl
     private final Translation translation;
     
     ///
-    /// Binds to the given key.
-    ///
     /// Should only ever be called from [SoundBuilder#createEntry(ResourceKey)].
     ///
     /// @param key         The key of the sound event.

@@ -98,7 +98,7 @@ public final class KeyedCodec<T, A extends Access.Plain> {
     }
     
     ///
-    /// Reads the value with the given key from the tag using the given format or return the fallback if the key is missing.
+    /// Reads the value with the given key from the tag using the given format or returns the fallback if the key is missing.
     ///
     /// @param format The format the value is in.
     /// @param tag    The tag to read from.

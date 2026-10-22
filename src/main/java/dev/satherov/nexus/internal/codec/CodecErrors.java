@@ -79,10 +79,10 @@ public class CodecErrors {
     
     ///
     /// Describes the given value the way an error message quotes it:
-    /// - A string, a json string, or a string tag is its escaped text in double quotes.
-    /// - A json number, a json boolean, or a numeric tag is its value.
-    /// - A json object or a compound tag is `an object`.
-    /// - A json array or any other collection tag is `a list`.
+    /// - A string, a JSON string, or a string tag is its escaped text in double quotes.
+    /// - A JSON number, a JSON boolean, or a numeric tag is its value.
+    /// - A JSON object or a compound tag is `an object`.
+    /// - A JSON array or any other collection tag is `a list`.
     /// - Anything else, such as a number, a boolean, or `null`, is its string form.
     ///
     /// @param value The value to describe.

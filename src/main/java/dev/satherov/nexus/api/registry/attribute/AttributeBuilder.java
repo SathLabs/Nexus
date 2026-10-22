@@ -23,7 +23,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 ///
-/// ATTRIBUTE builder of one entity attribute.
+/// A builder of one entity attribute.
 ///
 /// @param <ATTRIBUTE> The type of the attribute.
 /// @param <PARENT>    The type of what [#end()] returns.

@@ -10,7 +10,7 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 ///
 /// A factory of the screen of a menu, called on the client each time the menu opens.
 ///
-/// This is essentially [MenuScreens.ScreenConstructor] but without the client-only annotation.
+/// Similar to [MenuScreens.ScreenConstructor], without the client-only annotation.
 ///
 /// @param <MENU>   The type of the menu.
 /// @param <SCREEN> The type of the screen.

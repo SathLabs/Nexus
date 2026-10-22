@@ -73,7 +73,7 @@ public final class DataComponentEntry<VALUE> extends RegistryEntry<DataComponent
     }
     
     ///
-    /// Updates this attachment on the given holder with the given operator.
+    /// Updates this component on the given holder with the given operator.
     ///
     /// @param holder   The holder of the attachment.
     /// @param operator The operator to apply to the current value.
@@ -91,7 +91,7 @@ public final class DataComponentEntry<VALUE> extends RegistryEntry<DataComponent
     }
     
     ///
-    /// Updates this attachment on the given holder by replacing it with the given value.
+    /// Updates this component on the given holder by replacing it with the given value.
     ///
     /// @param holder   The holder of the attachment.
     /// @param supplier The supplier to replace the value with.

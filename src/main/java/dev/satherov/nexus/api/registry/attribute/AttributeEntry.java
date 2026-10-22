@@ -13,7 +13,7 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
 
 ///
-/// ATTRIBUTE holder of one entity attribute that a builder registered, bound once the attribute registry event has run.
+/// A holder of one entity attribute that a builder registered, bound once the attribute registry event has run.
 ///
 /// @param <ATTRIBUTE> The type of the attribute.
 ///

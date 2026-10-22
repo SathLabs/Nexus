@@ -224,7 +224,7 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     }
     
     ///
-    /// Creates the DFU codec of this codec, which runs the json or NBT format over the values of the ops.
+    /// Creates the DFU codec of this codec, which runs the JSON or NBT format over the values of the ops.
     ///
     @Override
     public Codec<T> asDfu() {

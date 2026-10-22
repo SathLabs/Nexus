@@ -257,7 +257,7 @@ public class VanillaAdapters {
     }
     
     ///
-    /// Encodes the given value with the given codec in NBT over the values of NBT, and in json over any other values, into a tag or a json element.
+    /// Encodes the given value with the given codec in NBT over the values of NBT, and in JSON over any other values, into a tag or a JSON element.
     ///
     private static <T> Object encodeFor(NexusCodec<T, ? super Access.Registries> codec, DynamicOps<?> ops, T value) {
         if (ops.compressMaps()) throw new NexusCodecException(VanillaAdapters.COMPRESSED);
@@ -270,7 +270,7 @@ public class VanillaAdapters {
     }
     
     ///
-    /// Gets the given tag or json element as a value of the given ops, converted from json if the ops are over any other values.
+    /// Gets the given tag or JSON element as a value of the given ops, converted from JSON if the ops are over any other values.
     ///
     private static <V> @Nullable V toOps(DynamicOps<V> ops, Object encoded) {
         // JavaOps's empty value is null, so the switch has to accept it.
@@ -282,7 +282,7 @@ public class VanillaAdapters {
     }
     
     ///
-    /// Converts the given json element into a value of the given ops, keeping the type of every number that has one.
+    /// Converts the given JSON element into a value of the given ops, keeping the type of every number that has one.
     /// Json null becomes the empty value of the ops, and an entry whose value is `null` is left out.
     ///
     private static <V> @Nullable V fromJson(DynamicOps<V> ops, JsonElement json) {
@@ -312,7 +312,7 @@ public class VanillaAdapters {
     ///
     /// Decodes a value from the given input of the given ops with the given codec.
     ///
-    /// Runs the json or NBT format directly if the ops are over its values, and converts to json otherwise.
+    /// Runs the JSON or NBT format directly if the ops are over its values, and converts to JSON otherwise.
     ///
     private static <T, V> T decode(NexusCodec<T, ? super Access.Registries> codec, DynamicOps<V> ops, @Nullable V input) {
         if (ops.compressMaps()) throw new NexusCodecException(VanillaAdapters.COMPRESSED);

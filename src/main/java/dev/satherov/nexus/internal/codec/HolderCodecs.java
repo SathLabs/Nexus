@@ -323,7 +323,7 @@ public class HolderCodecs {
         }
         
         ///
-        /// Creates the registry ops over the json or NBT ops of the given format, with the registries of the format.
+        /// Creates the registry ops over the JSON or NBT ops of the given format, with the registries of the format.
         ///
         private static <V> RegistryOps<V> registryOps(Operations<V> operations, ResourceKey<?> registry) {
             RegistryOps.RegistryInfoLookup lookup = operations.lookup();

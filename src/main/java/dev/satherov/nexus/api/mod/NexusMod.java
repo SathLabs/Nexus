@@ -63,7 +63,7 @@ public final class NexusMod {
     ///
     /// The mod's network, created when its getter is first called.
     ///
-    /// The getter throws an [IllegalStateException] if first called after the payload handlers events ran.
+    /// The getter throws an [IllegalStateException] if first called after the payload handler event ran.
     ///
     @Getter(lazy = true)
     private final Network network = new Network(this);

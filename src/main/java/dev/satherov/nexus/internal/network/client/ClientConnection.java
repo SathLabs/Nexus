@@ -22,9 +22,7 @@ import java.util.Objects;
 import java.util.function.BiConsumer;
 
 ///
-/// Utility class around for sending payloads to the server.
-///
-/// Basically just [ClientPacketDistributor] with some extras.
+/// Utility for sending payloads to the server, built on [ClientPacketDistributor].
 ///
 /// Should only ever be loaded on the client, through [Payload#sendToServer(Object)], [Payload#canSendToServer()] and the openers of [PayloadBuilder].
 ///

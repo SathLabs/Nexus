@@ -14,7 +14,7 @@ import java.util.Map;
 public interface Translatable {
     
     ///
-    /// The declared key this value stands for.
+    /// The declared key this value represents.
     ///
     /// @return The declared key.
     ///

@@ -26,8 +26,6 @@ public final class EffectEntry<EFFECT extends MobEffect> extends RegistryEntry<M
     private final Translation translation;
     
     ///
-    /// Binds to the given key.
-    ///
     /// Should only ever be called from [EffectBuilder#createEntry(ResourceKey)].
     ///
     /// @param key         The key of the mob effect.

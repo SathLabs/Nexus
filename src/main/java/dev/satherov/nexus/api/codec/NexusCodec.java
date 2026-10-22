@@ -1404,8 +1404,8 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// If this codec is a [StructCodec], it will be the codec of [StructCodec#asMapCodec()], the same as a record codec of DFU.
     ///
-    /// Over the ops of json or NBT values, such as [JsonOps], [NbtOps], and [RegistryOps] over them, it writes and reads the values of the ops directly.
-    /// Over any other ops, it converts the values to and from json, with json null as the empty value of the ops.
+    /// Over the ops of JSON or NBT values, such as [JsonOps], [NbtOps], and [RegistryOps] over them, it writes and reads the values of the ops directly.
+    /// Over any other ops, it converts the values to and from JSON, with JSON null as the empty value of the ops.
     ///
     /// If this codec needs registries, it will take them from the [RegistryOps], and fail over any other ops.
     /// Fails over ops that compress maps, such as [JsonOps#COMPRESSED].

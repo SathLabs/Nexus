@@ -22,7 +22,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Predicate;
 
 ///
-/// An event that attaches lines to the tooltips of item and Fluid Stacks.
+/// An event that attaches lines to the tooltips of item stacks and fluid stacks.
 ///
 /// Posted once on the event bus of every mod that has a [NexusMod] handle, when neoforge registers its tooltip appenders.
 ///
@@ -35,12 +35,12 @@ public final class AttachTooltipsEvent extends Event implements IModBusEvent {
     private final NexusMod mod;
     
     ///
-    /// The attachments to Item Stacks, in order, oldest first.
+    /// The attachments to item stacks, in order, oldest first.
     ///
     private final List<BiConsumer<ItemStack, TooltipBuilder>> itemAttachments = new ArrayList<>();
     
     ///
-    /// The attachments to Fluid Stacks, in order, oldest first.
+    /// The attachments to fluid stacks, in order, oldest first.
     ///
     private final List<BiConsumer<FluidStack, TooltipBuilder>> fluidAttachments = new ArrayList<>();
     
@@ -120,9 +120,9 @@ public final class AttachTooltipsEvent extends Event implements IModBusEvent {
     }
     
     ///
-    /// Merges all calls for adding tooltips to Item Stacks into a single one, in order, oldest first, or `null` if there were none.
+    /// Merges all calls for adding tooltips to item stacks into a single one, in order, oldest first, or `null` if there were none.
     ///
-    /// @return The merged call for adding tooltips to Item Stacks as one attachment, or `null` if there were none.
+    /// @return The merged call for adding tooltips to item stacks as one attachment, or `null` if there were none.
     ///
     @ApiStatus.Internal
     public @Nullable BiConsumer<ItemStack, TooltipBuilder> getItemAttachments() {
@@ -130,9 +130,9 @@ public final class AttachTooltipsEvent extends Event implements IModBusEvent {
     }
     
     ///
-    /// Merges all calls for adding tooltips to Fluid Stacks into a single one, in order, oldest first, or `null` if there were none.
+    /// Merges all calls for adding tooltips to fluid stacks into a single one, in order, oldest first, or `null` if there were none.
     ///
-    /// @return The merged call for adding tooltips to Fluid Stacks as one attachment, or `null` if there were none.
+    /// @return The merged call for adding tooltips to fluid stacks as one attachment, or `null` if there were none.
     ///
     @ApiStatus.Internal
     public @Nullable BiConsumer<FluidStack, TooltipBuilder> getFluidAttachments() {

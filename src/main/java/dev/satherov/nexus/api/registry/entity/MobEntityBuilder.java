@@ -44,7 +44,7 @@ public final class MobEntityBuilder
     private final EntityBuilder<ENTITY, PARENT, ?> entity;
     
     ///
-    /// Takes over the given builder of the entity type, with everything recorded on it so far.
+    /// Takes over the given builder of the entity type.
     ///
     /// Should only ever be called from [EntityBuilder#egg(Function)].
     ///

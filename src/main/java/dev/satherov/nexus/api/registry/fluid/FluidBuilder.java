@@ -66,8 +66,7 @@ public final class FluidBuilder
     private ItemBuilder<BUCKET, FluidBuilder<TYPE, SOURCE, FLOWING, BLOCK, BUCKET, PARENT>> bucket;
     
     ///
-    /// Takes over the given builder of the fluid, with everything recorded on it so far,
-    /// and opens the bucket of the given factory.
+    /// Takes over the given builder of the fluid and starts the builder of the bucket with the given factory.
     ///
     /// Should only ever be called from [PlainFluidBuilder#block(BiFunction)].
     ///
@@ -87,7 +86,8 @@ public final class FluidBuilder
     ///
     /// Starts a new bucket item builder, with the class of the provided factory result.
     ///
-    /// Any callbacks or client code called before this will receive the new values despite the lambda claiming otherwise, so call this first to avoid issues!
+    /// Any callbacks or client code called before this will receive the new values despite the lambda claiming otherwise.
+    /// This should be called first.
     ///
     /// @param factory The factory of the bucket, called once inside the registry event.
     ///
@@ -104,7 +104,7 @@ public final class FluidBuilder
     }
     
     ///
-    /// Opens the builder of the bucket, for its tabs or its tags.
+    /// The builder of the bucket, for its tabs or its tags.
     ///
     /// @return The builder of the bucket.
     ///

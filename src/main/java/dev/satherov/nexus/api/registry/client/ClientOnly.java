@@ -1,14 +1,12 @@
 package dev.satherov.nexus.api.registry.client;
 
 ///
-/// A supplier for client-only code.
+/// A supplier of client-only code.
 ///
-/// Due to the way lambda expressions are created and loaded by the JVM,
-/// we can't just have client-code inside one and just not call it on the server side.
+/// The body may use client classes, in a class that the server loads too.
+/// It should be a constructor reference, a method reference, or a plain `new`, and a body with statements should live in a client class of its own.
 ///
-/// Because of that we have this class to wrap everything inside another lambda itself, so any code, even another lambda expression
-/// must be called through this as to not get loaded. Inside the supplier body any client code can freely be used,
-/// even in classes that are also loaded on the server side.
+/// Should only ever be called on the client.
 ///
 /// @param <VALUE> The type of the client code.
 ///
