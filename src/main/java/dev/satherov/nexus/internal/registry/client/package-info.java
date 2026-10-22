@@ -1,3 +1,6 @@
+///
+/// The client side of registration.
+///
 @NullMarked
 @CheckReturnValue
 package dev.satherov.nexus.internal.registry.client;

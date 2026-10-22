@@ -1,3 +1,7 @@
+///
+/// The handle of a mod that uses Nexus.
+/// - [NexusMod]: The handle, with the translation table, the registrations, and the network of the mod.
+///
 @NullMarked
 @CheckReturnValue
 package dev.satherov.nexus.api.mod;

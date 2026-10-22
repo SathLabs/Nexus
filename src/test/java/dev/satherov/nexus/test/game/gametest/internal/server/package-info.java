@@ -1,3 +1,6 @@
+///
+/// The gametests of [dev.satherov.nexus.gametest.internal.server].
+///
 @NullMarked
 package dev.satherov.nexus.test.game.gametest.internal.server;
 

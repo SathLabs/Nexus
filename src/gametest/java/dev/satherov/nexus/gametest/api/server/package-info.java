@@ -1,3 +1,7 @@
+///
+/// Server tests.
+/// - [ServerTest]: The annotation on a server test method.
+///
 @NullMarked
 @CheckReturnValue
 package dev.satherov.nexus.gametest.api.server;

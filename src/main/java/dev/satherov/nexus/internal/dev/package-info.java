@@ -1,3 +1,6 @@
+///
+/// Tooling for dev runs.
+///
 @NullMarked
 @CheckReturnValue
 package dev.satherov.nexus.internal.dev;

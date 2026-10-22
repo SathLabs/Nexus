@@ -1,3 +1,6 @@
+///
+/// The discovered server and client test methods.
+///
 @NullMarked
 @CheckReturnValue
 package dev.satherov.nexus.gametest.internal.discovery;

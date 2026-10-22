@@ -1,3 +1,6 @@
+///
+/// The mixins and accessors of the client and server test runs.
+///
 @NullMarked
 @CheckReturnValue
 package dev.satherov.nexus.gametest.mixin;

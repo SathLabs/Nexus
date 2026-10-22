@@ -1,3 +1,6 @@
+///
+/// The unit tests of [dev.satherov.nexus.gametest.internal.option].
+///
 @NullMarked
 package dev.satherov.nexus.test.unit.gametest.internal.option;
 

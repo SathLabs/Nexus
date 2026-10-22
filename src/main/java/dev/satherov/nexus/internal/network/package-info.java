@@ -1,3 +1,6 @@
+///
+/// The envelopes that the values of declared payloads are sent in.
+///
 @NullMarked
 @CheckReturnValue
 package dev.satherov.nexus.internal.network;

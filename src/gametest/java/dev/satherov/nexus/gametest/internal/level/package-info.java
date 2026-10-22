@@ -1,3 +1,6 @@
+///
+/// The void level that server and client tests run in.
+///
 @NullMarked
 @CheckReturnValue
 package dev.satherov.nexus.gametest.internal.level;
