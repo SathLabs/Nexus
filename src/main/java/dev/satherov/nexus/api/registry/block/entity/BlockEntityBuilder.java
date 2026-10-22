@@ -3,7 +3,9 @@ package dev.satherov.nexus.api.registry.block.entity;
 import dev.satherov.nexus.api.registry.EntryBuilder;
 import dev.satherov.nexus.api.registry.Registrations;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
+import dev.satherov.nexus.api.tick.ticker.EntityTickable;
 import dev.satherov.nexus.internal.registry.client.ClientDispatch;
+import dev.satherov.nexus.internal.tick.EntityTickables;
 
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.capabilities.BlockCapability;
@@ -70,7 +72,12 @@ public final class BlockEntityBuilder<ENTITY extends BlockEntity, PARENT>
     /// or `null` if [#renderer(ClientOnly)] was not called.
     ///
     private @Nullable BiConsumer<IEventBus, BlockEntityEntry<ENTITY>> renderer;
-    
+
+    ///
+    /// The tickable of the server ticker, or `null` if [#serverTicker(EntityTickable)] was not called.
+    ///
+    private @Nullable EntityTickable<ENTITY> serverTicker;
+
     ///
     /// Starts the block entity type `<modid>:<name>` of the given factory.
     /// - `<modid>` is the id of the mod of the given registrations.
@@ -146,20 +153,46 @@ public final class BlockEntityBuilder<ENTITY extends BlockEntity, PARENT>
         this.renderer = (bus, entry) -> ClientDispatch.blockEntityRenderer(bus, entry, renderer);
         return this;
     }
-    
+
+    ///
+    /// Binds a ticker to every block entity of the type when it loads on a server level, ticking it with the given tickable.
+    ///
+    /// May only be called once, otherwise previous calls will be replaced.
+    ///
+    /// @param tickable The tick of the ticker, called with the block entity and the number of passes since the last tick.
+    ///
+    /// @return The builder for chaining.
+    ///
+    /// @throws IllegalStateException If [#register()] was already called or another builder took over this one.
+    ///
+    @CanIgnoreReturnValue
+    public BlockEntityBuilder<ENTITY, PARENT> serverTicker(EntityTickable<ENTITY> tickable) {
+        this.checkUnregistered();
+        this.serverTicker = tickable;
+        return this;
+    }
+
     ///
     /// Creates the type with its factory and the set of valid holders.
+    ///
+    /// If [#serverTicker(EntityTickable)] was called, the server tickable will be recorded for the created type.
     ///
     /// @return The created block entity type.
     ///
     @Override
     protected BlockEntityType<ENTITY> create() {
-        return new BlockEntityType<>(
+        BlockEntityType<ENTITY> type = new BlockEntityType<>(
                 this.factory,
                 this.blocks.stream()
                         .map(Holder::value)
                         .collect(Collectors.toUnmodifiableSet())
         );
+
+        if (this.serverTicker != null) {
+            EntityTickables.register(type, this.getRegistrations().getMod().getScheduler(), this.serverTicker, null);
+        }
+
+        return type;
     }
     
     ///
