@@ -3,6 +3,7 @@ package dev.satherov.nexus.api.tick;
 import lombok.Getter;
 
 import dev.satherov.nexus.api.mod.NexusMod;
+import dev.satherov.nexus.api.tick.budget.Budget;
 import dev.satherov.nexus.internal.tick.Ticks;
 
 import net.neoforged.fml.LogicalSide;
@@ -13,6 +14,10 @@ import net.minecraft.world.level.Level;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
+
+import java.time.Duration;
+import java.util.HashSet;
+import java.util.Set;
 
 ///
 /// The tick scopes and budgets of one mod.
@@ -33,7 +38,12 @@ public final class Scheduler {
     /// The game bus listeners of the scheduler, which hold its scopes.
     ///
     private final Ticks ticks;
-    
+
+    ///
+    /// The names of the budgets created so far, without the mod id.
+    ///
+    private final Set<String> budgetNames = new HashSet<>();
+
     ///
     /// Should only ever be called from [NexusMod#getScheduler()].
     ///
@@ -83,5 +93,33 @@ public final class Scheduler {
     public TickScope server() {
         if (Scheduler.runningServer() == null) throw new IllegalStateException("No server is running");
         return this.ticks.getServerScope(() -> new TickScope(this, LogicalSide.SERVER));
+    }
+
+    ///
+    /// Creates a new budget under the name `<modid>:<name>`.
+    ///
+    /// @param name    The name of the budget, without the mod id.
+    /// @param minimum The time spent on every pass.
+    /// @param maximum The time spent on a pass while the tick has time left.
+    ///
+    /// @return The created budget.
+    ///
+    /// @throws IllegalArgumentException If the name is already taken on this scheduler, a duration is negative, or the minimum exceeds the maximum.
+    ///
+    public Budget budget(String name, Duration minimum, Duration maximum) {
+        String modId = this.mod.getModId();
+        if (minimum.isNegative() || maximum.isNegative()) {
+            throw new IllegalArgumentException("Budget '" + name + "' of '" + modId + "' has the negative minimum '" + minimum + "' or maximum '" + maximum + "'");
+        }
+
+        if (minimum.compareTo(maximum) > 0) {
+            throw new IllegalArgumentException("Budget '" + name + "' of '" + modId + "' has the minimum '" + minimum + "' above its maximum '" + maximum + "'");
+        }
+
+        if (!this.budgetNames.add(name)) {
+            throw new IllegalArgumentException("Budget '" + name + "' of '" + modId + "' already exists");
+        }
+
+        return new Budget(this, name, minimum, maximum);
     }
 }

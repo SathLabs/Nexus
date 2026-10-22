@@ -1,5 +1,6 @@
 package dev.satherov.nexus.api.tick;
 
+import dev.satherov.nexus.api.tick.budget.Budget;
 import dev.satherov.nexus.api.tick.ticker.Tickable;
 
 import net.neoforged.fml.LogicalSide;
@@ -7,6 +8,7 @@ import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import net.minecraft.CrashReport;
 import net.minecraft.ReportedException;
+import net.minecraft.util.Util;
 import net.minecraft.util.profiling.Profiler;
 import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.world.level.Level;
@@ -16,10 +18,15 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Range;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 
 ///
@@ -43,7 +50,12 @@ public final class TickScope {
     /// The name of the scope in crash reports, the identifier of its level's dimension or the name of its side.
     ///
     private final String name;
-    
+
+    ///
+    /// The side the scope runs on.
+    ///
+    private final LogicalSide side;
+
     ///
     /// The thread the scope runs on.
     ///
@@ -58,7 +70,18 @@ public final class TickScope {
     /// The started tickers, in order, oldest first.
     ///
     private final List<Ticker> tickers = new ArrayList<>();
-    
+
+    ///
+    /// The jobs that first step on the next pass, in order, oldest first.
+    ///
+    private final List<Job> pendingJobs = new ArrayList<>();
+
+    ///
+    /// The stepping jobs by their budget, in the order the budgets were first used on the scope.
+    /// Each queue starts with the job that steps next.
+    ///
+    private final Map<Budget, Deque<Job>> jobsByBudget = new LinkedHashMap<>();
+
     ///
     /// How many passes have started so far.
     ///
@@ -97,7 +120,8 @@ public final class TickScope {
     private TickScope(Scheduler scheduler, String name, LogicalSide side) {
         this.scheduler = scheduler;
         this.name = name;
-        
+        this.side = side;
+
         this.thread = switch (side) {
             case SERVER -> Objects.requireNonNull(ServerLifecycleHooks.getCurrentServer(), "No server is running").getRunningThread();
             case CLIENT -> throw new IllegalArgumentException("The client side has no tick scope");
@@ -120,11 +144,25 @@ public final class TickScope {
         ProfilerFiller profiler = Profiler.get();
         profiler.push(this.scheduler.getMod().getModId());
         this.passes++;
+        // The work of this pass may start more jobs, which have to wait for the next one.
+        this.queuePendingJobs();
         this.runTasks();
         this.tickTickers(profiler);
+        this.stepJobs(profiler, hasTime);
         profiler.pop();
     }
-    
+
+    ///
+    /// Moves every pending job to the end of its budget's queue.
+    ///
+    private void queuePendingJobs() {
+        for (Job job : this.pendingJobs) {
+            this.jobsByBudget.computeIfAbsent(job.budget, _ -> new ArrayDeque<>()).add(job);
+        }
+
+        this.pendingJobs.clear();
+    }
+
     ///
     /// Runs every due task, in order, oldest first, and then forgets the inactive ones.
     ///
@@ -165,7 +203,45 @@ public final class TickScope {
         
         this.tickers.removeIf(ticker -> !ticker.isActive());
     }
-    
+
+    ///
+    /// Steps the jobs of every budget in turn, each budget in a profiler section of its name, for as long as the budget allows.
+    ///
+    private void stepJobs(ProfilerFiller profiler, BooleanSupplier hasTime) {
+        for (Map.Entry<Budget, Deque<Job>> entry : this.jobsByBudget.entrySet()) {
+            Deque<Job> jobs = entry.getValue();
+            jobs.removeIf(job -> !job.isActive());
+            if (jobs.isEmpty()) {
+                continue;
+            }
+
+            Budget budget = entry.getKey();
+            long minimum = TimeUnit.NANOSECONDS.convert(budget.getMinimum());
+            long maximum = this.side == LogicalSide.SERVER ? TimeUnit.NANOSECONDS.convert(budget.getMaximum()) : minimum;
+            profiler.push(budget.getName());
+            long start = Util.getNanos();
+            long elapsed;
+            do {
+                Job job = jobs.remove();
+                if (job.isActive()) {
+                    try {
+                        job.step();
+                    } catch (Throwable throwable) {
+                        throw this.crash(throwable, "job", budget.getName());
+                    }
+
+                    if (job.isActive()) {
+                        jobs.add(job);
+                    }
+                }
+
+                elapsed = Util.getNanos() - start;
+            } while (!jobs.isEmpty() && (elapsed < minimum || (elapsed < maximum && hasTime.getAsBoolean())));
+
+            profiler.pop();
+        }
+    }
+
     ///
     /// Wraps the given throwable into a crash report with a category on the mod, the scope, and the work that threw it.
     ///
@@ -192,8 +268,12 @@ public final class TickScope {
         this.ended = true;
         this.tasks.forEach(Task::cancel);
         this.tickers.forEach(Ticker::cancel);
+        this.pendingJobs.forEach(Job::cancel);
+        this.jobsByBudget.values().forEach(jobs -> jobs.forEach(Job::cancel));
         this.tasks.clear();
         this.tickers.clear();
+        this.pendingJobs.clear();
+        this.jobsByBudget.clear();
     }
     
     ///
@@ -257,7 +337,32 @@ public final class TickScope {
         this.tickers.add(ticker);
         return ticker;
     }
-    
+
+    ///
+    /// Starts a new job that steps in turn with the other jobs of the given budget, for as long as the budget allows on each pass.
+    ///
+    /// The job will first step on the next pass and will finish once its step returns `false`.
+    ///
+    /// @param budget The budget the job spends.
+    /// @param step   The step of the job, which returns `false` once the job is finished.
+    ///
+    /// @return The started job.
+    ///
+    /// @throws IllegalArgumentException If the budget belongs to another mod.
+    /// @throws IllegalStateException    If called off the scope's thread or after the scope ended.
+    ///
+    @CanIgnoreReturnValue
+    public Job job(Budget budget, BooleanSupplier step) {
+        this.checkUsable();
+        if (budget.getScheduler() != this.scheduler) {
+            throw new IllegalArgumentException("Budget '" + budget.getName() + "' does not belong to '" + this.scheduler.getMod().getModId() + "'");
+        }
+
+        Job job = new Job(budget, step);
+        this.pendingJobs.add(job);
+        return job;
+    }
+
     ///
     /// Throws an [IllegalStateException] if called off the scope's thread or after the scope ended.
     ///
