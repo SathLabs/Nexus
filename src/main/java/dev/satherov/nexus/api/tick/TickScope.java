@@ -3,6 +3,7 @@ package dev.satherov.nexus.api.tick;
 import dev.satherov.nexus.api.tick.budget.Budget;
 import dev.satherov.nexus.api.tick.ticker.Tickable;
 import dev.satherov.nexus.internal.tick.Bindings;
+import dev.satherov.nexus.internal.tick.client.ClientTicks;
 
 import net.neoforged.fml.LogicalSide;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
@@ -13,6 +14,7 @@ import net.minecraft.ReportedException;
 import net.minecraft.util.Util;
 import net.minecraft.util.profiling.Profiler;
 import net.minecraft.util.profiling.ProfilerFiller;
+import net.minecraft.util.thread.BlockableEventLoop;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
@@ -40,6 +42,7 @@ import java.util.function.Consumer;
 /// A pass runs the due tasks, then the due tickers, and then the jobs of each budget.
 /// Work submitted during a pass first runs on the next one.
 /// A level scope passes only while the tick rate manager of its level runs normally.
+/// The client scope passes only while the game is not paused.
 ///
 /// A level scope drops its work when the level unloads, the server scope when the server stops, and the client scope on logout.
 /// Every method throws an [IllegalStateException] if called off the scope's thread or after the scope ended.
@@ -67,9 +70,9 @@ public final class TickScope {
     private final LogicalSide side;
     
     ///
-    /// The thread the scope runs on.
+    /// The event loop whose thread the scope runs on.
     ///
-    private final Thread thread;
+    private final BlockableEventLoop<?> loop;
     
     ///
     /// The tasks that did not run for the last time yet, in order, oldest first.
@@ -114,7 +117,7 @@ public final class TickScope {
     }
     
     ///
-    /// Should only ever be called from [Scheduler#server()] and `internal.tick.client`.
+    /// Should only ever be called from [Scheduler#server()] and [ClientTicks#getScope()].
     ///
     /// @param scheduler The scheduler the scope belongs to.
     /// @param side      The side of the scope.
@@ -133,9 +136,9 @@ public final class TickScope {
         this.level = level;
         this.side = side;
         
-        this.thread = switch (side) {
-            case SERVER -> Objects.requireNonNull(ServerLifecycleHooks.getCurrentServer(), "No server is running").getRunningThread();
-            case CLIENT -> throw new IllegalArgumentException("The client side has no tick scope");
+        this.loop = switch (side) {
+            case SERVER -> Objects.requireNonNull(ServerLifecycleHooks.getCurrentServer(), "No server is running");
+            case CLIENT -> ClientTicks.getEventLoop();
         };
     }
     
@@ -425,7 +428,7 @@ public final class TickScope {
             throw new IllegalStateException("Tick scope '" + this.name + "' of '" + modId + "' has ended");
         }
         
-        if (Thread.currentThread() != this.thread) {
+        if (!this.loop.isSameThread()) {
             throw new IllegalStateException("Tick scope '" + this.name + "' of '" + modId + "' was used on thread '" + Thread.currentThread().getName() + "'");
         }
     }

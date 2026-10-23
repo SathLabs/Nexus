@@ -20,77 +20,77 @@ import java.util.concurrent.atomic.AtomicReference;
 /// Checks the passes on which the tasks and tickers of a level scope and of the server scope run.
 ///
 public class TickScopeSamples {
-
+    
     @ServerTest
     public static void delayedTaskRunsOnItsPassInLevel(GameTestHelper helper) {
         TickScopeSamples.delayedTaskRunsOnItsPass(helper, Nexus.getMod().getScheduler().in(helper.getLevel()));
     }
-
+    
     @ServerTest
     public static void delayedTaskRunsOnItsPassOnServer(GameTestHelper helper) {
         TickScopeSamples.delayedTaskRunsOnItsPass(helper, Nexus.getMod().getScheduler().server());
     }
-
+    
     @ServerTest
     public static void repeatingTaskCountsUntilCancelledInLevel(GameTestHelper helper) {
         TickScopeSamples.repeatingTaskCountsUntilCancelled(helper, Nexus.getMod().getScheduler().in(helper.getLevel()));
     }
-
+    
     @ServerTest
     public static void repeatingTaskCountsUntilCancelledOnServer(GameTestHelper helper) {
         TickScopeSamples.repeatingTaskCountsUntilCancelled(helper, Nexus.getMod().getScheduler().server());
     }
-
+    
     @ServerTest
     public static void tickerSleepsAndWakesInLevel(GameTestHelper helper) {
         TickScopeSamples.tickerSleepsAndWakes(helper, Nexus.getMod().getScheduler().in(helper.getLevel()));
     }
-
+    
     @ServerTest
     public static void tickerSleepsAndWakesOnServer(GameTestHelper helper) {
         TickScopeSamples.tickerSleepsAndWakes(helper, Nexus.getMod().getScheduler().server());
     }
-
+    
     @ServerTest
     public static void wakeDuringOwnTickIsKeptInLevel(GameTestHelper helper) {
         TickScopeSamples.wakeDuringOwnTickIsKept(helper, Nexus.getMod().getScheduler().in(helper.getLevel()));
     }
-
+    
     @ServerTest
     public static void wakeDuringOwnTickIsKeptOnServer(GameTestHelper helper) {
         TickScopeSamples.wakeDuringOwnTickIsKept(helper, Nexus.getMod().getScheduler().server());
     }
-
+    
     @ServerTest
     public static void taskCancelledInsideItsRunEndsInLevel(GameTestHelper helper) {
         TickScopeSamples.taskCancelledInsideItsRunEnds(helper, Nexus.getMod().getScheduler().in(helper.getLevel()));
     }
-
+    
     @ServerTest
     public static void taskCancelledInsideItsRunEndsOnServer(GameTestHelper helper) {
         TickScopeSamples.taskCancelledInsideItsRunEnds(helper, Nexus.getMod().getScheduler().server());
     }
-
+    
     @ServerTest
     public static void tickerCancelledInsideItsTickEndsInLevel(GameTestHelper helper) {
         TickScopeSamples.tickerCancelledInsideItsTickEnds(helper, Nexus.getMod().getScheduler().in(helper.getLevel()));
     }
-
+    
     @ServerTest
     public static void tickerCancelledInsideItsTickEndsOnServer(GameTestHelper helper) {
         TickScopeSamples.tickerCancelledInsideItsTickEnds(helper, Nexus.getMod().getScheduler().server());
     }
-
+    
     @ServerTest
     public static void workSubmittedDuringPassWaitsInLevel(GameTestHelper helper) {
         TickScopeSamples.workSubmittedDuringPassWaits(helper, Nexus.getMod().getScheduler().in(helper.getLevel()));
     }
-
+    
     @ServerTest
     public static void workSubmittedDuringPassWaitsOnServer(GameTestHelper helper) {
         TickScopeSamples.workSubmittedDuringPassWaits(helper, Nexus.getMod().getScheduler().server());
     }
-
+    
     @ServerTest
     public static void serverScopeWorksWhenFirstCalledAfterStart(GameTestHelper helper) {
         TickScope scope = Nexus.getMod().getScheduler().server();
@@ -102,7 +102,7 @@ public class TickScopeSamples {
             helper.succeed();
         });
     }
-
+    
     private static void delayedTaskRunsOnItsPass(GameTestHelper helper, TickScope scope) {
         AtomicInteger runs = new AtomicInteger();
         Task task = scope.delay(3, runs::incrementAndGet);
@@ -114,7 +114,7 @@ public class TickScopeSamples {
             helper.succeed();
         });
     }
-
+    
     private static void repeatingTaskCountsUntilCancelled(GameTestHelper helper, TickScope scope) {
         AtomicInteger runs = new AtomicInteger();
         Task task = scope.every(2, runs::incrementAndGet);
@@ -131,14 +131,14 @@ public class TickScopeSamples {
             helper.succeed();
         });
     }
-
+    
     private static void tickerSleepsAndWakes(GameTestHelper helper, TickScope scope) {
         List<Integer> elapsed = new ArrayList<>();
         Ticker ticker = scope.ticker("tick_scope_samples_sleeper", passes -> {
             elapsed.add(passes);
             return Next.SLEEP;
         });
-
+        
         helper.runAfterDelay(1L, () -> helper.assertValueEqual(elapsed, List.of(1), "elapsed passes of the ticks after one pass"));
         helper.runAfterDelay(3L, () -> {
             helper.assertValueEqual(elapsed, List.of(1), "elapsed passes of the ticks after three passes asleep");
@@ -151,7 +151,7 @@ public class TickScopeSamples {
             helper.succeed();
         });
     }
-
+    
     private static void wakeDuringOwnTickIsKept(GameTestHelper helper, TickScope scope) {
         AtomicInteger ticks = new AtomicInteger();
         AtomicReference<Ticker> self = new AtomicReference<>();
@@ -159,7 +159,7 @@ public class TickScopeSamples {
             if (ticks.incrementAndGet() == 1) {
                 self.get().wake();
             }
-
+            
             return Next.SLEEP;
         }));
         helper.runAfterDelay(1L, () -> helper.assertValueEqual(ticks.get(), 1, "ticks of the ticker after one pass"));
@@ -170,7 +170,7 @@ public class TickScopeSamples {
             helper.succeed();
         });
     }
-
+    
     private static void taskCancelledInsideItsRunEnds(GameTestHelper helper, TickScope scope) {
         AtomicInteger runs = new AtomicInteger();
         AtomicReference<Task> self = new AtomicReference<>();
@@ -184,7 +184,7 @@ public class TickScopeSamples {
             helper.succeed();
         });
     }
-
+    
     private static void tickerCancelledInsideItsTickEnds(GameTestHelper helper, TickScope scope) {
         AtomicInteger ticks = new AtomicInteger();
         AtomicReference<Ticker> self = new AtomicReference<>();
@@ -199,7 +199,7 @@ public class TickScopeSamples {
             helper.succeed();
         });
     }
-
+    
     private static void workSubmittedDuringPassWaits(GameTestHelper helper, TickScope scope) {
         Set<String> ran = new HashSet<>();
         List<Ticker> started = new ArrayList<>();

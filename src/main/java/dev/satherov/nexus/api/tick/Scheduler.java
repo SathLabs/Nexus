@@ -7,11 +7,11 @@ import dev.satherov.nexus.api.tick.budget.Budget;
 import dev.satherov.nexus.api.tick.ticker.Tickable;
 import dev.satherov.nexus.internal.tick.Bindings;
 import dev.satherov.nexus.internal.tick.Ticks;
+import dev.satherov.nexus.internal.tick.client.ClientTicks;
 
 import net.neoforged.fml.LogicalSide;
-import net.neoforged.neoforge.server.ServerLifecycleHooks;
+import net.neoforged.fml.loading.FMLEnvironment;
 
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
@@ -48,6 +48,11 @@ public final class Scheduler {
     private final Set<String> budgetNames = new HashSet<>();
     
     ///
+    /// The client listeners of the scheduler, which hold its client scope, or `null` if [#client()] was never called.
+    ///
+    private @Nullable ClientTicks clientTicks;
+    
+    ///
     /// Should only ever be called from [NexusMod#getScheduler()].
     ///
     /// @param mod The handle of the mod.
@@ -59,14 +64,6 @@ public final class Scheduler {
     }
     
     ///
-    /// The server that currently runs, or `null` if there is none or its tick loop ended.
-    ///
-    private static @Nullable MinecraftServer runningServer() {
-        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
-        return server != null && !server.isStopped() ? server : null;
-    }
-    
-    ///
     /// The scope of the given level, on the level's side.
     ///
     /// The scope stays the same object while the level is loaded.
@@ -75,12 +72,11 @@ public final class Scheduler {
     ///
     /// @return The scope of the level.
     ///
-    /// @throws IllegalStateException If the level is not one that the running server currently holds.
+    /// @throws IllegalStateException If the level is not one that the running server or the client currently holds.
     ///
     public TickScope in(Level level) {
-        MinecraftServer server = Scheduler.runningServer();
-        if (server == null || server.getLevel(level.dimension()) != level) {
-            throw new IllegalStateException("Level '" + level.dimension().identifier() + "' is not held by the running server");
+        if (!Ticks.isHeld(level)) {
+            throw new IllegalStateException("Level '" + level.dimension().identifier() + "' is not held by the running server or the client");
         }
         
         return this.ticks.getLevelScope(level, () -> new TickScope(this, level));
@@ -94,8 +90,24 @@ public final class Scheduler {
     /// @throws IllegalStateException If no server is running.
     ///
     public TickScope server() {
-        if (Scheduler.runningServer() == null) throw new IllegalStateException("No server is running");
+        if (Ticks.getRunningServer() == null) throw new IllegalStateException("No server is running");
         return this.ticks.getServerScope(() -> new TickScope(this, LogicalSide.SERVER));
+    }
+    
+    ///
+    /// The scope of the client's world session, created on first call and ending on logout.
+    ///
+    /// @return The scope of the client's world session.
+    ///
+    /// @throws IllegalStateException If called on a dedicated server or while the client is not in a world.
+    ///
+    public TickScope client() {
+        if (!FMLEnvironment.getDist().isClient()) throw new IllegalStateException("A dedicated server has no client");
+        if (this.clientTicks == null) {
+            this.clientTicks = new ClientTicks(this);
+        }
+        
+        return this.clientTicks.getScope();
     }
     
     ///

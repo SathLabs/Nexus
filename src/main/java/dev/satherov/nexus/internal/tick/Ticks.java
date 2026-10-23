@@ -1,21 +1,27 @@
 package dev.satherov.nexus.internal.tick;
 
 import dev.satherov.nexus.api.tick.TickScope;
+import dev.satherov.nexus.internal.tick.client.ClientTicks;
 
+import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.LevelAccessor;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
 
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.Map;
+import java.util.Set;
+import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 ///
@@ -30,9 +36,16 @@ import java.util.function.Supplier;
 public final class Ticks {
     
     ///
-    /// The level scopes by their level.
+    /// The levels that unloaded so far, across all schedulers, held weakly.
+    /// Safe from both threads of the integrated server.
     ///
-    private final Map<Level, TickScope> scopesByLevel = new HashMap<>();
+    private static final Set<Level> UNLOADED_LEVELS = Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+    
+    ///
+    /// The level scopes of both sides by their level.
+    /// Safe from both threads of the integrated server.
+    ///
+    private final Map<Level, TickScope> scopesByLevel = new ConcurrentHashMap<>();
     
     ///
     /// The server scope, or `null` if there is none.
@@ -47,6 +60,36 @@ public final class Ticks {
         NeoForge.EVENT_BUS.addListener(ServerTickEvent.Post.class, this::onServerTick);
         NeoForge.EVENT_BUS.addListener(LevelEvent.Unload.class, this::onLevelUnload);
         NeoForge.EVENT_BUS.addListener(ServerStoppedEvent.class, this::onServerStopped);
+    }
+    
+    ///
+    /// The server that currently runs, or `null` if there is none or its tick loop ended.
+    ///
+    /// @return The running server, or `null` if there is none.
+    ///
+    public static @Nullable MinecraftServer getRunningServer() {
+        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+        return server != null && !server.isStopped() ? server : null;
+    }
+    
+    ///
+    /// If the given level is one that the running server or the client currently holds and that has not unloaded yet.
+    ///
+    /// @param level The level.
+    ///
+    /// @return `true` if the level is held and has not unloaded yet.
+    ///
+    public static boolean isHeld(Level level) {
+        if (Ticks.UNLOADED_LEVELS.contains(level)) {
+            return false;
+        }
+        
+        if (level.isClientSide()) {
+            return FMLEnvironment.getDist().isClient() && ClientTicks.isCurrentLevel(level);
+        }
+        
+        MinecraftServer server = Ticks.getRunningServer();
+        return server != null && server.getLevel(level.dimension()) == level;
     }
     
     ///
@@ -97,18 +140,20 @@ public final class Ticks {
     }
     
     ///
-    /// Ends and forgets the scope of the level if it has one and then forgets the bindings of the level.
+    /// Marks the level as unloaded, ends and forgets its scope if it has one, and then forgets its bindings.
     ///
     private void onLevelUnload(LevelEvent.Unload event) {
-        LevelAccessor level = event.getLevel();
+        if (!(event.getLevel() instanceof Level level)) {
+            return;
+        }
+        
+        Ticks.UNLOADED_LEVELS.add(level);
         TickScope scope = this.scopesByLevel.remove(level);
         if (scope != null) {
             scope.end();
         }
         
-        if (level instanceof Level unloaded) {
-            Bindings.drop(unloaded);
-        }
+        Bindings.drop(level);
     }
     
     ///

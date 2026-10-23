@@ -6,8 +6,9 @@ import dev.satherov.nexus.api.registry.client.ClientOnly;
 import dev.satherov.nexus.api.tick.Scheduler;
 import dev.satherov.nexus.api.tick.ticker.EntityTickable;
 import dev.satherov.nexus.mixin.tick.LevelMixin;
+import dev.satherov.zelqro.mapping.ObjectMapping;
 
-import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 
@@ -49,17 +50,17 @@ public class EntityTickables {
     }
     
     ///
-    /// Binds the server tickable declared for the type of the given block entity to it, if there is one.
+    /// Binds the tickable declared for the type of the given block entity and the side of its level to the block entity, if there is one.
     ///
-    /// Does nothing on a client level.
+    /// Does nothing if the level of the block entity is not one that the running server or the client currently holds.
     ///
     /// @param entity The loaded block entity.
     ///
     public static void bind(BlockEntity entity) {
         Declaration<?> declaration = EntityTickables.DECLARATIONS_BY_TYPE.get(entity.getType());
-        // TODO Bind the client tickable on a client level once the client has a tick scope.
-        if (declaration != null && entity.getLevel() instanceof ServerLevel level) {
-            declaration.bindServer(entity, level);
+        Level level = entity.getLevel();
+        if (declaration != null && level != null && Ticks.isHeld(level)) {
+            declaration.bind(entity, level);
         }
     }
     
@@ -74,10 +75,10 @@ public class EntityTickables {
     private record Declaration<ENTITY extends BlockEntity>(Scheduler scheduler, @Nullable EntityTickable<ENTITY> server, @Nullable ClientOnly<EntityTickable<ENTITY>> client) {
         
         ///
-        /// Binds the server tickable to the given block entity in the given level, if there is one and the scheduler didn't bind a ticker to the block entity yet.
+        /// Binds the tickable of the given level's side to the given block entity in that level, if there is one and the scheduler didn't bind a ticker to the block entity yet.
         ///
-        private void bindServer(BlockEntity entity, ServerLevel level) {
-            EntityTickable<ENTITY> tickable = this.server;
+        private void bind(BlockEntity entity, Level level) {
+            EntityTickable<ENTITY> tickable = level.isClientSide() ? ObjectMapping.map(this.client, ClientOnly::get) : this.server;
             // A block entity that is set into its level again loads a second time without being removed.
             if (tickable == null || Bindings.find(entity, this.scheduler) != null) {
                 return;

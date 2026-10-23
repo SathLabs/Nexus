@@ -4,6 +4,8 @@
 /// - [EntityTickables]: The tickables declared for each block entity type.
 /// - [Bindings]: The tickers bound to block entities, across all mods.
 ///
+/// The client listeners are in [dev.satherov.nexus.internal.tick.client].
+///
 @NullMarked
 @CheckReturnValue
 package dev.satherov.nexus.internal.tick;
