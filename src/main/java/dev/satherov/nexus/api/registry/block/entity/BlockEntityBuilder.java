@@ -72,12 +72,19 @@ public final class BlockEntityBuilder<ENTITY extends BlockEntity, PARENT>
     /// or `null` if [#renderer(ClientOnly)] was not called.
     ///
     private @Nullable BiConsumer<IEventBus, BlockEntityEntry<ENTITY>> renderer;
-
+    
     ///
     /// The tickable of the server ticker, or `null` if [#serverTicker(EntityTickable)] was not called.
     ///
     private @Nullable EntityTickable<ENTITY> serverTicker;
-
+    
+    ///
+    /// The tickable of the client ticker, or `null` if [#clientTicker(ClientOnly)] was not called.
+    ///
+    /// Should only ever be resolved on the client.
+    ///
+    private @Nullable ClientOnly<EntityTickable<ENTITY>> clientTicker;
+    
     ///
     /// Starts the block entity type `<modid>:<name>` of the given factory.
     /// - `<modid>` is the id of the mod of the given registrations.
@@ -153,7 +160,7 @@ public final class BlockEntityBuilder<ENTITY extends BlockEntity, PARENT>
         this.renderer = (bus, entry) -> ClientDispatch.blockEntityRenderer(bus, entry, renderer);
         return this;
     }
-
+    
     ///
     /// Binds a ticker to every block entity of the type when it loads on a server level, ticking it with the given tickable.
     ///
@@ -171,11 +178,30 @@ public final class BlockEntityBuilder<ENTITY extends BlockEntity, PARENT>
         this.serverTicker = tickable;
         return this;
     }
-
+    
+    ///
+    /// Binds a ticker to every block entity of the type when it loads on a client level, ticking it with the given tickable.
+    ///
+    /// May only be called once, otherwise previous calls will be replaced.
+    ///
+    /// @param tickable The tick of the ticker, called with the block entity and the number of passes since the last tick.
+    ///
+    /// @return The builder for chaining.
+    ///
+    /// @throws IllegalStateException If [#register()] was already called or another builder took over this one.
+    ///
+    @CanIgnoreReturnValue
+    public BlockEntityBuilder<ENTITY, PARENT> clientTicker(ClientOnly<EntityTickable<ENTITY>> tickable) {
+        this.checkUnregistered();
+        this.clientTicker = tickable;
+        return this;
+    }
+    
     ///
     /// Creates the type with its factory and the set of valid holders.
     ///
-    /// If [#serverTicker(EntityTickable)] was called, the server tickable will be recorded for the created type.
+    /// If [#serverTicker(EntityTickable)] or [#clientTicker(ClientOnly)] was called,
+    /// the tickables will be recorded for the created type.
     ///
     /// @return The created block entity type.
     ///
@@ -187,11 +213,11 @@ public final class BlockEntityBuilder<ENTITY extends BlockEntity, PARENT>
                         .map(Holder::value)
                         .collect(Collectors.toUnmodifiableSet())
         );
-
-        if (this.serverTicker != null) {
-            EntityTickables.register(type, this.getRegistrations().getMod().getScheduler(), this.serverTicker, null);
+        
+        if (this.serverTicker != null || this.clientTicker != null) {
+            EntityTickables.register(type, this.getRegistrations().getMod().getScheduler(), this.serverTicker, this.clientTicker);
         }
-
+        
         return type;
     }
     
