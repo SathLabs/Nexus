@@ -4,8 +4,10 @@ import lombok.Getter;
 
 import dev.satherov.nexus.api.tick.ticker.Next;
 import dev.satherov.nexus.api.tick.ticker.Tickable;
+import dev.satherov.nexus.internal.tick.TickStatistics;
 
 import net.minecraft.CrashReportCategory;
+import net.minecraft.util.Util;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
 import org.jspecify.annotations.Nullable;
@@ -108,6 +110,8 @@ public final class Ticker {
     /// If the ticker is bound and its level does not tick blocks at the position of its block entity,
     /// the tick will be skipped and retried after [#interval] passes.
     ///
+    /// If ticks are being recorded, the duration of the tick will be added to [TickStatistics].
+    ///
     void tick() {
         long pass = this.scope.passes;
         //noinspection DataFlowIssue A bound block entity is always in a level.
@@ -121,7 +125,14 @@ public final class Ticker {
         
         // A wake during the tick sets the next pass, and no tick can return an earlier one.
         this.due = Long.MAX_VALUE;
-        long requested = switch (this.tickable.tick(elapsed)) {
+        boolean recording = TickStatistics.isEnabled();
+        long start = recording ? Util.getNanos() : 0L;
+        Next next = this.tickable.tick(elapsed);
+        if (recording) {
+            TickStatistics.record(this.name, Util.getNanos() - start);
+        }
+        
+        long requested = switch (next) {
             case Next.In(int ticks) -> {
                 this.interval = ticks;
                 yield pass + ticks;
