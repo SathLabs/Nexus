@@ -22,9 +22,14 @@ import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.platform.CompareOp;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.UnmodifiableView;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
@@ -63,11 +68,16 @@ public class ShapePipelines {
     );
 
     ///
+    /// The render setup of every render type created so far, in the order they were created.
+    ///
+    private static final Map<RenderType, RenderSetup> SETUPS = new LinkedHashMap<>();
+    
+    ///
     /// The line render types by depth mode.
     ///
     private static final Map<Paint.Depth, RenderType> LINE_TYPES = Util.makeEnumMap(
             Paint.Depth.class,
-            depth -> RenderType.create("nexus_lines", ShapePipelines.setup(ShapePipelines.LINE_PIPELINES.get(depth)).createRenderSetup())
+            depth -> ShapePipelines.type("nexus_lines", ShapePipelines.setup(ShapePipelines.LINE_PIPELINES.get(depth)).createRenderSetup())
     );
 
     ///
@@ -75,14 +85,14 @@ public class ShapePipelines {
     ///
     private static final Map<Paint.Depth, RenderType> FILL_TYPES = Util.makeEnumMap(
             Paint.Depth.class,
-            depth -> RenderType.create("nexus_fill", ShapePipelines.setup(ShapePipelines.FILL_PIPELINES.get(depth)).sortOnUpload().createRenderSetup())
+            depth -> ShapePipelines.type("nexus_fill", ShapePipelines.setup(ShapePipelines.FILL_PIPELINES.get(depth)).sortOnUpload().createRenderSetup())
     );
 
     ///
     /// The sprite quad render types by atlas and depth mode, created on first use.
     ///
     private static final BiFunction<Identifier, Paint.Depth, RenderType> SPRITE_TYPES = Util.memoize(
-            (atlas, depth) -> RenderType.create(
+            (atlas, depth) -> ShapePipelines.type(
                     "nexus_sprite",
                     ShapePipelines.setup(ShapePipelines.SPRITE_PIPELINES.get(depth)).sortOnUpload().withTexture("Sampler0", atlas).createRenderSetup()
             )
@@ -112,6 +122,15 @@ public class ShapePipelines {
         return RenderSetup.builder(pipeline).setLayeringTransform(LayeringTransform.VIEW_OFFSET_Z_LAYERING);
     }
 
+    ///
+    /// Creates a new render type over the given render setup and keeps the render setup in [#SETUPS].
+    ///
+    private static RenderType type(String name, RenderSetup setup) {
+        RenderType type = RenderType.create(name, setup);
+        ShapePipelines.SETUPS.put(type, setup);
+        return type;
+    }
+    
     ///
     /// Registers the given pipelines with the given registrar and assigns each the pack program of the given shading if Iris is present.
     ///
@@ -161,6 +180,28 @@ public class ShapePipelines {
         return ShapePipelines.SPRITE_TYPES.apply(atlas, depth);
     }
 
+    ///
+    /// Every render type of this class that was created so far, in the order they were created.
+    ///
+    /// @return The render types created so far.
+    ///
+    public static @UnmodifiableView Set<RenderType> getAllRenderTypes() {
+        return Collections.unmodifiableSet(ShapePipelines.SETUPS.keySet());
+    }
+    
+    ///
+    /// The textures that the given render type samples, by sampler name.
+    ///
+    /// @param type The render type, which should be one of this class.
+    ///
+    /// @return The textures and their samplers by sampler name.
+    ///
+    /// @throws NullPointerException If the render type is not one of this class.
+    ///
+    public static Map<String, RenderSetup.TextureAndSampler> getTextures(RenderType type) {
+        return Objects.requireNonNull(ShapePipelines.SETUPS.get(type), "Render type '" + type + "' is not a shape render type").getTextures();
+    }
+    
     ///
     /// Registers every pipeline with the given registrar.
     ///

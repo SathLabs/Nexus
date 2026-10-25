@@ -346,7 +346,15 @@ public class RunReportTest {
                         Map.entry("nexus:client_tick_scope_samples/client_level_task_runs", Expected.passed()),
                         Map.entry("nexus:client_tick_scope_samples/client_scope_task_runs", Expected.passed()),
                         Map.entry("nexus:client_tick_scope_samples/client_ticker_binds", Expected.passed()),
-                        Map.entry("nexus:client_tick_scope_samples/scopes_end_on_logout", Expected.passed())
+                        Map.entry("nexus:client_tick_scope_samples/scopes_end_on_logout", Expected.passed()),
+                        Map.entry("nexus:scene_samples/visible_box_is_cut_by_wall", Expected.passed()),
+                        Map.entry("nexus:scene_samples/hidden_box_shows_only_behind_wall", Expected.passed()),
+                        Map.entry("nexus:scene_samples/fill_stands_in_water", Expected.passed()),
+                        Map.entry("nexus:scene_samples/keyed_draw_replaces", Expected.passed()),
+                        Map.entry("nexus:scene_samples/expiry_removes_after_ticks_and_not_before", Expected.passed()),
+                        Map.entry("nexus:scene_samples/followed_entity_moves_drawing", Expected.passed()),
+                        Map.entry("nexus:scene_samples/repaint_changes_color", Expected.passed()),
+                        Map.entry("nexus:scene_samples/leaving_level_drops_everything", Expected.passed())
                 ),
                 List.of(
                         Measurement.of("nexus/client_run_samples/window", 40),
