@@ -1,11 +1,13 @@
 package dev.satherov.nexus;
 
 import dev.satherov.nexus.api.mod.NexusMod;
+import dev.satherov.nexus.internal.render.client.RenderDispatch;
 import dev.satherov.nexus.internal.text.tooltip.TooltipText;
 
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.loading.FMLEnvironment;
 
 import org.jspecify.annotations.Nullable;
 
@@ -36,6 +38,9 @@ public class Nexus {
     public Nexus(IEventBus bus, ModContainer container) {
         Nexus.mod = NexusMod.of(container);
         TooltipText.init();
+        if (FMLEnvironment.getDist().isClient()) {
+            RenderDispatch.listen(bus);
+        }
     }
     
     ///
