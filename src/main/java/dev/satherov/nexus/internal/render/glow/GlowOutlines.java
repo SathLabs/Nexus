@@ -17,8 +17,8 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 ///
 /// The glows of every mod: looks up the colors of the entity glow modifier, forces the outline chain on while any glow exists,
@@ -37,7 +37,7 @@ public final class GlowOutlines {
     ///
     /// The glows of every mod, in the order they were registered.
     ///
-    private final List<Glows> glows = new ArrayList<>();
+    private final List<Glows> glows = new CopyOnWriteArrayList<>();
     
     ///
     /// The ticker of the glows on the client scope of the current session, or `null` if none was started yet.
