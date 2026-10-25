@@ -18,6 +18,7 @@ import net.neoforged.neoforge.common.util.Lazy;
 
 import net.minecraft.client.CloudStatus;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.PrioritizeChunkUpdates;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.resources.Identifier;
 
@@ -139,6 +140,9 @@ public class ClientRun {
         minecraft.options.panoramaSpeed().set(0.0D);
         minecraft.options.cloudStatus().set(CloudStatus.OFF);
         minecraft.options.vignette().set(false);
+        
+        // Rebuild every changed section near the camera in the frame that changed it, so a block change shows up in the next capture.
+        minecraft.options.prioritizeChunkUpdates().set(PrioritizeChunkUpdates.NEARBY);
         
         Pump pump = new Pump(minecraft, options.realtime());
         List<Discovered> tests = ClientRun.TESTS.get();

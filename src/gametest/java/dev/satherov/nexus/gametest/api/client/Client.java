@@ -13,8 +13,11 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.Vec3;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Range;
 import org.jspecify.annotations.Nullable;
 
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 
 ///
@@ -90,6 +93,30 @@ public final class Client {
     }
     
     ///
+    /// Checks if the given captures have the same size and the same color in every pixel.
+    ///
+    /// @param first  The first capture.
+    /// @param second The second capture.
+    ///
+    /// @return `true` if both captures are identical.
+    ///
+    private static boolean isIdentical(Capture first, Capture second) {
+        if (first.width() != second.width() || first.height() != second.height()) {
+            return false;
+        }
+        
+        for (int y = 0; y < first.height(); y++) {
+            for (int x = 0; x < first.width(); x++) {
+                if (first.pixel(x, y) != second.pixel(x, y)) {
+                    return false;
+                }
+            }
+        }
+        
+        return true;
+    }
+    
+    ///
     /// Runs the game for one frame.
     ///
     /// Fails the test if we are not allowed to run any more frames.
@@ -129,6 +156,33 @@ public final class Client {
             
             this.pump();
         }
+    }
+    
+    ///
+    /// Runs the game until the given number of consecutive frames are identical, pixel for pixel.
+    /// The last frame rendered before this call counts as the first.
+    ///
+    /// Fails the test if we are not allowed to run any more frames.
+    ///
+    /// @param frames The number of consecutive frames that have to be identical.
+    ///
+    /// @throws IllegalArgumentException If the frames are below `2`.
+    /// @throws AssertionError           If we are not allowed to run any more frames, before the frames are identical.
+    ///
+    public void awaitStill(@Range(from = 2, to = Integer.MAX_VALUE) int frames) {
+        //noinspection ConstantValue Nothing enforces the range at runtime.
+        if (frames < 2) {
+            throw new IllegalArgumentException("Frame count '" + frames + "' is below 2");
+        }
+        
+        AtomicReference<@Nullable Capture> previous = new AtomicReference<>();
+        AtomicInteger identical = new AtomicInteger();
+        this.until("'" + frames + "' identical frames in a row", () -> {
+            Capture current = this.capture();
+            Capture before = previous.getAndSet(current);
+            identical.set(before != null && Client.isIdentical(before, current) ? identical.get() + 1 : 1);
+            return identical.get() >= frames;
+        });
     }
     
     ///
@@ -213,14 +267,17 @@ public final class Client {
     }
     
     ///
-    /// Runs the game until the client has handled everything the server sent up to the end of its next tick.
+    /// Runs the game until the client has handled everything the server sent up to the end of its next tick,
+    /// and then until the sections near the camera are rebuilt.
     ///
     /// Every change made on the server before this call will be visible on the client.
+    /// A change to a block within 10 blocks of the camera will also be visible in the next capture.
     ///
     /// Fails the test if we are not allowed to run any more frames.
     ///
     /// @throws IllegalStateException If we are not currently in a world.
-    /// @throws AssertionError        If we are not allowed to run any more frames, before the client has handled the packets.
+    /// @throws AssertionError        If we are not allowed to run any more frames, before the client has handled the packets and
+    ///                               rebuilt the sections.
     ///
     public void settle() {
         this.world().settle();

@@ -16,14 +16,12 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 
 import org.assertj.core.api.Assertions;
-import org.jspecify.annotations.Nullable;
 
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 
 ///
-/// The client tests that check the frame budget, the first screen, the level, the camera, the packets, and the HUD of a client.
+/// The client tests that check the frame budget, the first screen, the level, the camera, the packets, the rendered blocks, the still frames, and the HUD of a client.
 ///
 public class ClientSamples {
     
@@ -34,6 +32,10 @@ public class ClientSamples {
     private static final int HOTBAR_HEIGHT = 22;
     
     private static final int STILL_FRAMES = 100;
+    
+    private static final int IDENTICAL_FRAMES = 3;
+    
+    private static final double CAMERA_HEIGHT = 4.0D;
     
     @ClientTest
     public static void titleScreenAtStart(Client client) {
@@ -110,9 +112,54 @@ public class ClientSamples {
     }
     
     @ClientTest
+    public static void settleRendersServerBlock(Client client) {
+        if (RunOptions.fromProperties().realtime()) {
+            return;
+        }
+        
+        client.joinWorld();
+        client.hideHud(true);
+        ServerLevel level = client.serverLevel();
+        client.pose(level.getRespawnData().pos().getBottomCenter().add(0.0D, ClientSamples.CAMERA_HEIGHT, 0.0D), 0.0F, 0.0F);
+        client.awaitStill(2);
+        Capture before = client.capture();
+        
+        Vec3 camera = client.minecraft().gameRenderer.getMainCamera().position();
+        level.setBlockAndUpdate(BlockPos.containing(camera.add(0.0D, 0.0D, 3.0D)), Blocks.STONE.defaultBlockState());
+        client.settle();
+        
+        Capture after = client.capture();
+        int x = after.width() / 2;
+        int y = after.height() / 2;
+        Assertions.assertThat(after.pixel(x, y)).as("the center of the frame after the block was placed").isNotEqualTo(before.pixel(x, y));
+    }
+    
+    @ClientTest
+    public static void awaitStillEndsOnStillFrames(Client client) {
+        client.joinWorld();
+        client.awaitStill(ClientSamples.IDENTICAL_FRAMES);
+        Capture still = client.capture();
+        client.tick();
+        Assertions.assertThat(ClientSamples.matches(still, client.capture())).as("the frame after the still frames").isTrue();
+    }
+    
+    @ClientTest(maxFrames = ClientSamples.MAX_FRAMES)
+    public static void awaitStillOutOfFrames(Client client) {
+        int frames = ClientSamples.MAX_FRAMES + 2;
+        Assertions.assertThatExceptionOfType(AssertionError.class)
+                .isThrownBy(() -> client.awaitStill(frames))
+                .withMessageContaining(String.valueOf(frames));
+    }
+    
+    @ClientTest
+    public static void awaitStillRefusesOneFrame(Client client) {
+        Assertions.assertThatIllegalArgumentException().isThrownBy(() -> client.awaitStill(1));
+    }
+    
+    @ClientTest
     public static void stillWorldFramesMatch(Client client) {
         client.joinWorld();
-        ClientSamples.awaitStill(client);
+        client.awaitStill(2);
         Capture first = client.capture();
         
         for (int frame = 0; frame < ClientSamples.STILL_FRAMES; frame++) {
@@ -124,7 +171,7 @@ public class ClientSamples {
     @ClientTest
     public static void hideHudClearsHotbar(Client client) {
         client.joinWorld();
-        ClientSamples.awaitStill(client);
+        client.awaitStill(2);
         Capture shown = ClientSamples.hotbar(client);
         
         client.hideHud(true);
@@ -137,15 +184,6 @@ public class ClientSamples {
         
         Assertions.assertThat(ClientSamples.matches(shown, hidden)).isFalse();
         Assertions.assertThat(ClientSamples.matches(shown, shownAgain)).isTrue();
-    }
-    
-    private static void awaitStill(Client client) {
-        AtomicReference<@Nullable Capture> previous = new AtomicReference<>();
-        client.until("the frame to stop changing", () -> {
-            Capture current = client.capture();
-            Capture before = previous.getAndSet(current);
-            return before != null && ClientSamples.matches(before, current);
-        });
     }
     
     private static Capture hotbar(Client client) {

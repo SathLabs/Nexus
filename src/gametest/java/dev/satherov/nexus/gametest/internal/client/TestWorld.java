@@ -16,8 +16,11 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
 import net.minecraft.client.server.IntegratedServer;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
+import net.minecraft.core.SectionPos;
 import net.minecraft.network.protocol.common.ClientboundPingPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -61,6 +64,12 @@ public final class TestWorld {
     /// Vanilla smooths the eye height of the camera, and it never fully reaches the eye height of the player.
     ///
     private static final double CAMERA_TOLERANCE = 1.0E-4D;
+    
+    ///
+    /// The squared distance between the center of a section and the block of the camera below which vanilla rebuilds a changed section
+    /// in the frame that changed it, if nearby chunk updates are prioritized.
+    ///
+    private static final double SYNC_REBUILD_DISTANCE_SQUARED = 768.0D;
     
     ///
     /// The ping that [#settle()] asked for and the server has not sent yet, or `null` if there is none.
@@ -262,7 +271,8 @@ public final class TestWorld {
     }
     
     ///
-    /// Asks the server for a ping at the end of its next tick and then waits until the client handled it.
+    /// Asks the server for a ping at the end of its next tick, waits until the client handled it,
+    /// and then waits until the sections that vanilla rebuilds in the frame that changed them are rebuilt.
     ///
     /// The client handles packets in the order the server sent them, so every packet sent before the ping is handled once the ping is.
     ///
@@ -270,6 +280,26 @@ public final class TestWorld {
         int id = ++TestWorld.pings;
         TestWorld.PENDING_PING.set(new Ping(id, this.overworld().getServer().getTickCount()));
         this.client.until("the client to handle the ping '" + id + "'", () -> TestWorld.handledPing == id);
+        this.client.until("the sections near the camera to be rebuilt", this::areNearbySectionsRebuilt);
+    }
+    
+    ///
+    /// Checks if no visible section near the camera is waiting to be rebuilt.
+    ///
+    /// A section counts as near if the squared distance between its center and the block of the camera is below
+    /// {@value TestWorld#SYNC_REBUILD_DISTANCE_SQUARED}, the same test vanilla uses.
+    ///
+    /// @return `true` if every visible section near the camera is rebuilt.
+    ///
+    private boolean areNearbySectionsRebuilt() {
+        BlockPos camera = this.client.minecraft().gameRenderer.getMainCamera().blockPosition();
+        for (SectionRenderDispatcher.RenderSection section : this.client.minecraft().levelRenderer.getVisibleSections()) {
+            if (section.isDirty() && SectionPos.of(section.getSectionNode()).center().distSqr(camera) < TestWorld.SYNC_REBUILD_DISTANCE_SQUARED) {
+                return false;
+            }
+        }
+        
+        return true;
     }
     
     ///
