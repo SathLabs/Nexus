@@ -17,6 +17,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.animal.pig.Pig;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -26,7 +27,7 @@ import org.joml.Vector2f;
 import java.util.Objects;
 
 ///
-/// The client tests that check the color of an entity glow, the glow of a block that is broken, the glow of a chest, and the expiry of a glow.
+/// The client tests that check the color of an entity glow, the glow of a block that is broken, the glow of a chest as it opens, and the expiry of a glow.
 ///
 public class GlowsSamples {
     
@@ -39,6 +40,8 @@ public class GlowsSamples {
     private static final String KEY = "glow";
     
     private static final int EXPIRY = 5;
+    
+    private static final int CHEST_OPENERS_EVENT = 1;
     
     private static final int STILL_FRAMES = 10;
     
@@ -108,15 +111,26 @@ public class GlowsSamples {
         Vec3 eye = GlowsSamples.enter(client);
         BlockPos pos = GlowsSamples.place(client, eye, Blocks.CHEST);
         AABB box = new AABB(pos);
+        AABB lid = new AABB(pos.getX() + 0.2D, pos.getY() + 1.25D, pos.getZ() + 0.6D, pos.getX() + 0.8D, pos.getY() + 1.45D, pos.getZ() + 0.95D);
         Assertions.assertThat(GlowsSamples.redPixels(client, client.capture(), box)).as("the red pixels before the glow").isZero();
         
         GlowsSamples.glows().block(GlowsSamples.KEY, pos, GlowsSamples.RED);
         client.tick();
         client.awaitStill(GlowsSamples.STILL_FRAMES);
         
-        Capture capture = client.capture();
-        Assertions.assertThat(GlowsSamples.redPixels(client, capture, box)).as("the red pixels around the chest").isPositive();
-        capture.assertGolden("chest_glows");
+        Capture closed = client.capture();
+        Assertions.assertThat(GlowsSamples.redPixels(client, closed, box)).as("the red pixels around the closed chest").isPositive();
+        Assertions.assertThat(GlowsSamples.redPixels(client, closed, lid)).as("the red pixels where the open lid stands").isZero();
+        
+        ChestBlockEntity chest = (ChestBlockEntity) Objects.requireNonNull(Objects.requireNonNull(client.minecraft().level).getBlockEntity(pos), "the chest on the client");
+        client.serverLevel().blockEvent(pos, Blocks.CHEST, GlowsSamples.CHEST_OPENERS_EVENT, 1);
+        client.settle();
+        client.until("the chest lid to open", () -> chest.getOpenNess(0.0F) >= 1.0F);
+        client.awaitStill(GlowsSamples.STILL_FRAMES);
+        
+        Capture open = client.capture();
+        Assertions.assertThat(GlowsSamples.redPixels(client, open, lid)).as("the red pixels around the open lid").isPositive();
+        open.assertGolden("chest_glows");
     }
     
     @ClientTest

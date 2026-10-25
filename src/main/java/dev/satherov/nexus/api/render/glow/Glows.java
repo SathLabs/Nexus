@@ -75,8 +75,10 @@ public final class Glows {
     ///
     /// A glow of this mod under an equal key is removed first.
     ///
+    /// The outline covers the block's model, and the models and items that its block entity renderer submits in each frame.
+    /// Custom geometry that the block entity renderer submits will not glow.
+    ///
     /// If the position holds air, the glow will stay active and draw nothing.
-    /// If the block is drawn by a block entity renderer and its block model is empty, the glow will draw nothing either.
     ///
     /// @param key  The key to make the glow under.
     /// @param pos  The position of the block to outline.

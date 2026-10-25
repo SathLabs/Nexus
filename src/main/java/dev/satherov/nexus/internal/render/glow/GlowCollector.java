@@ -24,19 +24,24 @@ import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.phys.Vec3;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.QuadInstance;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.joml.Quaternionf;
 import org.jspecify.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 ///
-/// A submit node collector that passes on only the models it receives, as outlines in one color.
+/// A submit node collector that passes on only the models and items it receives, as outlines in one color.
 ///
-/// Every other submission is dropped, and so is every model whose render type has no outline.
+/// Every other submission is dropped, and so is every model or item quad whose render type has no outline.
 ///
-/// Each outline is drawn white into the outline target and then over that in the color by the outline buffer.
+/// A model is drawn white into the outline target and then over that in the color by the outline buffer.
+/// An item is drawn into the outline target in the color directly.
 ///
 @ApiStatus.Internal
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
@@ -209,7 +214,7 @@ public final class GlowCollector implements SubmitNodeCollector {
     public void submitBreakingBlockModel(PoseStack poseStack, BlockStateModel model, long seed, int progress) { }
     
     ///
-    /// Does nothing.
+    /// Submits the quads of the item in the color, grouped by the outline render type of each quad.
     ///
     @Override
     public void submitItem(
@@ -221,7 +226,23 @@ public final class GlowCollector implements SubmitNodeCollector {
             int[] tintLayers,
             List<BakedQuad> quads,
             ItemStackRenderState.FoilType foilType
-    ) { }
+    ) {
+        Map<RenderType, List<BakedQuad>> quadsByOutline = new LinkedHashMap<>();
+        for (BakedQuad quad : quads) {
+            RenderType outline = GlowCollector.outlineOf(quad.materialInfo().itemRenderType());
+            if (outline != null) {
+                quadsByOutline.computeIfAbsent(outline, _ -> new ArrayList<>()).add(quad);
+            }
+        }
+        
+        QuadInstance instance = new QuadInstance();
+        instance.setColor(this.argb);
+        quadsByOutline.forEach((outline, outlined) -> this.target.submitCustomGeometry(
+                poseStack,
+                outline,
+                (pose, consumer) -> outlined.forEach(quad -> consumer.putBakedQuad(pose, quad, instance))
+        ));
+    }
     
     ///
     /// Does nothing.
