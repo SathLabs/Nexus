@@ -3,8 +3,12 @@ package dev.satherov.nexus.api.render;
 import lombok.Getter;
 
 import dev.satherov.nexus.api.mod.NexusMod;
+import dev.satherov.nexus.api.registry.client.ClientOnly;
 import dev.satherov.nexus.api.render.glow.Glows;
 import dev.satherov.nexus.api.render.outline.Outlines;
+import dev.satherov.nexus.api.render.pipeline.Pipeline;
+import dev.satherov.nexus.api.render.pipeline.Shading;
+import dev.satherov.nexus.api.render.post.PostEffect;
 import dev.satherov.nexus.api.render.shape.Scene;
 import dev.satherov.nexus.internal.render.client.RenderDispatch;
 import dev.satherov.nexus.internal.render.glow.GlowOutlines;
@@ -14,11 +18,21 @@ import dev.satherov.nexus.internal.render.shape.Scenes;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.loading.FMLEnvironment;
 
+import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.world.phys.Vec3;
+
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.vertex.PoseStack;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.joml.Vector2f;
 import org.jspecify.annotations.Nullable;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.BiConsumer;
+import java.util.function.Supplier;
 
 ///
 /// What one mod draws and registers with the renderer.
@@ -50,6 +64,11 @@ public final class Render {
     /// The glows of the mod, or `null` until [#getGlows()] is first called.
     ///
     private @Nullable Glows glows;
+    
+    ///
+    /// The post effects of the mod by name.
+    ///
+    private final Map<String, PostEffect> postEffectByName = new HashMap<>();
     
     ///
     /// Should only ever be called from [NexusMod#getRender()].
@@ -144,5 +163,54 @@ public final class Render {
         }
         
         return RenderDispatch.project(position, this.mod.getModId());
+    }
+    
+    ///
+    /// Registers the pipeline when the client registers render pipelines and fixes what a shader pack does with it.
+    ///
+    /// @param pipeline The render pipeline to register.
+    /// @param shading  The shading a shader pack gives the pipeline.
+    ///
+    /// @return The registered pipeline.
+    ///
+    /// @throws IllegalStateException If the client already registered its render pipelines.
+    ///
+    @CanIgnoreReturnValue
+    public Pipeline pipeline(ClientOnly<Supplier<RenderPipeline>> pipeline, Shading shading) {
+        Pipeline registered = new Pipeline(pipeline, shading);
+        if (FMLEnvironment.getDist().isClient()) {
+            RenderDispatch.pipeline(registered);
+        }
+        
+        return registered;
+    }
+    
+    ///
+    /// Runs the drawer on every frame that renders a level, after the translucent features,
+    /// with the camera-relative pose stack and a buffer source of our own.
+    ///
+    /// A render type over a pipeline registered here is ended in the slot its shading asks for, any other inside the level.
+    ///
+    /// Registered until the game closes.
+    ///
+    /// @param drawer The drawer, called with the pose stack and the buffer source.
+    ///
+    /// @see Shading#OWN
+    ///
+    public void draw(ClientOnly<BiConsumer<PoseStack, MultiBufferSource>> drawer) {
+        if (FMLEnvironment.getDist().isClient()) {
+            RenderDispatch.draw(drawer);
+        }
+    }
+    
+    ///
+    /// The post effect `assets/<modid>/post_effect/<name>.json`, one handle per name.
+    ///
+    /// @param name The name of the post effect.
+    ///
+    /// @return The handle of the post effect.
+    ///
+    public PostEffect postEffect(String name) {
+        return this.postEffectByName.computeIfAbsent(name, _ -> new PostEffect(this.mod.id(name)));
     }
 }

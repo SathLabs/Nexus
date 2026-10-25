@@ -3,14 +3,19 @@ package dev.satherov.nexus.internal.render.client;
 import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.Nexus;
+import dev.satherov.nexus.api.registry.client.ClientOnly;
 import dev.satherov.nexus.api.render.Render;
 import dev.satherov.nexus.api.render.outline.TargetedBlock;
+import dev.satherov.nexus.api.render.pipeline.Pipeline;
+import dev.satherov.nexus.api.render.pipeline.Shading;
 import dev.satherov.nexus.internal.render.glow.GlowOutlines;
+import dev.satherov.nexus.internal.render.iris.IrisBridge;
 import dev.satherov.nexus.internal.render.outline.OutlineRules;
 import dev.satherov.nexus.internal.render.shape.Scenes;
 
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ExtractBlockOutlineRenderStateEvent;
 import net.neoforged.neoforge.client.event.FrameGraphSetupEvent;
@@ -26,15 +31,24 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
 
 import com.google.common.reflect.TypeToken;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.platform.Window;
+import com.mojang.blaze3d.vertex.PoseStack;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.joml.Vector2f;
 import org.jspecify.annotations.Nullable;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.BiConsumer;
 
 ///
 /// The only class that uses client render events.
@@ -48,7 +62,32 @@ import org.jspecify.annotations.Nullable;
 @UtilityClass
 @ApiStatus.Internal
 public class RenderDispatch {
-
+    
+    ///
+    /// The pipelines of the mods that wait for the registration event, in the order they were registered.
+    ///
+    private static final List<Pipeline> WAITING_PIPELINES = new CopyOnWriteArrayList<>();
+    
+    ///
+    /// The pipelines of the mods by their render pipeline, filled by the registration event.
+    ///
+    private static final Map<RenderPipeline, Pipeline> PIPELINES = new HashMap<>();
+    
+    ///
+    /// The draw hooks of the mods, in the order they were registered.
+    ///
+    private static final List<BiConsumer<PoseStack, MultiBufferSource>> HOOKS = new CopyOnWriteArrayList<>();
+    
+    ///
+    /// The runner of the draw hooks.
+    ///
+    private static final DrawHooks DRAW_HOOKS = new DrawHooks(RenderDispatch.HOOKS, RenderDispatch.PIPELINES);
+    
+    ///
+    /// If the registration event of the render pipelines ran.
+    ///
+    private static boolean pipelinesRegistered;
+    
     ///
     /// Subscribes on the mod bus of Nexus and the game bus.
     ///
@@ -58,7 +97,7 @@ public class RenderDispatch {
     /// @param nexusBus The mod bus of Nexus.
     ///
     public static void listen(IEventBus nexusBus) {
-        nexusBus.addListener(RegisterRenderPipelinesEvent.class, event -> ShapePipelines.register(event::registerPipeline));
+        nexusBus.addListener(RegisterRenderPipelinesEvent.class, RenderDispatch::registerPipelines);
         nexusBus.addListener(
                 RegisterRenderStateModifiersEvent.class,
                 event -> event.registerEntityModifier(new TypeToken<EntityRenderer<Entity, EntityRenderState>>() { }, RenderDispatch::glow)
@@ -69,10 +108,33 @@ public class RenderDispatch {
                 event -> GlowOutlines.INSTANCE.submitBlocks(event.getPoseStack(), event.getSubmitNodeCollector(), event.getLevelRenderState().cameraRenderState.pos)
         );
         NeoForge.EVENT_BUS.addListener(ExtractBlockOutlineRenderStateEvent.class, RenderDispatch::extractOutline);
+        NeoForge.EVENT_BUS.addListener(RenderLevelStageEvent.AfterTranslucentFeatures.class, event -> RenderDispatch.DRAW_HOOKS.drawInLevel(event.getPoseStack()));
         NeoForge.EVENT_BUS.addListener(RenderLevelStageEvent.AfterTranslucentBlocks.class, RenderDispatch::drawScenes);
+        NeoForge.EVENT_BUS.addListener(RenderLevelStageEvent.AfterLevel.class, event -> RenderDispatch.DRAW_HOOKS.drawAfterLevel(event.getModelViewMatrix()));
         // The client scope only exists once the client session marked the login, which it does at the normal priority.
         NeoForge.EVENT_BUS.addListener(EventPriority.LOW, ClientPlayerNetworkEvent.LoggingIn.class, RenderDispatch::start);
         NeoForge.EVENT_BUS.addListener(LevelEvent.Unload.class, RenderDispatch::end);
+    }
+    
+    ///
+    /// Registers the library's pipelines and then the mods' pipelines,
+    /// and assigns each mod pipeline the pack program of its shading if Iris is present.
+    ///
+    private static void registerPipelines(RegisterRenderPipelinesEvent event) {
+        ShapePipelines.register(event::registerPipeline);
+        boolean iris = ModList.get().isLoaded("iris");
+        for (Pipeline pipeline : RenderDispatch.WAITING_PIPELINES) {
+            RenderPipeline renderPipeline = pipeline.getPipeline().get().get();
+            event.registerPipeline(renderPipeline);
+            if (iris) {
+                IrisBridge.assign(renderPipeline, pipeline.getShading());
+            }
+            
+            RenderDispatch.PIPELINES.put(renderPipeline, pipeline);
+        }
+        
+        RenderDispatch.WAITING_PIPELINES.clear();
+        RenderDispatch.pipelinesRegistered = true;
     }
     
     ///
@@ -131,6 +193,35 @@ public class RenderDispatch {
             GlowOutlines.INSTANCE.end();
             OutlineRules.INSTANCE.end();
         }
+    }
+    
+    ///
+    /// Registers a mod's pipeline for the pipeline registration event and the Iris assignment.
+    ///
+    /// Should only ever be called from [Render#pipeline(ClientOnly, Shading)].
+    ///
+    /// @param pipeline The pipeline to register.
+    ///
+    /// @throws IllegalStateException If the registration event already ran.
+    ///
+    public static void pipeline(Pipeline pipeline) {
+        if (RenderDispatch.pipelinesRegistered) {
+            Identifier location = pipeline.getPipeline().get().get().getLocation();
+            throw new IllegalStateException("Could not register the pipeline '" + location + "', the render pipelines were already registered");
+        }
+        
+        RenderDispatch.WAITING_PIPELINES.add(pipeline);
+    }
+    
+    ///
+    /// Queues a draw hook.
+    ///
+    /// Should only ever be called from [Render#draw(ClientOnly)].
+    ///
+    /// @param drawer The drawer of a mod.
+    ///
+    public static void draw(ClientOnly<BiConsumer<PoseStack, MultiBufferSource>> drawer) {
+        RenderDispatch.HOOKS.add(drawer.get());
     }
     
     ///

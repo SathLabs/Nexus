@@ -361,7 +361,15 @@ public class RunReportTest {
                         Map.entry("nexus:glows_samples/entity_glows_in_color", Expected.passed()),
                         Map.entry("nexus:glows_samples/block_glow_stops_when_broken", Expected.passed()),
                         Map.entry("nexus:glows_samples/chest_glows", Expected.passed()),
-                        Map.entry("nexus:glows_samples/expiry_removes_after_ticks_and_not_before", Expected.passed())
+                        Map.entry("nexus:glows_samples/expiry_removes_after_ticks_and_not_before", Expected.passed()),
+                        Map.entry("nexus:pipeline_samples/own_shader_draws_through_draw_hook", Expected.passed()),
+                        Map.entry("nexus:pipeline_samples/bound_uniform_reaches_shader", Expected.passed()),
+                        Map.entry("nexus:pipeline_samples/later_binding_replaces_earlier", Expected.passed()),
+                        Map.entry("nexus:pipeline_samples/registration_after_the_event_throws", Expected.passed()),
+                        Map.entry("nexus:post_effect_samples/activated_effect_changes_pixel", Expected.passed()),
+                        Map.entry("nexus:post_effect_samples/effects_run_in_activation_order", Expected.passed()),
+                        Map.entry("nexus:post_effect_samples/deactivation_restores", Expected.passed()),
+                        Map.entry("nexus:post_effect_samples/missing_file_runs_nothing", Expected.passed())
                 ),
                 List.of(
                         Measurement.of("nexus/client_run_samples/window", 40),

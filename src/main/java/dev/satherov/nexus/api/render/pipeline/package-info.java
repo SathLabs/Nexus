@@ -1,5 +1,6 @@
 ///
-/// The shading of a mod's pipelines under a shader pack.
+/// A mod's pipelines and their shading under a shader pack.
+/// - [Pipeline]: A pipeline registered with the mod's render and its bound uniform blocks.
 /// - [Shading]: The program of the pack or the pipeline's own shaders.
 ///
 @NullMarked

@@ -12,6 +12,8 @@
 ///
 /// For the shading of pipelines under a shader pack see [dev.satherov.nexus.api.render.pipeline].
 ///
+/// For the screen-wide post effects see [dev.satherov.nexus.api.render.post].
+///
 @NullMarked
 @CheckReturnValue
 package dev.satherov.nexus.api.render;
