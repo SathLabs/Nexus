@@ -1,6 +1,7 @@
 package dev.satherov.nexus.test.game.api.render.shape;
 
 import dev.satherov.nexus.Nexus;
+import dev.satherov.nexus.api.render.Render;
 import dev.satherov.nexus.api.render.shape.Drawing;
 import dev.satherov.nexus.api.render.shape.Paint;
 import dev.satherov.nexus.api.render.shape.Scene;
@@ -10,8 +11,15 @@ import dev.satherov.nexus.gametest.api.client.Client;
 import dev.satherov.nexus.gametest.api.client.ClientTest;
 import dev.satherov.nexus.gametest.internal.option.RunOptions;
 
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.fml.event.lifecycle.FMLConstructModEvent;
+
+import net.minecraft.client.gui.components.debug.DebugScreenEntryList;
+import net.minecraft.client.gui.components.debug.DebugScreenEntryStatus;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.decoration.ArmorStand;
@@ -22,11 +30,12 @@ import net.minecraft.world.phys.Vec3;
 
 import org.assertj.core.api.Assertions;
 import org.joml.Vector2f;
+import org.jspecify.annotations.Nullable;
 
 import java.util.Objects;
 
 ///
-/// The client tests that check the depth modes, the water, the keys, the expiry, the followed entities, the repaint, and the end of the drawings of a scene.
+/// The client tests that check the depth modes, the water, the keys, the expiry, the followed entities, the repaint, and the end of the drawings of a scene, and a debug renderer's scene.
 ///
 public class SceneSamples {
     
@@ -36,7 +45,13 @@ public class SceneSamples {
     
     private static final String KEY = "box";
     
+    private static final String DEBUG = "scene_samples";
+    
+    private static final String LATE_DEBUG = "scene_samples_late";
+    
     private static final int EXPIRY = 5;
+    
+    private static final int DEBUG_TICKS = 3;
     
     private static final int STILL_FRAMES = 10;
     
@@ -45,6 +60,10 @@ public class SceneSamples {
     private static final double ENTITY_TOLERANCE = 1.0E-3D;
     
     private static final double HEIGHT = 4.0D;
+    
+    private static @Nullable Vec3 debugCenter;
+    
+    private static int debugCalls;
     
     @ClientTest
     public static void visibleBoxIsCutByWall(Client client) {
@@ -203,6 +222,52 @@ public class SceneSamples {
         Assertions.assertThat(SceneSamples.color(client, capture, rejoined.add(2.0D, 0.0D, 6.0D))).as("the box under no key after the rejoin").isNotEqualTo(SceneSamples.BLUE);
     }
     
+    @ClientTest
+    public static void debugRendererRefillsWhileOn(Client client) {
+        if (RunOptions.fromProperties().realtime()) {
+            return;
+        }
+        
+        Vec3 eye = SceneSamples.enter(client, 0.0F);
+        Vec3 first = eye.add(-1.5D, 0.0D, 6.0D);
+        Vec3 second = eye.add(1.5D, 0.0D, 6.0D);
+        Identifier id = Nexus.getMod().id(SceneSamples.DEBUG);
+        DebugScreenEntryList entries = client.minecraft().debugEntries;
+        SceneSamples.debugCenter = first;
+        entries.setStatus(id, DebugScreenEntryStatus.ALWAYS_ON);
+        try {
+            client.tick();
+            SceneSamples.assertColor(client, client.capture(), first, SceneSamples.RED);
+            
+            SceneSamples.debugCenter = second;
+            SceneSamples.debugCalls = 0;
+            client.ticks(SceneSamples.DEBUG_TICKS);
+            
+            Capture moved = client.capture();
+            Assertions.assertThat(SceneSamples.debugCalls).as("the calls of the renderer while it is on").isEqualTo(SceneSamples.DEBUG_TICKS);
+            Assertions.assertThat(SceneSamples.color(client, moved, first)).as("the box of an earlier tick").isNotEqualTo(SceneSamples.RED);
+            SceneSamples.assertColor(client, moved, second, SceneSamples.RED);
+            moved.assertGolden("debug_renderer_refills_while_on");
+            
+            entries.setStatus(id, DebugScreenEntryStatus.NEVER);
+            SceneSamples.debugCalls = 0;
+            client.tick();
+            Assertions.assertThat(SceneSamples.debugCalls).as("the calls of the renderer once it is off").isZero();
+            Assertions.assertThat(SceneSamples.color(client, client.capture(), second)).as("the box once the renderer is off").isNotEqualTo(SceneSamples.RED);
+        } finally {
+            entries.setStatus(id, DebugScreenEntryStatus.NEVER);
+            SceneSamples.debugCenter = null;
+        }
+    }
+    
+    @ClientTest
+    public static void debugRendererAfterTheEventThrows(Client client) {
+        Render render = Nexus.getMod().getRender();
+        Assertions.assertThatIllegalStateException()
+                .as("a debug renderer registered after the debug entries were registered")
+                .isThrownBy(() -> render.debugRenderer(SceneSamples.LATE_DEBUG, () -> SceneSamples::drawDebug));
+    }
+    
     private static Scene scene() {
         return Nexus.getMod().getRender().getScene();
     }
@@ -245,5 +310,22 @@ public class SceneSamples {
         return new Pixel((int) (screen.x * scale), (int) (screen.y * scale));
     }
     
+    private static void drawDebug(Scene scene) {
+        SceneSamples.debugCalls++;
+        Vec3 center = SceneSamples.debugCenter;
+        if (center != null) {
+            scene.draw(Shape.box(AABB.ofSize(center, 1.0D, 1.0D, 1.0D)), Paint.fill(SceneSamples.RED));
+        }
+    }
+    
     private record Pixel(int x, int y) { }
+    
+    @EventBusSubscriber(modid = Nexus.MOD_ID)
+    public static final class Registered {
+        
+        @SubscribeEvent
+        public static void onConstruct(FMLConstructModEvent event) {
+            Nexus.getMod().getRender().debugRenderer(SceneSamples.DEBUG, () -> SceneSamples::drawDebug);
+        }
+    }
 }

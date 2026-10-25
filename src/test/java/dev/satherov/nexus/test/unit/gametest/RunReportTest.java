@@ -355,6 +355,8 @@ public class RunReportTest {
                         Map.entry("nexus:scene_samples/followed_entity_moves_drawing", Expected.passed()),
                         Map.entry("nexus:scene_samples/repaint_changes_color", Expected.passed()),
                         Map.entry("nexus:scene_samples/leaving_level_drops_everything", Expected.passed()),
+                        Map.entry("nexus:scene_samples/debug_renderer_refills_while_on", Expected.passed()),
+                        Map.entry("nexus:scene_samples/debug_renderer_after_the_event_throws", Expected.passed()),
                         Map.entry("nexus:outlines_samples/replacing_rule_hides_vanilla_outline", Expected.passed()),
                         Map.entry("nexus:outlines_samples/adding_rule_keeps_vanilla_outline", Expected.passed()),
                         Map.entry("nexus:outlines_samples/rule_is_asked_once_per_target", Expected.passed()),
@@ -369,7 +371,11 @@ public class RunReportTest {
                         Map.entry("nexus:post_effect_samples/activated_effect_changes_pixel", Expected.passed()),
                         Map.entry("nexus:post_effect_samples/effects_run_in_activation_order", Expected.passed()),
                         Map.entry("nexus:post_effect_samples/deactivation_restores", Expected.passed()),
-                        Map.entry("nexus:post_effect_samples/missing_file_runs_nothing", Expected.passed())
+                        Map.entry("nexus:post_effect_samples/missing_file_runs_nothing", Expected.passed()),
+                        Map.entry("nexus:hud_layer_samples/layer_draws_above_crosshair", Expected.passed()),
+                        Map.entry("nexus:hud_layer_samples/below_slot_draws_under_anchor", Expected.passed()),
+                        Map.entry("nexus:hud_layer_samples/projected_marker_hits_block", Expected.passed()),
+                        Map.entry("nexus:hud_layer_samples/hidden_hud_skips_layer", Expected.passed())
                 ),
                 List.of(
                         Measurement.of("nexus/client_run_samples/window", 40),

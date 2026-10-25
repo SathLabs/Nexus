@@ -5,12 +5,15 @@ import lombok.Getter;
 import dev.satherov.nexus.api.mod.NexusMod;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
 import dev.satherov.nexus.api.render.glow.Glows;
+import dev.satherov.nexus.api.render.hud.HudLayer;
+import dev.satherov.nexus.api.render.hud.HudSlot;
 import dev.satherov.nexus.api.render.outline.Outlines;
 import dev.satherov.nexus.api.render.pipeline.Pipeline;
 import dev.satherov.nexus.api.render.pipeline.Shading;
 import dev.satherov.nexus.api.render.post.PostEffect;
 import dev.satherov.nexus.api.render.shape.Scene;
 import dev.satherov.nexus.internal.render.client.RenderDispatch;
+import dev.satherov.nexus.internal.render.debug.DebugRenderers;
 import dev.satherov.nexus.internal.render.glow.GlowOutlines;
 import dev.satherov.nexus.internal.render.iris.IrisBridge;
 import dev.satherov.nexus.internal.render.shape.Scenes;
@@ -32,6 +35,7 @@ import org.jspecify.annotations.Nullable;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 ///
@@ -200,6 +204,38 @@ public final class Render {
     public void draw(ClientOnly<BiConsumer<PoseStack, MultiBufferSource>> drawer) {
         if (FMLEnvironment.getDist().isClient()) {
             RenderDispatch.draw(drawer);
+        }
+    }
+    
+    ///
+    /// Registers the HUD layer `<modid>:<name>` at the slot, hidden with the HUD.
+    ///
+    /// @param name  The name of the layer.
+    /// @param slot  The place of the layer among the others.
+    /// @param layer The layer.
+    ///
+    /// @throws IllegalStateException If the name is already taken or if the client already registered its HUD layers.
+    ///
+    public void hudLayer(String name, HudSlot slot, ClientOnly<HudLayer> layer) {
+        if (FMLEnvironment.getDist().isClient()) {
+            RenderDispatch.hudLayer(this.mod.id(name), slot, layer);
+        }
+    }
+    
+    ///
+    /// Registers the debug renderer `<modid>:<name>`, toggled by the player in the debug options screen.
+    ///
+    /// While it is on, its own scene is cleared and the renderer called once per client tick.
+    /// Its scene will be empty from the first tick it is off.
+    ///
+    /// @param name     The name of the debug renderer.
+    /// @param renderer The renderer, called with the scene of the debug renderer.
+    ///
+    /// @throws IllegalStateException If the name is already taken or if the client already registered its debug entries.
+    ///
+    public void debugRenderer(String name, ClientOnly<Consumer<Scene>> renderer) {
+        if (FMLEnvironment.getDist().isClient()) {
+            DebugRenderers.INSTANCE.add(this.mod, this.mod.id(name), renderer);
         }
     }
     

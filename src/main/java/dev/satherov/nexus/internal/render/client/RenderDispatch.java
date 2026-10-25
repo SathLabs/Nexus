@@ -5,9 +5,12 @@ import lombok.experimental.UtilityClass;
 import dev.satherov.nexus.Nexus;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
 import dev.satherov.nexus.api.render.Render;
+import dev.satherov.nexus.api.render.hud.HudLayer;
+import dev.satherov.nexus.api.render.hud.HudSlot;
 import dev.satherov.nexus.api.render.outline.TargetedBlock;
 import dev.satherov.nexus.api.render.pipeline.Pipeline;
 import dev.satherov.nexus.api.render.pipeline.Shading;
+import dev.satherov.nexus.internal.render.debug.DebugRenderers;
 import dev.satherov.nexus.internal.render.glow.GlowOutlines;
 import dev.satherov.nexus.internal.render.iris.IrisBridge;
 import dev.satherov.nexus.internal.render.outline.OutlineRules;
@@ -17,11 +20,15 @@ import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.ExtractBlockOutlineRenderStateEvent;
 import net.neoforged.neoforge.client.event.FrameGraphSetupEvent;
+import net.neoforged.neoforge.client.event.RegisterDebugEntriesEvent;
+import net.neoforged.neoforge.client.event.RegisterGuiLayersEvent;
 import net.neoforged.neoforge.client.event.RegisterRenderPipelinesEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.event.SubmitCustomGeometryEvent;
+import net.neoforged.neoforge.client.gui.GuiLayer;
 import net.neoforged.neoforge.client.renderstate.RegisterRenderStateModifiersEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.level.LevelEvent;
@@ -44,7 +51,9 @@ import org.jetbrains.annotations.ApiStatus;
 import org.joml.Vector2f;
 import org.jspecify.annotations.Nullable;
 
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -53,7 +62,7 @@ import java.util.function.BiConsumer;
 ///
 /// The only class that uses client render events.
 /// - Registers the pipelines of the library and the mods, the HUD layers, the debug renderers, and the entity glow modifier.
-/// - Runs the scenes, the draw hooks, the glows, and the outline rules at their points of the frame.
+/// - Runs the scenes, the draw hooks, the glows, and the outline rules at their points of the frame, and the debug renderers once per client tick.
 /// - Starts them on login and ends them whenever the client's level unloads.
 /// - Projects world positions onto the screen for [Render].
 ///
@@ -84,9 +93,19 @@ public class RenderDispatch {
     private static final DrawHooks DRAW_HOOKS = new DrawHooks(RenderDispatch.HOOKS, RenderDispatch.PIPELINES);
     
     ///
+    /// The HUD layers of the mods that wait for the registration event, by their identifier, in the order they were registered.
+    ///
+    private static final Map<Identifier, WaitingHudLayer> WAITING_HUD_LAYERS = Collections.synchronizedMap(new LinkedHashMap<>());
+    
+    ///
     /// If the registration event of the render pipelines ran.
     ///
     private static boolean pipelinesRegistered;
+    
+    ///
+    /// If the registration event of the HUD layers ran.
+    ///
+    private static boolean hudLayersRegistered;
     
     ///
     /// Subscribes on the mod bus of Nexus and the game bus.
@@ -98,6 +117,8 @@ public class RenderDispatch {
     ///
     public static void listen(IEventBus nexusBus) {
         nexusBus.addListener(RegisterRenderPipelinesEvent.class, RenderDispatch::registerPipelines);
+        nexusBus.addListener(RegisterGuiLayersEvent.class, RenderDispatch::registerHudLayers);
+        nexusBus.addListener(RegisterDebugEntriesEvent.class, event -> DebugRenderers.INSTANCE.registerEntries(event::register));
         nexusBus.addListener(
                 RegisterRenderStateModifiersEvent.class,
                 event -> event.registerEntityModifier(new TypeToken<EntityRenderer<Entity, EntityRenderState>>() { }, RenderDispatch::glow)
@@ -111,6 +132,7 @@ public class RenderDispatch {
         NeoForge.EVENT_BUS.addListener(RenderLevelStageEvent.AfterTranslucentFeatures.class, event -> RenderDispatch.DRAW_HOOKS.drawInLevel(event.getPoseStack()));
         NeoForge.EVENT_BUS.addListener(RenderLevelStageEvent.AfterTranslucentBlocks.class, RenderDispatch::drawScenes);
         NeoForge.EVENT_BUS.addListener(RenderLevelStageEvent.AfterLevel.class, event -> RenderDispatch.DRAW_HOOKS.drawAfterLevel(event.getModelViewMatrix()));
+        NeoForge.EVENT_BUS.addListener(ClientTickEvent.Post.class, _ -> DebugRenderers.INSTANCE.tick());
         // The client scope only exists once the client session marked the login, which it does at the normal priority.
         NeoForge.EVENT_BUS.addListener(EventPriority.LOW, ClientPlayerNetworkEvent.LoggingIn.class, RenderDispatch::start);
         NeoForge.EVENT_BUS.addListener(LevelEvent.Unload.class, RenderDispatch::end);
@@ -135,6 +157,41 @@ public class RenderDispatch {
         
         RenderDispatch.WAITING_PIPELINES.clear();
         RenderDispatch.pipelinesRegistered = true;
+    }
+    
+    ///
+    /// Registers the mods' HUD layers at their slots, each skipped while the HUD is hidden.
+    ///
+    private static void registerHudLayers(RegisterGuiLayersEvent event) {
+        RenderDispatch.WAITING_HUD_LAYERS.forEach((id, waiting) -> {
+            HudLayer hud = waiting.layer();
+            GuiLayer layer = (graphics, delta) -> {
+                if (!Minecraft.getInstance().options.hideGui) {
+                    hud.extract(graphics, delta);
+                }
+            };
+            
+            Identifier anchor = waiting.slot().anchor();
+            switch (waiting.slot().relation()) {
+                case ABOVE -> {
+                    if (anchor == null) {
+                        event.registerAboveAll(id, layer);
+                    } else {
+                        event.registerAbove(anchor, id, layer);
+                    }
+                }
+                case BELOW -> {
+                    if (anchor == null) {
+                        event.registerBelowAll(id, layer);
+                    } else {
+                        event.registerBelow(anchor, id, layer);
+                    }
+                }
+            }
+        });
+        
+        RenderDispatch.WAITING_HUD_LAYERS.clear();
+        RenderDispatch.hudLayersRegistered = true;
     }
     
     ///
@@ -214,6 +271,27 @@ public class RenderDispatch {
     }
     
     ///
+    /// Queues a HUD layer for the layer registration event.
+    ///
+    /// Should only ever be called from [Render#hudLayer(String, HudSlot, ClientOnly)].
+    ///
+    /// @param id    The identifier of the layer.
+    /// @param slot  The place of the layer among the others.
+    /// @param layer The layer of a mod.
+    ///
+    /// @throws IllegalStateException If the registration event already ran or if the identifier is already taken.
+    ///
+    public static void hudLayer(Identifier id, HudSlot slot, ClientOnly<HudLayer> layer) {
+        if (RenderDispatch.hudLayersRegistered) {
+            throw new IllegalStateException("Could not register the HUD layer '" + id + "', the HUD layers were already registered");
+        }
+        
+        if (RenderDispatch.WAITING_HUD_LAYERS.putIfAbsent(id, new WaitingHudLayer(slot, layer.get())) != null) {
+            throw new IllegalStateException("The HUD layer '" + id + "' is registered twice");
+        }
+    }
+    
+    ///
     /// Queues a draw hook.
     ///
     /// Should only ever be called from [Render#draw(ClientOnly)].
@@ -251,4 +329,12 @@ public class RenderDispatch {
         Window window = minecraft.getWindow();
         return new Vector2f((float) (screen.x + 1.0D) / 2.0F * window.getGuiScaledWidth(), (float) (1.0D - screen.y) / 2.0F * window.getGuiScaledHeight());
     }
+    
+    ///
+    /// A HUD layer of a mod that waits for the registration event.
+    ///
+    /// @param slot  The place of the layer among the others.
+    /// @param layer The layer of the mod.
+    ///
+    private record WaitingHudLayer(HudSlot slot, HudLayer layer) { }
 }
