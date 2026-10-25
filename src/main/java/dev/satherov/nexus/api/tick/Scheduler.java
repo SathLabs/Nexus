@@ -16,18 +16,18 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Range;
 import org.jspecify.annotations.Nullable;
 
-import java.time.Duration;
 import java.util.HashSet;
 import java.util.Set;
 
 ///
-/// The tick scopes and budgets of one mod.
+/// All tick-scopes and the budgets of one mod.
 ///
-/// Every method runs on the thread of the side it names.
+/// Every ticker will be called on the thread of its respected creation side.
 ///
-/// Can be reached through [NexusMod#getScheduler()].
+/// Can be accessed through [NexusMod#getScheduler()].
 ///
 public final class Scheduler {
     
@@ -38,17 +38,17 @@ public final class Scheduler {
     private final NexusMod mod;
     
     ///
-    /// The game bus listeners of the scheduler, which hold its scopes.
+    /// The game bus listeners of the scheduler, which is also holding its scopes.
     ///
     private final Ticks ticks;
     
     ///
-    /// The names of the budgets created so far, without the mod id.
+    /// The names of all budgets created so far.
     ///
     private final Set<String> budgetNames = new HashSet<>();
     
     ///
-    /// The client listeners of the scheduler, which hold its client scope, or `null` if [#client()] was never called.
+    /// The client listeners of the scheduler, holding its client scope, or `null` if [#client()] was never called.
     ///
     private @Nullable ClientTicks clientTicks;
     
@@ -64,9 +64,9 @@ public final class Scheduler {
     }
     
     ///
-    /// The scope of the given level, on the level's side.
+    /// The scope of the given level, on the level's logical side.
     ///
-    /// The scope stays the same object while the level is loaded.
+    /// The scope will be recreated if the level is unloaded.
     ///
     /// @param level The level.
     ///
@@ -83,26 +83,32 @@ public final class Scheduler {
     }
     
     ///
-    /// The scope of the running server, created on first call.
+    /// The scope of the running server, created on the first call.
     ///
     /// @return The scope of the running server.
     ///
     /// @throws IllegalStateException If no server is running.
     ///
     public TickScope server() {
-        if (Ticks.getRunningServer() == null) throw new IllegalStateException("No server is running");
+        if (Ticks.getRunningServer() == null) {
+            throw new IllegalStateException("No server is running");
+        }
+        
         return this.ticks.getServerScope(() -> new TickScope(this, LogicalSide.SERVER));
     }
     
     ///
-    /// The scope of the client's world session, created on first call and ending on logout.
+    /// The scope of the client's world session, created on the first call and ends when the client logs out.
     ///
     /// @return The scope of the client's world session.
     ///
     /// @throws IllegalStateException If called on a dedicated server or while the client is not in a world.
     ///
     public TickScope client() {
-        if (!FMLEnvironment.getDist().isClient()) throw new IllegalStateException("A dedicated server has no client");
+        if (!FMLEnvironment.getDist().isClient()) {
+            throw new IllegalStateException("A dedicated server has no client");
+        }
+        
         if (this.clientTicks == null) {
             this.clientTicks = new ClientTicks(this);
         }
@@ -111,9 +117,9 @@ public final class Scheduler {
     }
     
     ///
-    /// Ticks the ticker that this mod bound to the given block entity on the next pass of its level at the latest, whatever it waits for.
+    /// Wakes up the ticker of the given block entity that this ticker owns, if any.
     ///
-    /// Does nothing if this mod didn't bind a ticker to the block entity.
+    /// Does nothing if this mod didn't bind a ticker to this block entity.
     ///
     /// @param entity The block entity.
     ///
@@ -130,21 +136,23 @@ public final class Scheduler {
     /// Creates a new budget under the name `<modid>:<name>`.
     ///
     /// @param name    The name of the budget, without the mod id.
-    /// @param minimum The time spent on every pass.
-    /// @param maximum The time spent on a pass while the tick has time left.
+    /// @param minimum The time spent on every pass, in microseconds.
+    /// @param maximum The time spent on a pass while the tick has time left, in microseconds.
     ///
     /// @return The created budget.
     ///
-    /// @throws IllegalArgumentException If the name is already taken on this scheduler, a duration is negative, or the minimum exceeds the maximum.
+    /// @throws IllegalArgumentException If the name is already taken on this scheduler, the declared time is outside {@value Budget#SMALLEST} or {@value Budget#LARGEST} microseconds,
+    /// or the minimum is greater than the maximum.
     ///
-    public Budget budget(String name, Duration minimum, Duration maximum) {
+    public Budget budget(String name, @Range(from = Budget.SMALLEST, to = Budget.LARGEST) int minimum, @Range(from = Budget.SMALLEST, to = Budget.LARGEST) int maximum) {
         String modId = this.mod.getModId();
-        if (minimum.isNegative() || maximum.isNegative()) {
-            throw new IllegalArgumentException("Budget '" + name + "' of '" + modId + "' has the negative minimum '" + minimum + "' or maximum '" + maximum + "'");
+        //noinspection ConstantValue Dev stupidity will probably make that happen anyways, so best to guard it :3
+        if (minimum < Budget.SMALLEST || maximum > Budget.LARGEST) {
+            throw new IllegalArgumentException("Budget '" + name + "' of '" + modId + "' has a minimum '" + minimum + "' smaller than '" + Budget.SMALLEST + "' or maximum '" + maximum + "' greater than '" + Budget.LARGEST + "' microseconds");
         }
         
-        if (minimum.compareTo(maximum) > 0) {
-            throw new IllegalArgumentException("Budget '" + name + "' of '" + modId + "' has the minimum '" + minimum + "' above its maximum '" + maximum + "'");
+        if (minimum > maximum) {
+            throw new IllegalArgumentException("Budget '" + name + "' of '" + modId + "' has a minimum '" + minimum + "' greater than its maximum '" + maximum + "'");
         }
         
         if (!this.budgetNames.add(name)) {

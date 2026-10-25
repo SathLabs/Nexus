@@ -21,7 +21,7 @@ import java.util.function.Function;
 ///
 /// The tickers bound to block entities, by level and block entity, across all mods.
 ///
-/// The entries of a level are touched by its own thread only.
+/// The entries of a level must only be touched by their own thread.
 /// The map of levels is safe from both threads of the integrated server.
 ///
 /// @see BlockEntityMixin
@@ -50,7 +50,7 @@ public class Bindings {
     /// @param ticker    The bound ticker.
     ///
     public static void add(BlockEntity entity, Scheduler scheduler, Ticker ticker) {
-        //noinspection DataFlowIssue The scope only binds block entities in its level.
+        //noinspection DataFlowIssue The scope only binds block entities which are in a level.
         Bindings.TICKERS_BY_LEVEL
                 .computeIfAbsent(entity.getLevel(), _ -> new HashMap<>())
                 .computeIfAbsent(entity, _ -> new HashMap<>())
@@ -63,7 +63,7 @@ public class Bindings {
     /// @param entity    The block entity.
     /// @param scheduler The scheduler.
     ///
-    /// @return The ticker, or `null` if the scheduler didn't bind one or it is inactive.
+    /// @return The ticker, or `null` if the scheduler didn't bind one, or it is inactive.
     ///
     public static @Nullable Ticker find(BlockEntity entity, Scheduler scheduler) {
         Map<Scheduler, Ticker> tickers = ObjectMapping.map(Bindings.getTickersByEntity(entity), tickersByEntity -> tickersByEntity.get(entity));

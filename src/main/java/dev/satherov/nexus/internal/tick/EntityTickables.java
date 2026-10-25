@@ -19,7 +19,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 ///
-/// The tickables that the block entity builders declared, by block entity type.
+/// The tickables that the block entity builders declared, by their block entity type.
 ///
 /// @see LevelMixin
 ///
@@ -50,9 +50,9 @@ public class EntityTickables {
     }
     
     ///
-    /// Binds the tickable declared for the type of the given block entity and the side of its level to the block entity, if there is one.
+    /// Binds the declared tickable to the given block entity and its level if one is declared for this type.
     ///
-    /// Does nothing if the level of the block entity is not one that the running server or the client currently holds.
+    /// Does nothing if the level of the block entity is not one loaded on the server or the client level.
     ///
     /// @param entity The loaded block entity.
     ///
@@ -75,11 +75,12 @@ public class EntityTickables {
     private record Declaration<ENTITY extends BlockEntity>(Scheduler scheduler, @Nullable EntityTickable<ENTITY> server, @Nullable ClientOnly<EntityTickable<ENTITY>> client) {
         
         ///
-        /// Binds the tickable of the given level's side to the given block entity in that level, if there is one and the scheduler didn't bind a ticker to the block entity yet.
+        /// Binds the tickable of the given level's side to the given block entity in that level if there is one and the scheduler didn't bind a ticker to the block entity yet.
         ///
         private void bind(BlockEntity entity, Level level) {
             EntityTickable<ENTITY> tickable = level.isClientSide() ? ObjectMapping.map(this.client, ClientOnly::get) : this.server;
-            // A block entity that is set into its level again loads a second time without being removed.
+            // If a block entity is set into its level, it will get loaded a second time without actually having been removed,
+            // and we would create a second ticker for it.
             if (tickable == null || Bindings.find(entity, this.scheduler) != null) {
                 return;
             }

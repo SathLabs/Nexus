@@ -5,14 +5,14 @@ import dev.satherov.nexus.internal.tick.EntityTickables;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
-import org.spongepowered.asm.mixin.Final;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.ArrayList;
+import java.util.function.Consumer;
 
 ///
 /// Binds the declared tickers of the block entities that load in a level.
@@ -21,30 +21,24 @@ import java.util.ArrayList;
 public abstract class LevelMixin {
     
     ///
-    /// The block entities that loaded since the last tick.
+    /// Binds the declared tickers of every fresh block entity that is not removed and has a level, right after neoforge called its `onLoad`.
     ///
-    @Shadow
-    @Final
-    private ArrayList<BlockEntity> freshBlockEntities;
-    
+    /// @param entities The fresh block entities.
+    /// @param action   The consumer that calls `onLoad` on a fresh block entity.
+    /// @param original The wrapped `forEach` over the fresh block entities.
     ///
-    /// Binds the declared tickers of every fresh block entity that is not removed and has a level, after neoforge called its `onLoad`.
-    ///
-    /// @param callback The callback of the injection.
-    ///
-    @Inject(
+    @WrapOperation(
             method = "tickBlockEntities",
             at = @At(
                     value = "INVOKE",
-                    target = "Ljava/util/ArrayList;forEach(Ljava/util/function/Consumer;)V",
-                    shift = At.Shift.AFTER
+                    target = "Ljava/util/ArrayList;forEach(Ljava/util/function/Consumer;)V"
             )
     )
-    private void bindTickers(CallbackInfo callback) {
-        for (BlockEntity entity : this.freshBlockEntities) {
+    private void nexus$bindTickers(ArrayList<BlockEntity> entities, Consumer<BlockEntity> action, Operation<Void> original) {
+        original.call(entities, action.andThen(entity -> {
             if (!entity.isRemoved() && entity.hasLevel()) {
                 EntityTickables.bind(entity);
             }
-        }
+        }));
     }
 }

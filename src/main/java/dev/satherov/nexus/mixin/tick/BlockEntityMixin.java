@@ -24,7 +24,7 @@ public abstract class BlockEntityMixin {
             method = "setRemoved",
             at = @At("TAIL")
     )
-    private void dropTickers(CallbackInfo callback) {
+    private void nexus$dropTickers(CallbackInfo callback) {
         Bindings.drop((BlockEntity) (Object) this);
     }
 }

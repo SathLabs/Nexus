@@ -13,7 +13,6 @@ import net.neoforged.fml.ModList;
 
 import net.minecraft.gametest.framework.GameTestHelper;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -31,25 +30,25 @@ public class BudgetSamples {
     @ServerTest
     public static void jobFinishesInLevel(GameTestHelper helper) {
         Scheduler scheduler = Nexus.getMod().getScheduler();
-        BudgetSamples.jobFinishes(helper, scheduler.in(helper.getLevel()), scheduler.budget("budget_samples_finishing_in_level", Duration.ofMillis(1L), Duration.ofMillis(1L)));
+        BudgetSamples.jobFinishes(helper, scheduler.in(helper.getLevel()), scheduler.budget("budget_samples_finishing_in_level", 1_000, 1_000));
     }
     
     @ServerTest
     public static void jobFinishesOnServer(GameTestHelper helper) {
         Scheduler scheduler = Nexus.getMod().getScheduler();
-        BudgetSamples.jobFinishes(helper, scheduler.server(), scheduler.budget("budget_samples_finishing_on_server", Duration.ofMillis(1L), Duration.ofMillis(1L)));
+        BudgetSamples.jobFinishes(helper, scheduler.server(), scheduler.budget("budget_samples_finishing_on_server", 1_000, 1_000));
     }
     
     @ServerTest
     public static void jobsOfOneBudgetTakeTurnsInLevel(GameTestHelper helper) {
         Scheduler scheduler = Nexus.getMod().getScheduler();
-        BudgetSamples.jobsOfOneBudgetTakeTurns(helper, scheduler.in(helper.getLevel()), scheduler.budget("budget_samples_turns_in_level", Duration.ZERO, Duration.ZERO));
+        BudgetSamples.jobsOfOneBudgetTakeTurns(helper, scheduler.in(helper.getLevel()), scheduler.budget("budget_samples_turns_in_level", 1, 1));
     }
     
     @ServerTest
     public static void jobsOfOneBudgetTakeTurnsOnServer(GameTestHelper helper) {
         Scheduler scheduler = Nexus.getMod().getScheduler();
-        BudgetSamples.jobsOfOneBudgetTakeTurns(helper, scheduler.server(), scheduler.budget("budget_samples_turns_on_server", Duration.ZERO, Duration.ZERO));
+        BudgetSamples.jobsOfOneBudgetTakeTurns(helper, scheduler.server(), scheduler.budget("budget_samples_turns_on_server", 1, 1));
     }
     
     @ServerTest
@@ -59,9 +58,9 @@ public class BudgetSamples {
                 helper,
                 scheduler.in(helper.getLevel()),
                 List.of(
-                        scheduler.budget("budget_samples_minimum_in_level", Duration.ofMillis(2L), Duration.ofMillis(2L)),
-                        scheduler.budget("budget_samples_maximum_in_level", Duration.ZERO, Duration.ofMillis(20L)),
-                        scheduler.budget("budget_samples_zero_in_level", Duration.ZERO, Duration.ZERO)
+                        scheduler.budget("budget_samples_minimum_in_level", 2_000, 2_000),
+                        scheduler.budget("budget_samples_maximum_in_level", 1, 20_000),
+                        scheduler.budget("budget_samples_zero_in_level", 1, 1)
                 )
         );
     }
@@ -73,9 +72,9 @@ public class BudgetSamples {
                 helper,
                 scheduler.server(),
                 List.of(
-                        scheduler.budget("budget_samples_minimum_on_server", Duration.ofMillis(2L), Duration.ofMillis(2L)),
-                        scheduler.budget("budget_samples_maximum_on_server", Duration.ZERO, Duration.ofMillis(20L)),
-                        scheduler.budget("budget_samples_zero_on_server", Duration.ZERO, Duration.ZERO)
+                        scheduler.budget("budget_samples_minimum_on_server", 2_000, 2_000),
+                        scheduler.budget("budget_samples_maximum_on_server", 1, 20_000),
+                        scheduler.budget("budget_samples_zero_on_server", 1, 1)
                 )
         );
     }
@@ -86,7 +85,7 @@ public class BudgetSamples {
         BudgetSamples.jobCancelledInsideItsStepEnds(
                 helper,
                 scheduler.in(helper.getLevel()),
-                scheduler.budget("budget_samples_cancelling_in_level", Duration.ofMillis(1L), Duration.ofMillis(1L))
+                scheduler.budget("budget_samples_cancelling_in_level", 1_000, 1_000)
         );
     }
     
@@ -96,14 +95,14 @@ public class BudgetSamples {
         BudgetSamples.jobCancelledInsideItsStepEnds(
                 helper,
                 scheduler.server(),
-                scheduler.budget("budget_samples_cancelling_on_server", Duration.ofMillis(1L), Duration.ofMillis(1L))
+                scheduler.budget("budget_samples_cancelling_on_server", 1_000, 1_000)
         );
     }
     
     @ServerTest
     public static void budgetOfAnotherModIsRefused(GameTestHelper helper) {
         NexusMod other = NexusMod.of(ModList.get().getModContainerById("nexus_gametest").orElseThrow());
-        Budget budget = other.getScheduler().budget("budget_samples_foreign", Duration.ZERO, Duration.ZERO);
+        Budget budget = other.getScheduler().budget("budget_samples_foreign", 1, 1);
         Scheduler scheduler = Nexus.getMod().getScheduler();
         BudgetSamples.assertRefused(helper, scheduler.in(helper.getLevel()), budget);
         BudgetSamples.assertRefused(helper, scheduler.server(), budget);
@@ -135,7 +134,11 @@ public class BudgetSamples {
         helper.runAfterDelay(4L, () -> {
             first.cancel();
             second.cancel();
-            helper.assertValueEqual(order, List.of("first", "second", "first", "second"), "steps of the jobs after four passes");
+            helper.assertTrue(order.size() >= 4, "The jobs stepped fewer than four times in four passes");
+            for (int i = 0; i < order.size(); i++) {
+                helper.assertValueEqual(order.get(i), i % 2 == 0 ? "first" : "second", "job of step '" + i + "'");
+            }
+            
             helper.succeed();
         });
     }

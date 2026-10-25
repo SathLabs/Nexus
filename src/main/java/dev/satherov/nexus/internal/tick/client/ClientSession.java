@@ -16,7 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 ///
-/// The login state of the client and the client listeners of every scheduler.
+/// The login state of the client and all client listeners of every scheduler.
 ///
 /// Ends the client scope of every scheduler on logout.
 ///
@@ -26,7 +26,7 @@ import java.util.List;
 public class ClientSession {
     
     ///
-    /// The client listeners of every scheduler that asked for its client scope, in order, oldest first.
+    /// The client listeners of every scheduler that subscribed to the client scope.
     ///
     private static final List<ClientTicks> CLIENT_TICKS = new ArrayList<>();
     
@@ -43,7 +43,9 @@ public class ClientSession {
     }
     
     ///
-    /// Adds the given client listener, whose client scope will end on every logout.
+    /// Adds the given client listener.
+    ///
+    /// The scope will end when the client logs out.
     ///
     /// @param ticks The client listener of a scheduler.
     ///

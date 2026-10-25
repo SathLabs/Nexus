@@ -25,25 +25,30 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 ///
-/// The game bus listeners of one scheduler, which hold its scopes.
+/// The event bus listeners of one mod's scheduler.
 ///
-/// Passes the level scopes on the level tick and the server scope on the server tick.
-/// Drops the scope and the bindings of a level when the level unloads, and the server scope when the server stops.
+/// Manages the level scopes for tickers per level and the server scope for the server ticker.
 ///
-/// Registered by the scheduler's constructor.
+/// Scopes are dropped when the level unloads or the server stops.
+///
+/// @see ClientTicks
 ///
 @ApiStatus.Internal
 public final class Ticks {
     
     ///
-    /// The levels that unloaded so far, across all schedulers, held weakly.
-    /// Safe from both threads of the integrated server.
+    /// All levels unloaded so far, across all schedulers.
+    ///
+    /// Held weakly so garbage collection can remove entries from here once they're no longer referenced.
+    ///
+    /// Forcefully dropped during [#onLevelLoad(LevelEvent.Load)] when a level with the same resource key gets loaded,
+    /// since we cannot trust that a mod won't do a stupid and keep that reference somewhere forever causing leaks.
     ///
     private static final Set<Level> UNLOADED_LEVELS = Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
     
     ///
     /// The level scopes of both sides by their level.
-    /// Safe from both threads of the integrated server.
+    /// Safe from both threads of an integrated server.
     ///
     private final Map<Level, TickScope> scopesByLevel = new ConcurrentHashMap<>();
     
@@ -58,12 +63,13 @@ public final class Ticks {
     public Ticks() {
         NeoForge.EVENT_BUS.addListener(LevelTickEvent.Post.class, this::onLevelTick);
         NeoForge.EVENT_BUS.addListener(ServerTickEvent.Post.class, this::onServerTick);
+        NeoForge.EVENT_BUS.addListener(LevelEvent.Load.class, this::onLevelLoad);
         NeoForge.EVENT_BUS.addListener(LevelEvent.Unload.class, this::onLevelUnload);
         NeoForge.EVENT_BUS.addListener(ServerStoppedEvent.class, this::onServerStopped);
     }
     
     ///
-    /// The server that currently runs, or `null` if there is none or its tick loop ended.
+    /// The server that currently runs, or `null` if there is none or its tick loop already ended.
     ///
     /// @return The running server, or `null` if there is none.
     ///
@@ -140,7 +146,18 @@ public final class Ticks {
     }
     
     ///
-    /// Marks the level as unloaded, ends and forgets its scope if it has one, and then forgets its bindings.
+    /// Forgets every unloaded level with the same resource key as the level that was loaded.
+    ///
+    private void onLevelLoad(LevelEvent.Load event) {
+        if (!(event.getLevel() instanceof Level level)) {
+            return;
+        }
+        
+        Ticks.UNLOADED_LEVELS.removeIf(unloaded -> unloaded.dimension().equals(level.dimension()));
+    }
+    
+    ///
+    /// Marks the level as unloaded, ends and removes its scope if it has one, and then drops its bindings.
     ///
     private void onLevelUnload(LevelEvent.Unload event) {
         if (!(event.getLevel() instanceof Level level)) {

@@ -13,7 +13,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import org.jspecify.annotations.Nullable;
 
 ///
-/// A ticker that a scope ticks at the rate its own tick returns.
+/// One ticker that a scope can tick at whatever rate its return values specify.
 ///
 /// Can be started through [TickScope#ticker(String, Tickable)] and [TickScope#ticker(BlockEntity, Tickable)].
 ///
@@ -33,32 +33,32 @@ public final class Ticker {
     private final String name;
     
     ///
-    /// The block entity the ticker is bound to, or `null` if it is not bound.
+    /// The block entity that this ticker is bound to, or `null` if it isn't.
     ///
     private final @Nullable BlockEntity entity;
     
     ///
-    /// The tick of the ticker.
+    /// The tick function of the ticker.
     ///
     private final Tickable tickable;
     
     ///
-    /// The pass of the last tick, or the last pass before the start if it never ticked.
+    /// The game tick of the last execution, or the last tick before the first if it never ticked before.
     ///
     private long lastTick;
     
     ///
-    /// The number of passes until a skipped tick is retried, which is the number that the last tick returned, or `1` if none did.
+    /// The number of ticks until a skipped tick is retried, which is the number that the last tick returned, or `1` if none ever did.
     ///
     private int interval = 1;
     
     ///
-    /// The pass the ticker ticks on next, or [Long#MAX_VALUE] while it sleeps.
+    /// The next tick that this ticker will run on, or [Long#MAX_VALUE] while it sleeps.
     ///
     long due;
     
     ///
-    /// `true` until the ticker was cancelled or dropped by its scope.
+    /// `true` until the ticker was canceled or dropped by its scope.
     ///
     @Getter
     private boolean active = true;
@@ -82,10 +82,9 @@ public final class Ticker {
     }
     
     ///
-    /// Ticks the ticker on the next pass at the latest, whatever it waits for.
-    /// If the ticker is still due on the current pass, it will tick on that pass.
+    /// Ticks the ticker on the current pass if it wasn't called yet or on the next if it already was.
     ///
-    /// If called during its own tick, this wins over what that tick returns.
+    /// If called during its own tick, the return value is ignored.
     ///
     /// Does nothing once the ticker is inactive.
     ///
@@ -96,7 +95,7 @@ public final class Ticker {
     ///
     /// Drops the ticker.
     ///
-    /// If called from inside its own tick, the ticker will be dropped after that tick, ignoring what it returns.
+    /// If called from inside its own tick, the ticker will be dropped after that tick finishes and the return value ignored.
     ///
     /// Does nothing once the ticker is inactive.
     ///
@@ -105,12 +104,12 @@ public final class Ticker {
     }
     
     ///
-    /// Ticks the ticker on the current pass of its scope and then sets the pass of its next tick.
+    /// Executes the tickables tick function of the current scope and updates the passes for the next call.
     ///
-    /// If the ticker is bound and its level does not tick blocks at the position of its block entity,
-    /// the tick will be skipped and retried after [#interval] passes.
+    /// If the ticker is bound to a block entity, and the level does not tick block entities at its position,
+    /// the tick is skipped and retried after [#interval] passes.
     ///
-    /// If ticks are being recorded, the duration of the tick will be added to [TickStatistics].
+    /// If [TickStatistics#isEnabled()] is `true`, the duration will be written into them.
     ///
     void tick() {
         long pass = this.scope.passes;
@@ -123,7 +122,8 @@ public final class Ticker {
         int elapsed = Math.clamp(pass - this.lastTick, 1, Integer.MAX_VALUE);
         this.lastTick = pass;
         
-        // A wake during the tick sets the next pass, and no tick can return an earlier one.
+        // Since a wake during a tick execution may call the wake-up function, which forces a call on the next tick,
+        // we must set due to some larger value, or it would have a smaller number than the current pass.
         this.due = Long.MAX_VALUE;
         boolean recording = TickStatistics.isEnabled();
         long start = recording ? Util.getNanos() : 0L;

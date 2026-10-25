@@ -1,8 +1,8 @@
 ///
 /// The tick of a ticker and the value it returns.
 /// - [Tickable]: The function a ticker runs on every tick.
-/// - [EntityTickable]: The function the ticker of a block entity runs on every tick, declared on the block entity builder.
-/// - [Next]: When the ticker ticks next, returned from every tick.
+/// - [EntityTickable]: The function the ticker of a block entity declares through the block entity builder.
+/// - [Next]: When the ticker will tick next, specified in the return value of the tick function.
 ///
 @NullMarked
 @CheckReturnValue

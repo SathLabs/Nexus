@@ -16,7 +16,7 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
 
 ///
-/// The client listener of one scheduler, which holds its client scope.
+/// The client listeners of one mod's scheduler.
 ///
 /// Passes the client scope on the client tick unless the game is paused.
 ///
@@ -38,7 +38,7 @@ public final class ClientTicks {
     ///
     /// Subscribes the listener for the given scheduler.
     ///
-    /// The client scope will end on every logout.
+    /// The client scope will end when the client logs out.
     ///
     /// @param scheduler The scheduler the client scope belongs to.
     ///
@@ -50,7 +50,7 @@ public final class ClientTicks {
     }
     
     ///
-    /// The event loop of the client thread, which is the minecraft client.
+    /// The event loop of the client thread.
     ///
     /// @return The minecraft client.
     ///
@@ -70,14 +70,17 @@ public final class ClientTicks {
     }
     
     ///
-    /// The scope of the current session, created on first call.
+    /// The scope of the current session, created on the first method call if it doesn't exist.
     ///
     /// @return The scope of the current session.
     ///
-    /// @throws IllegalStateException If the client is not in a world.
+    /// @throws IllegalStateException If the client is not currently in any world.
     ///
     public TickScope getScope() {
-        if (!ClientSession.isLoggedIn()) throw new IllegalStateException("The client is not in a world");
+        if (!ClientSession.isLoggedIn()) {
+            throw new IllegalStateException("The client is not in a world");
+        }
+        
         if (this.scope == null) {
             this.scope = new TickScope(this.scheduler, LogicalSide.CLIENT);
         }
@@ -86,7 +89,7 @@ public final class ClientTicks {
     }
     
     ///
-    /// Ends and forgets the client scope if there is one.
+    /// Ends the scope and forgets it if there was one.
     ///
     /// Should only ever be called from [ClientSession#onLoggedOut(ClientPlayerNetworkEvent.LoggingOut)].
     ///

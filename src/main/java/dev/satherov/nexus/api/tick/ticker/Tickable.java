@@ -11,8 +11,7 @@ public interface Tickable {
     ///
     /// Runs one tick.
     ///
-    /// @param elapsed The number of passes of the scope since the last tick or, for the first tick, since the start,
-    ///                counting the passes slept or skipped.
+    /// @param elapsed The number of passes of the scope since the last tick call.
     ///
     /// @return The next tick.
     ///

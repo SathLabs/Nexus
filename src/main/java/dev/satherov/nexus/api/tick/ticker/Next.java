@@ -1,24 +1,28 @@
 package dev.satherov.nexus.api.tick.ticker;
 
+import dev.satherov.nexus.api.tick.Ticker;
+
 import org.jetbrains.annotations.Range;
 
 ///
-/// The next tick of a ticker, returned from every tick.
+/// When to run the next tick of a [Ticker].
+///
+/// The return value of every [EntityTickable#tick]
 ///
 public sealed interface Next {
     
     ///
-    /// A tick on the next pass.
+    /// Will be called again in the next tick.
     ///
     Next TICK = new In(1);
     
     ///
-    /// No tick until woken.
+    /// Will never tick again until woken.
     ///
     Next SLEEP = new Sleep();
     
     ///
-    /// A tick on the pass the given number of passes from now.
+    /// Sleeps for the given number of ticks before running the next tick.
     ///
     /// @param ticks The number of passes until the tick.
     ///
@@ -27,6 +31,7 @@ public sealed interface Next {
     /// @throws IllegalArgumentException If the ticks are below 1.
     ///
     static Next in(@Range(from = 1, to = Integer.MAX_VALUE) int ticks) {
+        //noinspection ConstantValue Yes intelliJ, technically this should never happen, but we know devs are stupid.
         if (ticks < 1) {
             throw new IllegalArgumentException("Tick count '" + ticks + "' is below 1");
         }
@@ -35,7 +40,7 @@ public sealed interface Next {
     }
     
     ///
-    /// A tick a fixed number of passes from now.
+    /// A tick in a fixed number of passes from now.
     ///
     /// @param ticks The passes until the tick, at least 1.
     ///

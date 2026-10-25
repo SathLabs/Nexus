@@ -5,7 +5,9 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import org.jetbrains.annotations.Range;
 
 ///
-/// The tick of the ticker of a block entity, declared on the block entity builder and bound when the block entity loads.
+/// The tick function of a block entity using a scheduler.
+///
+/// Declared in the block entity builder and bound once the block entity is loaded.
 ///
 /// @param <ENTITY> The class of the block entity.
 ///

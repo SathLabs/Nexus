@@ -7,10 +7,8 @@ import dev.satherov.nexus.api.tick.budget.Budget;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 
-import java.time.Duration;
-
 ///
-/// Checks the names and durations a scheduler accepts for a budget.
+/// Checks the names and times a scheduler accepts for a budget.
 ///
 public class BudgetTest {
     
@@ -18,37 +16,42 @@ public class BudgetTest {
     
     @Test
     public void prefixesTheNameWithTheModId() {
-        Budget budget = BudgetTest.SCHEDULER.budget("budget_test_prefixed", Duration.ZERO, Duration.ZERO);
+        Budget budget = BudgetTest.SCHEDULER.budget("budget_test_prefixed", 1, 1);
         Assertions.assertThat(budget.getName()).isEqualTo("nexus:budget_test_prefixed");
     }
     
     @Test
     public void refusesATakenName() {
-        Budget _ = BudgetTest.SCHEDULER.budget("budget_test_taken", Duration.ZERO, Duration.ZERO);
-        Assertions.assertThatIllegalArgumentException().isThrownBy(() -> BudgetTest.SCHEDULER.budget("budget_test_taken", Duration.ZERO, Duration.ZERO));
+        Budget _ = BudgetTest.SCHEDULER.budget("budget_test_taken", 1, 1);
+        Assertions.assertThatIllegalArgumentException().isThrownBy(() -> BudgetTest.SCHEDULER.budget("budget_test_taken", 1, 1));
     }
     
     @Test
-    public void refusesANegativeMinimum() {
-        Assertions.assertThatIllegalArgumentException().isThrownBy(() -> BudgetTest.SCHEDULER.budget("budget_test_negative", Duration.ofMillis(-1L), Duration.ofMillis(1L)));
+    public void refusesAMinimumBelowTheSmallest() {
+        Assertions.assertThatIllegalArgumentException().isThrownBy(() -> BudgetTest.SCHEDULER.budget("budget_test_below", Budget.SMALLEST - 1, 1));
+    }
+    
+    @Test
+    public void refusesAMaximumAboveTheLargest() {
+        Assertions.assertThatIllegalArgumentException().isThrownBy(() -> BudgetTest.SCHEDULER.budget("budget_test_above", 1, Budget.LARGEST + 1));
     }
     
     @Test
     public void refusesAMinimumAboveTheMaximum() {
-        Assertions.assertThatIllegalArgumentException().isThrownBy(() -> BudgetTest.SCHEDULER.budget("budget_test_inverted", Duration.ofMillis(2L), Duration.ofMillis(1L)));
+        Assertions.assertThatIllegalArgumentException().isThrownBy(() -> BudgetTest.SCHEDULER.budget("budget_test_inverted", 2, 1));
     }
     
     @Test
-    public void acceptsZeroDurations() {
-        Budget budget = BudgetTest.SCHEDULER.budget("budget_test_zero", Duration.ZERO, Duration.ZERO);
-        Assertions.assertThat(budget.getMinimum()).isEqualTo(Duration.ZERO);
-        Assertions.assertThat(budget.getMaximum()).isEqualTo(Duration.ZERO);
+    public void acceptsTheSmallestAndTheLargest() {
+        Budget budget = BudgetTest.SCHEDULER.budget("budget_test_bounds", Budget.SMALLEST, Budget.LARGEST);
+        Assertions.assertThat(budget.getMinimum()).isEqualTo(Budget.SMALLEST);
+        Assertions.assertThat(budget.getMaximum()).isEqualTo(Budget.LARGEST);
     }
     
     @Test
     public void acceptsAMinimumEqualToTheMaximum() {
-        Budget budget = BudgetTest.SCHEDULER.budget("budget_test_equal", Duration.ofMillis(1L), Duration.ofMillis(1L));
-        Assertions.assertThat(budget.getMinimum()).isEqualTo(Duration.ofMillis(1L));
-        Assertions.assertThat(budget.getMaximum()).isEqualTo(Duration.ofMillis(1L));
+        Budget budget = BudgetTest.SCHEDULER.budget("budget_test_equal", 1_000, 1_000);
+        Assertions.assertThat(budget.getMinimum()).isEqualTo(1_000);
+        Assertions.assertThat(budget.getMaximum()).isEqualTo(1_000);
     }
 }

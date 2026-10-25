@@ -3,9 +3,13 @@ package dev.satherov.nexus.api.tick;
 import dev.satherov.nexus.api.tick.budget.Budget;
 import dev.satherov.nexus.api.tick.ticker.Tickable;
 import dev.satherov.nexus.internal.tick.Bindings;
+import dev.satherov.nexus.internal.tick.Ticks;
 import dev.satherov.nexus.internal.tick.client.ClientTicks;
 
 import net.neoforged.fml.LogicalSide;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.event.tick.LevelTickEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import net.minecraft.CrashReport;
@@ -37,79 +41,80 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 ///
-/// A tick loop that work runs in after vanilla's own tick, the loop of a level, of the server, or of the client.
+/// A ticking loop that executes work right after vanilla's own tick ends, either in one level, the entire server, or the client.
 ///
-/// A pass runs the due tasks, then the due tickers, and then the jobs of each budget.
-/// Work submitted during a pass first runs on the next one.
-/// A level scope passes only while the tick rate manager of its level runs normally.
-/// The client scope passes only while the game is not paused.
+/// Every pass runs all scheduled tasks, then all tickers, and finally all jobs with their respective budget.
 ///
-/// A level scope drops its work when the level unloads, the server scope when the server stops, and the client scope on logout.
-/// Every method throws an [IllegalStateException] if called off the scope's thread or after the scope ended.
+/// - A server scope runs while the server is running and drops its work when the server stops.
+/// - A level scope only runs while the tick manager of its level runs normally and drops its work when the level unloads.
+/// - A client scope only runs while the game is not paused and drops its work when the client logs out.
+///
+///  Every method throws an [IllegalStateException] if it's called from any other thread other than the scope's own, or after the scope has ended.
 ///
 public final class TickScope {
     
     ///
-    /// The scheduler the scope belongs to.
+    /// The scheduler that this scope belongs to.
     ///
     private final Scheduler scheduler;
     
     ///
-    /// The name of the scope in crash reports, the identifier of its level's dimension or the name of its side.
+    /// The name of this scope in crash reports, either the identifier of the level's dimension or the name of its side.
     ///
     private final String name;
     
     ///
-    /// The level of the scope, or `null` if it is the server or client scope.
+    /// The level of this scope, or `null` if it is the server or the client scope.
     ///
     private final @Nullable Level level;
     
     ///
-    /// The side the scope runs on.
+    /// The logical side that this scope runs on.
     ///
     private final LogicalSide side;
     
     ///
-    /// The event loop whose thread the scope runs on.
+    /// The event loop whose thread this scope runs in.
     ///
     private final BlockableEventLoop<?> loop;
     
     ///
-    /// The tasks that did not run for the last time yet, in order, oldest first.
+    /// All tasks that have not yet finished running
     ///
     private final List<Task> tasks = new ArrayList<>();
     
     ///
-    /// The started tickers, in order, oldest first.
+    /// All tickers that were started so far.
     ///
     private final List<Ticker> tickers = new ArrayList<>();
     
     ///
-    /// The jobs that first step on the next pass, in order, oldest first.
+    /// All jobs that will run for the first time during the next pass.
     ///
     private final List<Job> pendingJobs = new ArrayList<>();
     
     ///
-    /// The stepping jobs by their budget, in the order the budgets were first used on the scope.
-    /// Each queue starts with the job that steps next.
+    /// All jobs that are currently running, by their budget.
+    ///
+    /// Each queue starts with the job that runs next.
     ///
     private final Map<Budget, Deque<Job>> jobsByBudget = new LinkedHashMap<>();
     
     ///
-    /// How many passes have started so far.
+    /// The number of passes that have been executed so far.
     ///
     long passes;
     
     ///
-    /// If the scope ended.
+    /// If this scope has ended.
     ///
     private boolean ended;
     
     ///
     /// Should only ever be called from [Scheduler#in(Level)].
     ///
-    /// @param scheduler The scheduler the scope belongs to.
-    /// @param level     The level of the scope.
+    /// @param scheduler The scheduler that this scope belongs to.
+    /// @param level     The level of this scope.
     ///
     @ApiStatus.Internal
     public TickScope(Scheduler scheduler, Level level) {
@@ -119,8 +124,8 @@ public final class TickScope {
     ///
     /// Should only ever be called from [Scheduler#server()] and [ClientTicks#getScope()].
     ///
-    /// @param scheduler The scheduler the scope belongs to.
-    /// @param side      The side of the scope.
+    /// @param scheduler The scheduler that this scope belongs to.
+    /// @param side      The logical side of this scope.
     ///
     @ApiStatus.Internal
     public TickScope(Scheduler scheduler, LogicalSide side) {
@@ -128,7 +133,7 @@ public final class TickScope {
     }
     
     ///
-    /// Creates a scope that runs on the thread of the given side.
+    /// Creates a new scope that runs on the thread of the given side.
     ///
     private TickScope(Scheduler scheduler, String name, @Nullable Level level, LogicalSide side) {
         this.scheduler = scheduler;
@@ -143,14 +148,15 @@ public final class TickScope {
     }
     
     ///
-    /// Runs one pass.
+    /// Runs a single pass.
     ///
-    /// Should only ever be called from the listeners of `internal.tick`.
+    /// Should only ever be called from [Ticks#onLevelTick(LevelTickEvent.Post)], [Ticks#onServerTick(ServerTickEvent.Post)] or [ClientTicks#onClientTick(ClientTickEvent.Post)]
     ///
-    /// @param hasTime The time flag of the tick, read between job steps.
+    /// @param hasTime The time flag of the current tick, which is checked between the steps of jobs.
     ///
-    /// @throws IllegalStateException If called off the scope's thread or after the scope ended.
-    /// @throws ReportedException     If any work throws, with a crash report on the mod, the scope, the kind of work, and its name or the block entity it is bound to.
+    /// @throws IllegalStateException If called from another thread than the scope's own, or after the scope has ended.
+    /// @throws ReportedException     If any work throws. The crash report will contain the mod, the scope, the kind of work,
+    ///                               and either its name or the block entity it is bound to.
     ///
     @ApiStatus.Internal
     public void pass(BooleanSupplier hasTime) {
@@ -158,7 +164,8 @@ public final class TickScope {
         ProfilerFiller profiler = Profiler.get();
         profiler.push(this.scheduler.getMod().getModId());
         this.passes++;
-        // The work of this pass may start more jobs, which have to wait for the next one.
+        // Since any task to be run during this pass may queue more jobs themselves,
+        // we drain the existing queue first and force new ones to wait for the next pass.
         this.queuePendingJobs();
         this.runTasks();
         this.tickTickers(profiler);
@@ -167,7 +174,7 @@ public final class TickScope {
     }
     
     ///
-    /// Moves every pending job to the end of its budget's queue.
+    /// Moves every pending job to the end of the queue.
     ///
     private void queuePendingJobs() {
         for (Job job : this.pendingJobs) {
@@ -178,10 +185,10 @@ public final class TickScope {
     }
     
     ///
-    /// Runs every due task, in order, oldest first, and then forgets the inactive ones.
+    /// Runs every task that is due, in order, oldest first, and then forgets all the inactive ones.
     ///
     private void runTasks() {
-        // Indexed, because a task may schedule more tasks while the loop runs.
+        //noinspection ForLoopReplaceableByForEach Indexed, since a task may schedule more tasks while we're still looping.
         for (int i = 0; i < this.tasks.size(); i++) {
             Task task = this.tasks.get(i);
             if (task.isActive() && task.due <= this.passes) {
@@ -197,10 +204,10 @@ public final class TickScope {
     }
     
     ///
-    /// Ticks every due ticker, in order, oldest first, each in a profiler section of its name, and then forgets the inactive ones.
+    /// Ticks every ticker that is due, in order, oldest first, each inside a profiler section of its name, and then forgets all the inactive ones.
     ///
     private void tickTickers(ProfilerFiller profiler) {
-        // Indexed, because a ticker may start more tickers while the loop runs.
+        //noinspection ForLoopReplaceableByForEach Indexed, since a ticker may start more tickers while we're still looping.
         for (int i = 0; i < this.tickers.size(); i++) {
             Ticker ticker = this.tickers.get(i);
             if (ticker.isActive() && ticker.due <= this.passes) {
@@ -219,7 +226,9 @@ public final class TickScope {
     }
     
     ///
-    /// Steps the jobs of every budget in turn, each budget in a profiler section of its name, for as long as the budget allows.
+    /// Runs the jobs of every budget, for as long as the budget allows it.
+    ///
+    /// Each budget is run inside a profiler section of its name.
     ///
     private void stepJobs(ProfilerFiller profiler, BooleanSupplier hasTime) {
         for (Map.Entry<Budget, Deque<Job>> entry : this.jobsByBudget.entrySet()) {
@@ -230,8 +239,9 @@ public final class TickScope {
             }
             
             Budget budget = entry.getKey();
-            long minimum = TimeUnit.NANOSECONDS.convert(budget.getMinimum());
-            long maximum = this.side == LogicalSide.SERVER ? TimeUnit.NANOSECONDS.convert(budget.getMaximum()) : minimum;
+            long minimum = TimeUnit.MICROSECONDS.toNanos(budget.getMinimum());
+            long maximum = this.side == LogicalSide.SERVER ? TimeUnit.MICROSECONDS.toNanos(budget.getMaximum()) : minimum;
+            
             profiler.push(budget.getName());
             long start = Util.getNanos();
             long elapsed;
@@ -257,7 +267,9 @@ public final class TickScope {
     }
     
     ///
-    /// Wraps the given throwable into a crash report with a category on the mod, the scope, the kind of work, and the given details.
+    /// Wraps the given crash into a crash report with a category for the mod, scope, and kind of work.
+    ///
+    /// Any additional details provided will be appended to the report.
     ///
     private ReportedException crash(Throwable throwable, String kind, Consumer<CrashReportCategory> details) {
         CrashReport report = CrashReport.forThrowable(throwable, "Ticking " + kind);
@@ -271,11 +283,11 @@ public final class TickScope {
     }
     
     ///
-    /// Drops every task, ticker, and job and refuses every later call.
+    /// Drops every task, ticker, and job of this scope and refuses every call after that.
     ///
-    /// Should only ever be called from the listeners of `internal.tick`.
+    /// Should only ever be called from [Ticks#onLevelTick(LevelTickEvent.Post)], [Ticks#onServerTick(ServerTickEvent.Post)] or [ClientTicks#onClientTick(ClientTickEvent.Post)]
     ///
-    /// @throws IllegalStateException If called off the scope's thread or after the scope ended.
+    /// @throws IllegalStateException If called from another thread than the scope's own, or after the scope has ended.
     ///
     @ApiStatus.Internal
     public void end() {
@@ -292,15 +304,15 @@ public final class TickScope {
     }
     
     ///
-    /// Runs the given task once, the given number of passes from now.
+    /// Runs the given task once, after the given number of ticks.
     ///
-    /// @param ticks The number of passes until the task runs.
+    /// @param ticks The number of ticks to wait until the task runs.
     /// @param task  The task to run.
     ///
     /// @return The scheduled task.
     ///
-    /// @throws IllegalArgumentException If the ticks are below 1.
-    /// @throws IllegalStateException    If called off the scope's thread or after the scope ended.
+    /// @throws IllegalArgumentException If the ticks are below `1`.
+    /// @throws IllegalStateException    If called from another thread than the scope's own, or after the scope has ended.
     ///
     @CanIgnoreReturnValue
     public Task delay(@Range(from = 1, to = Integer.MAX_VALUE) int ticks, Runnable task) {
@@ -308,22 +320,22 @@ public final class TickScope {
     }
     
     ///
-    /// Runs the given task every given number of passes until cancelled, first that number of passes from now.
+    /// Runs the given task every given number of ticks until it is canceled, the first time after that many ticks from now.
     ///
-    /// @param ticks The number of passes between two runs, and until the first run.
+    /// @param ticks The number of ticks between two runs, and how long to wait until the first execution.
     /// @param task  The task to run.
     ///
     /// @return The scheduled task.
     ///
-    /// @throws IllegalArgumentException If the ticks are below 1.
-    /// @throws IllegalStateException    If called off the scope's thread or after the scope ended.
+    /// @throws IllegalArgumentException If the ticks are below `1`.
+    /// @throws IllegalStateException    If called from another thread than the scope's own, or after the scope has ended.
     ///
     public Task every(@Range(from = 1, to = Integer.MAX_VALUE) int ticks, Runnable task) {
         return this.schedule(ticks, ticks, task);
     }
     
     ///
-    /// Schedules the given action to run the given number of passes from now, and then every interval if that is not `0`.
+    /// Schedules the given action to run after the given number of ticks, and then again every interval if it isn't `0`.
     ///
     private Task schedule(int ticks, int interval, Runnable action) {
         this.checkUsable();
@@ -337,14 +349,15 @@ public final class TickScope {
     }
     
     ///
-    /// Starts a new ticker under the name `<modid>:<name>`, awake and first ticked on the next pass.
+    /// Starts a new ticker under the name `<modid>:<name>`.
+    /// The ticker starts awake and will first tick on the next pass.
     ///
     /// @param name     The name of the ticker, without the mod id.
-    /// @param tickable The tick of the ticker.
+    /// @param tickable The tick function of the ticker.
     ///
     /// @return The started ticker.
     ///
-    /// @throws IllegalStateException If called off the scope's thread or after the scope ended.
+    /// @throws IllegalStateException If called from another thread than the scope's own, or after the scope has ended.
     ///
     public Ticker ticker(String name, Tickable tickable) {
         this.checkUsable();
@@ -354,22 +367,24 @@ public final class TickScope {
     }
     
     ///
-    /// Starts a new ticker bound to the given block entity under the identifier of its block entity type, awake and first ticked on the next pass.
+    /// Starts a new ticker bound to the given block entity, under the identifier of its block entity type.
+    /// The ticker starts awake and will first tick on the next pass.
     ///
-    /// If the level does not tick blocks at the position of the block entity, a due tick will be skipped and retried after the interval that the last tick returned.
+    /// If the level doesn't tick blocks at the position of the block entity, a due tick is skipped and retried after the interval returned by the last tick.
     /// The ticker will be dropped once the block entity is removed or its chunk unloads.
     ///
-    /// Can be woken through [Scheduler#wake(BlockEntity)].
+    /// Can be woken up through [Scheduler#wake(BlockEntity)].
     ///
     /// @param entity   The block entity to bind the ticker to.
-    /// @param tickable The tick of the ticker.
+    /// @param tickable The tick function of the ticker.
     ///
     /// @return The started ticker.
     ///
-    /// @throws IllegalStateException - If called off the scope's thread.
-    /// - If the scope ended.
-    /// - If the block entity is not in the level of the scope.
-    /// - If the block entity was removed.
+    /// @throws IllegalStateException
+    /// - If called from another thread than the scope's own.
+    /// - If the scope has already ended.
+    /// - If the block entity isn't in the level of this scope.
+    /// - If the block entity was already removed.
     /// - If this mod already bound a ticker to the block entity.
     ///
     @CanIgnoreReturnValue
@@ -395,17 +410,17 @@ public final class TickScope {
     }
     
     ///
-    /// Starts a new job that steps in turn with the other jobs of the given budget, for as long as the budget allows on each pass.
+    /// Starts a new job for the given budget that runs together with all other jobs of the same budget as long as there's time left.
     ///
-    /// The job will first step on the next pass and will finish once its step returns `false`.
+    /// The job will take its first step on the next pass and finishes once its step returns `false`.
     ///
-    /// @param budget The budget the job spends.
+    /// @param budget The budget the job has available to spend.
     /// @param step   The step of the job, which returns `false` once the job is finished.
     ///
     /// @return The started job.
     ///
     /// @throws IllegalArgumentException If the budget belongs to another mod.
-    /// @throws IllegalStateException    If called off the scope's thread or after the scope ended.
+    /// @throws IllegalStateException    If called from another thread than the scope's own, or after the scope has ended.
     ///
     @CanIgnoreReturnValue
     public Job job(Budget budget, BooleanSupplier step) {
@@ -420,7 +435,7 @@ public final class TickScope {
     }
     
     ///
-    /// Throws an [IllegalStateException] if called off the scope's thread or after the scope ended.
+    /// Throws an [IllegalStateException] if called from another thread than the scope's own, or after the scope has ended.
     ///
     private void checkUsable() {
         String modId = this.scheduler.getMod().getModId();
