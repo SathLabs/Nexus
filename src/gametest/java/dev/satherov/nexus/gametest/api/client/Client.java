@@ -10,6 +10,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.phys.Vec3;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
@@ -152,6 +153,7 @@ public final class Client {
     /// Creates a new fresh void world running on an integrated server and then enters it.
     ///
     /// The player will be in creative mode, flying at its spawnpoint.
+    /// No screen will be open.
     ///
     public void joinWorld() {
         this.leaveWorld();
@@ -181,11 +183,62 @@ public final class Client {
     /// @throws IllegalStateException If we are not currently in a world.
     ///
     public ServerLevel serverLevel() {
+        return this.world().overworld();
+    }
+    
+    ///
+    /// Hides or shows the vanilla HUD for the rest of the test.
+    ///
+    /// @param hidden If the HUD should be hidden.
+    ///
+    public void hideHud(boolean hidden) {
+        this.minecraft.options.hideGui = hidden;
+    }
+    
+    ///
+    /// Puts the player at the given position looking along the given yaw and pitch, on the server and the client,
+    /// and then runs the game until the camera of the client is there.
+    ///
+    /// Fails the test if we are not allowed to run any more frames.
+    ///
+    /// @param position The position to put the player at.
+    /// @param yaw      The horizontal rotation of the player, in degrees.
+    /// @param pitch    The vertical rotation of the player, in degrees.
+    ///
+    /// @throws IllegalStateException If we are not currently in a world.
+    /// @throws AssertionError        If we are not allowed to run any more frames, before the camera is there.
+    ///
+    public void pose(Vec3 position, float yaw, float pitch) {
+        this.world().pose(position, yaw, pitch);
+    }
+    
+    ///
+    /// Runs the game until the client has handled everything the server sent up to the end of its next tick.
+    ///
+    /// Every change made on the server before this call will be visible on the client.
+    ///
+    /// Fails the test if we are not allowed to run any more frames.
+    ///
+    /// @throws IllegalStateException If we are not currently in a world.
+    /// @throws AssertionError        If we are not allowed to run any more frames, before the client has handled the packets.
+    ///
+    public void settle() {
+        this.world().settle();
+    }
+    
+    ///
+    /// The world the client is currently in.
+    ///
+    /// @return The world the client is currently in.
+    ///
+    /// @throws IllegalStateException If we are not currently in a world.
+    ///
+    private TestWorld world() {
         if (this.world == null) {
             throw new IllegalStateException("The client is not currently in any world");
         }
         
-        return this.world.overworld();
+        return this.world;
     }
     
     ///
