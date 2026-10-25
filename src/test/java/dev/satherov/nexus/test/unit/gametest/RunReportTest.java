@@ -354,7 +354,14 @@ public class RunReportTest {
                         Map.entry("nexus:scene_samples/expiry_removes_after_ticks_and_not_before", Expected.passed()),
                         Map.entry("nexus:scene_samples/followed_entity_moves_drawing", Expected.passed()),
                         Map.entry("nexus:scene_samples/repaint_changes_color", Expected.passed()),
-                        Map.entry("nexus:scene_samples/leaving_level_drops_everything", Expected.passed())
+                        Map.entry("nexus:scene_samples/leaving_level_drops_everything", Expected.passed()),
+                        Map.entry("nexus:outlines_samples/replacing_rule_hides_vanilla_outline", Expected.passed()),
+                        Map.entry("nexus:outlines_samples/adding_rule_keeps_vanilla_outline", Expected.passed()),
+                        Map.entry("nexus:outlines_samples/rule_is_asked_once_per_target", Expected.passed()),
+                        Map.entry("nexus:glows_samples/entity_glows_in_color", Expected.passed()),
+                        Map.entry("nexus:glows_samples/block_glow_stops_when_broken", Expected.passed()),
+                        Map.entry("nexus:glows_samples/chest_glows", Expected.passed()),
+                        Map.entry("nexus:glows_samples/expiry_removes_after_ticks_and_not_before", Expected.passed())
                 ),
                 List.of(
                         Measurement.of("nexus/client_run_samples/window", 40),

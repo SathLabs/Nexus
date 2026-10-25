@@ -3,8 +3,11 @@ package dev.satherov.nexus.api.render;
 import lombok.Getter;
 
 import dev.satherov.nexus.api.mod.NexusMod;
+import dev.satherov.nexus.api.render.glow.Glows;
+import dev.satherov.nexus.api.render.outline.Outlines;
 import dev.satherov.nexus.api.render.shape.Scene;
 import dev.satherov.nexus.internal.render.client.RenderDispatch;
+import dev.satherov.nexus.internal.render.glow.GlowOutlines;
 import dev.satherov.nexus.internal.render.iris.IrisBridge;
 import dev.satherov.nexus.internal.render.shape.Scenes;
 
@@ -37,6 +40,16 @@ public final class Render {
     /// The scene of the mod, or `null` until [#getScene()] is first called.
     ///
     private @Nullable Scene scene;
+    
+    ///
+    /// The block outline rules of the mod, or `null` until [#getOutlines()] is first called.
+    ///
+    private @Nullable Outlines outlines;
+    
+    ///
+    /// The glows of the mod, or `null` until [#getGlows()] is first called.
+    ///
+    private @Nullable Glows glows;
     
     ///
     /// Should only ever be called from [NexusMod#getRender()].
@@ -79,6 +92,41 @@ public final class Render {
         }
         
         return this.scene;
+    }
+    
+    ///
+    /// The mod's block outline rules, created on first call.
+    ///
+    /// @return The block outline rules of the mod.
+    ///
+    public Outlines getOutlines() {
+        if (this.outlines == null) {
+            this.outlines = new Outlines(this.mod);
+        }
+        
+        return this.outlines;
+    }
+    
+    ///
+    /// The mod's glows, created on first call.
+    ///
+    /// They are dropped when the client leaves a level.
+    ///
+    /// @return The glows of the mod.
+    ///
+    /// @throws IllegalStateException If called on a dedicated server.
+    ///
+    public Glows getGlows() {
+        if (!FMLEnvironment.getDist().isClient()) {
+            throw new IllegalStateException("A dedicated server has no glows, asked for by '" + this.mod.getModId() + "'");
+        }
+        
+        if (this.glows == null) {
+            this.glows = new Glows(this.mod);
+            GlowOutlines.INSTANCE.add(this.glows);
+        }
+        
+        return this.glows;
     }
     
     ///

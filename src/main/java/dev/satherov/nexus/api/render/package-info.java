@@ -4,6 +4,10 @@
 ///
 /// For the shapes and their paint see [dev.satherov.nexus.api.render.shape].
 ///
+/// For the block outline rules see [dev.satherov.nexus.api.render.outline].
+///
+/// For the glowing outlines of entities and blocks see [dev.satherov.nexus.api.render.glow].
+///
 /// For the HUD layers see [dev.satherov.nexus.api.render.hud].
 ///
 /// For the shading of pipelines under a shader pack see [dev.satherov.nexus.api.render.pipeline].

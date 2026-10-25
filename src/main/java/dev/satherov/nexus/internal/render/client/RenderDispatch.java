@@ -4,21 +4,32 @@ import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.Nexus;
 import dev.satherov.nexus.api.render.Render;
+import dev.satherov.nexus.api.render.outline.TargetedBlock;
+import dev.satherov.nexus.internal.render.glow.GlowOutlines;
+import dev.satherov.nexus.internal.render.outline.OutlineRules;
 import dev.satherov.nexus.internal.render.shape.Scenes;
 
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
+import net.neoforged.neoforge.client.event.ExtractBlockOutlineRenderStateEvent;
+import net.neoforged.neoforge.client.event.FrameGraphSetupEvent;
 import net.neoforged.neoforge.client.event.RegisterRenderPipelinesEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import net.neoforged.neoforge.client.event.SubmitCustomGeometryEvent;
+import net.neoforged.neoforge.client.renderstate.RegisterRenderStateModifiersEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.level.LevelEvent;
 
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.entity.EntityRenderer;
+import net.minecraft.client.renderer.entity.state.EntityRenderState;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
 
+import com.google.common.reflect.TypeToken;
 import com.mojang.blaze3d.platform.Window;
 
 import org.jetbrains.annotations.ApiStatus;
@@ -48,10 +59,49 @@ public class RenderDispatch {
     ///
     public static void listen(IEventBus nexusBus) {
         nexusBus.addListener(RegisterRenderPipelinesEvent.class, event -> ShapePipelines.register(event::registerPipeline));
+        nexusBus.addListener(
+                RegisterRenderStateModifiersEvent.class,
+                event -> event.registerEntityModifier(new TypeToken<EntityRenderer<Entity, EntityRenderState>>() { }, RenderDispatch::glow)
+        );
+        NeoForge.EVENT_BUS.addListener(FrameGraphSetupEvent.class, RenderDispatch::enableGlows);
+        NeoForge.EVENT_BUS.addListener(
+                SubmitCustomGeometryEvent.class,
+                event -> GlowOutlines.INSTANCE.submitBlocks(event.getPoseStack(), event.getSubmitNodeCollector(), event.getLevelRenderState().cameraRenderState.pos)
+        );
+        NeoForge.EVENT_BUS.addListener(ExtractBlockOutlineRenderStateEvent.class, RenderDispatch::extractOutline);
         NeoForge.EVENT_BUS.addListener(RenderLevelStageEvent.AfterTranslucentBlocks.class, RenderDispatch::drawScenes);
         // The client scope only exists once the client session marked the login, which it does at the normal priority.
-        NeoForge.EVENT_BUS.addListener(EventPriority.LOW, ClientPlayerNetworkEvent.LoggingIn.class, _ -> Scenes.INSTANCE.start());
-        NeoForge.EVENT_BUS.addListener(LevelEvent.Unload.class, RenderDispatch::endScenes);
+        NeoForge.EVENT_BUS.addListener(EventPriority.LOW, ClientPlayerNetworkEvent.LoggingIn.class, RenderDispatch::start);
+        NeoForge.EVENT_BUS.addListener(LevelEvent.Unload.class, RenderDispatch::end);
+    }
+    
+    ///
+    /// Sets the outline color of the entity's render state to the color of its glow, if any mod glows the entity.
+    ///
+    private static void glow(Entity entity, EntityRenderState state) {
+        int color = GlowOutlines.INSTANCE.colorOf(entity);
+        if (color != 0) {
+            state.outlineColor = color;
+        }
+    }
+    
+    ///
+    /// Turns on the outline post chain of the frame while any glow exists.
+    ///
+    private static void enableGlows(FrameGraphSetupEvent event) {
+        if (GlowOutlines.INSTANCE.hasAny()) {
+            event.enableOutlineProcessing();
+        }
+    }
+    
+    ///
+    /// Updates the outline rules for the block under the crosshair and adds them as a custom renderer if any rule answered.
+    ///
+    private static void extractOutline(ExtractBlockOutlineRenderStateEvent event) {
+        TargetedBlock target = new TargetedBlock(event.getLevel(), event.getBlockPos().immutable(), event.getBlockState(), event.getHitResult().getDirection());
+        if (OutlineRules.INSTANCE.update(target)) {
+            event.addCustomRenderer(OutlineRules.INSTANCE);
+        }
     }
     
     ///
@@ -65,11 +115,21 @@ public class RenderDispatch {
     }
     
     ///
-    /// Ends every scene once the level of the client unloads, on a dimension change and on logout alike.
+    /// Starts the tickers of the scenes and the glows on login.
     ///
-    private static void endScenes(LevelEvent.Unload event) {
+    private static void start(ClientPlayerNetworkEvent.LoggingIn event) {
+        Scenes.INSTANCE.start();
+        GlowOutlines.INSTANCE.start();
+    }
+    
+    ///
+    /// Ends every scene, every glow, and the kept outlines once the level of the client unloads, on a dimension change and on logout alike.
+    ///
+    private static void end(LevelEvent.Unload event) {
         if (event.getLevel().isClientSide()) {
             Scenes.INSTANCE.end();
+            GlowOutlines.INSTANCE.end();
+            OutlineRules.INSTANCE.end();
         }
     }
     
