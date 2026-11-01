@@ -22,24 +22,24 @@ import java.util.Set;
 ///
 /// A vanilla program that a Nexus program builds on.
 ///
-/// The template of each stage is a copy of the vanilla program, with the anchors that [Program#generate(ShaderType, String)] replaces.
+/// The template of each stage is the text of the vanilla program plus the anchor lines for [Program#generate(ShaderType, String)].
 ///
 @ApiStatus.Internal
 @RequiredArgsConstructor
 public enum Base {
     
     ///
-    /// The vanilla `core/position_color` program, for colored geometry.
+    /// The vanilla `core/position_color` program.
     ///
     POSITION_COLOR(Set.of("DynamicTransforms", "Projection"), Set.of(), DefaultVertexFormat.POSITION_COLOR),
     
     ///
-    /// The vanilla `core/position_tex_color` program, for textured and colored geometry.
+    /// The vanilla `core/position_tex_color` program.
     ///
     POSITION_TEX_COLOR(Set.of("DynamicTransforms", "Projection"), Set.of("Sampler0"), DefaultVertexFormat.POSITION_TEX_COLOR),
     
     ///
-    /// The vanilla `core/entity` program, for lit entity geometry with an overlay and a lightmap.
+    /// The vanilla `core/entity` program.
     ///
     ENTITY(Set.of("DynamicTransforms", "Projection", "Fog", "Lighting"), Set.of("Sampler0", "Sampler2"), DefaultVertexFormat.ENTITY);
     

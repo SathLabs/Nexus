@@ -1,5 +1,5 @@
 ///
-/// The programs of every mod, the vanilla programs they build on, and the shader text generated from their files.
+/// The program files of the mods, the vanilla programs they build on, and the pipelines created from them.
 ///
 @NullMarked
 @CheckReturnValue

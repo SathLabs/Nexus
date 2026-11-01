@@ -192,12 +192,23 @@ public final class Render {
     }
     
     ///
-    /// Creates the pipeline of the program file `assets/<modid>/nexus/shaders/<name>.glsl` and registers it with the shading a shader pack gives it.
+    /// Creates the pipeline of the program file `assets/<modid>/nexus/shaders/<name>.glsl` and
+    /// registers it with the shading a shader pack gives it.
+    /// The pipeline takes the blend, depth, cull, defines, and uniform blocks of the given state, and its vertex mode,
+    /// or quads if the state doesn't set one.
     ///
-    /// The pipeline takes the blend, depth, cull, defines, and uniform blocks of the given state, and its vertex mode, or quads if the state doesn't set one.
-    /// Its vertex format and its shaders are those of the program.
+    /// A program is one GLSL file that builds on the vanilla program `core/<name>` its directive `#nexus base <name>` picks,
+    /// one of `position_color`, `position_tex_color`, and `entity`. Everything else in the file is plain GLSL:
+    /// - A file-scope `in` that is a `float`, an `int`, or one of their vectors is an extra vertex input.
+    /// - A file-scope `out` is a varying from the vertex stage to the fragment stage.
+    /// - A uniform block or a sampler is declared in both stages, and a uniform block other than vanilla's own has to be bound with [Pipeline#bind(String, ClientOnly)].
+    /// - A `#define` outside of any conditional applies to the vanilla program as well.
+    /// - `void nexus_vertex()` runs as the last statement of the vertex main function.
+    /// - `vec4 nexus_albedo(vec4 albedo)` wraps the color the vanilla program fetches, before the color modulator, lighting, overlay, and fog.
+    /// - Everything else is copied into both stages, which define `NEXUS_VERTEX` or `NEXUS_FRAGMENT`.
     ///
-    /// If the program could not be compiled at the last resource reload, it will be logged once and skipped by [#draw(ClientOnly)].
+    /// If the program could not be compiled at a resource reload, it will be logged once and
+    /// nothing will be drawn with it through [#draw(ClientOnly)] until the next reload.
     /// Drawing a render type over it anywhere else will throw while GL validation is on.
     ///
     /// @param program The name of the program.
@@ -207,9 +218,9 @@ public final class Render {
     /// @return The registered pipeline.
     ///
     /// @throws IllegalArgumentException - If the jar of the mod has no such program file.
-    /// - If the program file doesn't have exactly one `#nexus base` directive with a known base, or has another `#nexus` directive.
-    /// - If the program file declares a `nexus_` function that is no hook, or an input of an unsupported type or with the name of an input of its base.
-    /// - If another program declares an input of the same name with another type, or if the inputs of all programs need more vertex elements than are left.
+    /// - If the program file doesn't have exactly one `#nexus base` directive with a known base, or has another `#nexus` directive or a `#version` directive.
+    /// - If the program file declares a `nexus_` function that is no hook, or an input of another type, with more than one variable, or with the name of an input of its base.
+    /// - If another program declares an input of the same name with another type or count, or if all 32 vertex format element identifiers are taken.
     /// @throws IllegalStateException    If the client already registered its render pipelines.
     ///
     @CanIgnoreReturnValue
@@ -222,12 +233,14 @@ public final class Render {
     }
     
     ///
-    /// Creates the pipeline of the program file `assets/<modid>/nexus/shaders/<name>.glsl` and registers it with the shading a shader pack gives it.
-    ///
+    /// Creates the pipeline of the program file `assets/<modid>/nexus/shaders/<name>.glsl` and
+    /// registers it with the shading a shader pack gives it.
     /// The pipeline has a depth test with depth write, no blend, culling, and quads.
-    /// Its vertex format and its shaders are those of the program.
     ///
-    /// If the program could not be compiled at the last resource reload, it will be logged once and skipped by [#draw(ClientOnly)].
+    /// The program file is read as in [#pipeline(String, ClientOnly, Shading)].
+    ///
+    /// If the program could not be compiled at a resource reload, it will be logged once and
+    /// nothing will be drawn with it through [#draw(ClientOnly)] until the next reload.
     /// Drawing a render type over it anywhere else will throw while GL validation is on.
     ///
     /// @param program The name of the program.
@@ -236,9 +249,9 @@ public final class Render {
     /// @return The registered pipeline.
     ///
     /// @throws IllegalArgumentException - If the jar of the mod has no such program file.
-    /// - If the program file doesn't have exactly one `#nexus base` directive with a known base, or has another `#nexus` directive.
-    /// - If the program file declares a `nexus_` function that is no hook, or an input of an unsupported type or with the name of an input of its base.
-    /// - If another program declares an input of the same name with another type, or if the inputs of all programs need more vertex elements than are left.
+    /// - If the program file doesn't have exactly one `#nexus base` directive with a known base, or has another `#nexus` directive or a `#version` directive.
+    /// - If the program file declares a `nexus_` function that is no hook, or an input of another type, with more than one variable, or with the name of an input of its base.
+    /// - If another program declares an input of the same name with another type or count, or if all 32 vertex format element identifiers are taken.
     /// @throws IllegalStateException    If the client already registered its render pipelines.
     ///
     @CanIgnoreReturnValue
@@ -251,7 +264,7 @@ public final class Render {
     }
     
     ///
-    /// Creates the pipeline of the given program file and registers it with the given shading.
+    /// Creates the pipeline of the given program file with the given state and registers it with the given shading.
     ///
     /// Should only ever be called on the client.
     ///
@@ -261,7 +274,7 @@ public final class Render {
     ///
     /// @return The registered pipeline.
     ///
-    /// @throws IllegalArgumentException If the program file is missing or [Programs#create(NexusMod, String, RenderPipeline.Snippet)] rejects it.
+    /// @throws IllegalArgumentException If the program file is missing or fails [Programs#create(NexusMod, String, RenderPipeline.Snippet)].
     /// @throws IllegalStateException    If the client already registered its render pipelines.
     ///
     private Pipeline programPipeline(String program, RenderPipeline.@Nullable Snippet state, Shading shading) {

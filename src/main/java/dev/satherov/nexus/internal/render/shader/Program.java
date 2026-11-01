@@ -36,8 +36,6 @@ import java.util.regex.Pattern;
 /// - `void nexus_vertex()`: Runs as the last statement of the base's vertex main function.
 /// - `vec4 nexus_albedo(vec4 albedo)`: Wraps the color the base fetches, before the color modulator, lighting, overlay, and fog.
 ///
-/// If the program leaves out a hook, the base will keep its vanilla behavior there.
-///
 @ApiStatus.Internal
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class Program {
@@ -279,8 +277,7 @@ public final class Program {
     ///
     /// @return The base.
     ///
-    /// @throws IllegalArgumentException If the directive is not a base directive, if the program already has a base,
-    /// or if the base is unknown.
+    /// @throws IllegalArgumentException If the directive is not a base directive, if the program already has a base, or if the base is unknown.
     ///
     private static Base readBase(Identifier program, @Nullable Base previous, String directive) {
         Matcher matcher = Program.BASE.matcher(directive);
@@ -378,18 +375,16 @@ public final class Program {
     }
     
     ///
-    /// Creates the vertex format of the program, with the elements of the base and then the inputs in file order.
+    /// Creates the vertex format of the program, with the elements of the base and then the inputs in file order,
+    /// or returns the format of the base if there are no inputs.
     ///
     /// Every program that declares an input of the same name, type, and count shares its element.
-    ///
-    /// If the program declares no inputs, this will return the format of the base.
     ///
     /// May be called from any thread.
     ///
     /// @return The vertex format.
     ///
-    /// @throws IllegalArgumentException If another program declared an input of the same name with another type or count,
-    /// or if every vertex format element identifier is taken.
+    /// @throws IllegalArgumentException If another program declared an input of the same name with another type or count, or if every vertex format element identifier is taken.
     ///
     public VertexFormat format() {
         VertexFormat baseFormat = this.base.getFormat();
@@ -427,7 +422,7 @@ public final class Program {
     }
     
     ///
-    /// Generates the text of the given stage from the given template.
+    /// Generates the text of the given stage from the given template, leaving every `#moj_import` directive as it is.
     ///
     /// The anchors of the template are replaced:
     /// - `#nexus declarations`: The declarations of the stage in file order.
@@ -435,9 +430,6 @@ public final class Program {
     /// - `#nexus albedo`: The call to the albedo hook, or nothing if the program doesn't define it.
     ///
     /// The define `NEXUS_VERTEX` or `NEXUS_FRAGMENT` and then the defines of the program file are inserted directly after the `#version` line.
-    /// They apply to every conditional of the template the same way a pipeline define does.
-    ///
-    /// Every `#moj_import` directive will still be a directive.
     ///
     /// @param stage    The shader stage.
     /// @param template The text of the template of the base for the given stage.

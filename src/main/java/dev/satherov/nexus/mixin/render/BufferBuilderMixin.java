@@ -11,9 +11,9 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 
 ///
-/// Lets a buffer builder write the extra vertex inputs of a program through [IVertexConsumerExtension#misc(VertexFormatElement, int...)].
+/// Implements [IVertexConsumerExtension#misc(VertexFormatElement, int...)] for [BufferBuilder].
 ///
-/// NeoForge's default of that method does nothing, and vanilla's buffer builder doesn't override it.
+/// NeoForge's default of the method does nothing, and vanilla's buffer builder doesn't override it.
 ///
 @Mixin(BufferBuilder.class)
 public abstract class BufferBuilderMixin implements VertexConsumer {

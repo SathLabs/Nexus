@@ -48,7 +48,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 ///
-/// The pipelines built from the program files of the mods, and the reload listener that compiles them.
+/// The pipelines created from the program files of the mods, and the reload listener that compiles them.
 ///
 /// A program file is read from the jar of its mod when its pipeline is created.
 /// On every resource reload, both stages of every program are generated from the templates of its base,
@@ -70,7 +70,7 @@ public final class Programs extends SimplePreparableReloadListener<Map<RenderPip
     private static final RenderPipeline.Snippet DEFAULT_STATE = RenderPipeline.builder().withDepthStencilState(DepthStencilState.DEFAULT).buildSnippet();
     
     ///
-    /// The program file of every pipeline built from one.
+    /// The program file of every pipeline created from one.
     ///
     private static final Map<RenderPipeline, ProgramFile> FILE_BY_PIPELINE = new ConcurrentHashMap<>();
     
@@ -90,7 +90,7 @@ public final class Programs extends SimplePreparableReloadListener<Map<RenderPip
     /// - The uniform blocks and samplers are those of the given state, then those of the base, and then those the program file declares, each once.
     /// - The blend, depth, cull, and defines are those of the given state, or a depth test with depth write, no blend, and culling if there is none.
     ///
-    /// Safe to be called from parallel mod constructors.
+    /// May be called from parallel mod constructors.
     ///
     /// @param mod   The handle of the mod.
     /// @param name  The name of the program.
@@ -98,7 +98,7 @@ public final class Programs extends SimplePreparableReloadListener<Map<RenderPip
     ///
     /// @return The pipeline of the program.
     ///
-    /// @throws IllegalArgumentException If the jar of the mod has no such program file or if [Program#parse(Identifier, String)] or [Program#format()] rejects it.
+    /// @throws IllegalArgumentException If the jar of the mod has no such program file or the program file fails [Program#parse(Identifier, String)] or [Program#format()].
     /// @throws UncheckedIOException     If the program file could not be read.
     ///
     public static RenderPipeline create(NexusMod mod, String name, RenderPipeline.@Nullable Snippet state) {
@@ -157,7 +157,7 @@ public final class Programs extends SimplePreparableReloadListener<Map<RenderPip
     ///
     /// @param pipeline The render pipeline.
     ///
-    /// @return The names of the uniform blocks, or an empty set if no program file built the pipeline.
+    /// @return The names of the uniform blocks, or an empty set if the pipeline was not created from a program file.
     ///
     public static Set<String> blocks(RenderPipeline pipeline) {
         ProgramFile file = Programs.FILE_BY_PIPELINE.get(pipeline);
@@ -169,7 +169,7 @@ public final class Programs extends SimplePreparableReloadListener<Map<RenderPip
     ///
     /// @param pipeline The render pipeline.
     ///
-    /// @return `true` if the program could not be compiled, or `false` if no program file built the pipeline.
+    /// @return `true` if the program could not be compiled, or `false` if the pipeline was not created from a program file.
     ///
     public static boolean isBroken(RenderPipeline pipeline) {
         return Programs.BROKEN.contains(pipeline);
@@ -212,7 +212,9 @@ public final class Programs extends SimplePreparableReloadListener<Map<RenderPip
     }
     
     ///
-    /// Compiles every program and marks the ones that could not be compiled as broken until the next reload.
+    /// Compiles every program.
+    ///
+    /// A program that could not be compiled is logged and marked as broken until the next reload.
     ///
     /// @param preparations The text of every program by its pipeline.
     /// @param manager      The resource manager of the reload.

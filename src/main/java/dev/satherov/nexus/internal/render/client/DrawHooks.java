@@ -54,7 +54,7 @@ import java.util.function.Consumer;
 public final class DrawHooks {
     
     ///
-    /// The uniform blocks that vanilla binds to every draw itself.
+    /// The uniform blocks that vanilla binds on every draw.
     ///
     private static final Set<String> VANILLA_BLOCKS = Set.of("Projection", "DynamicTransforms", "Fog", "Globals", "Lighting");
     
@@ -102,8 +102,7 @@ public final class DrawHooks {
     ///
     /// Runs every draw hook and then draws or holds back the batch of every render type they drew into.
     ///
-    /// If a hook or a batch throws, every open buffer builder and every held back batch will be dropped,
-    /// and every byte buffer builder will be freed and created anew on its next use.
+    /// If a hook or a batch throws, every open buffer builder and every held back batch will be dropped and every byte buffer builder freed.
     ///
     /// @param pose The pose stack of the frame.
     ///
@@ -127,8 +126,7 @@ public final class DrawHooks {
     ///
     /// Drops every held back batch and frees every byte buffer builder.
     ///
-    /// A byte buffer builder may still hold the vertices of a buffer builder that never built its mesh.
-    /// Those vertices would end up in the next mesh built from it.
+    /// A byte buffer builder may still hold the vertices of a buffer builder that never built its mesh, which would end up in the next mesh built from it.
     ///
     private void drop() {
         this.held.forEach(batch -> batch.mesh().close());
@@ -145,7 +143,7 @@ public final class DrawHooks {
     ///
     /// @return The buffer builder to draw into.
     ///
-    /// @throws IllegalStateException If a new buffer builder is started and the bindings of the mod pipeline of the render type don't pass [#checkBindings(RenderType)].
+    /// @throws IllegalStateException If a new buffer builder is started and the mod pipeline of the render type fails [#checkBindings(RenderType)].
     ///
     private VertexConsumer begin(RenderType type) {
         BufferBuilder builder = this.builderByType.get(type);
@@ -168,7 +166,8 @@ public final class DrawHooks {
     ///
     /// @param type The render type a hook draws with.
     ///
-    /// @throws IllegalStateException If the mod pipeline binds a uniform block that the render pipeline does not declare or doesn't bind one other than vanilla's own that its program file declares.
+    /// @throws IllegalStateException If the mod pipeline binds a uniform block that the render pipeline does not declare,
+    /// or if its program file declares a uniform block other than one of [#VANILLA_BLOCKS] that is never bound.
     ///
     private void checkBindings(RenderType type) {
         RenderPipeline renderPipeline = type.pipeline();
