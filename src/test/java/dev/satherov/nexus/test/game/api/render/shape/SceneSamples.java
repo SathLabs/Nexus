@@ -61,6 +61,16 @@ public class SceneSamples {
     
     private static final double HEIGHT = 4.0D;
     
+    private static final float RING_WIDTH = 6.0F;
+    
+    private static final Vec3 CIRCLE = new Vec3(-1.6D, 0.0D, 7.0D);
+    
+    private static final Vec3 SPHERE = new Vec3(1.6D, 0.0D, 7.0D);
+    
+    private static final double NEAR_DISTANCE = 3.0D;
+    
+    private static final double NEAR_RADIUS = 2.0D;
+    
     private static @Nullable Vec3 debugCenter;
     
     private static int debugCalls;
@@ -261,6 +271,83 @@ public class SceneSamples {
     }
     
     @ClientTest
+    public static void visibleCircleAndSphereAreCutByWall(Client client) {
+        Vec3 eye = SceneSamples.drawCircleAndSphere(client, Paint.Depth.VISIBLE);
+        Capture capture = client.capture();
+        SceneSamples.assertColor(client, capture, eye.add(SceneSamples.CIRCLE).add(-0.6D, 0.0D, 0.0D), SceneSamples.RED);
+        SceneSamples.assertColor(client, capture, eye.add(SceneSamples.CIRCLE).add(-1.0D, 0.0D, 0.0D), SceneSamples.BLUE);
+        Assertions.assertThat(SceneSamples.color(client, capture, eye.add(SceneSamples.CIRCLE).add(0.6D, 0.0D, 0.0D))).as("the disc behind the wall").isNotEqualTo(SceneSamples.RED);
+        Assertions.assertThat(SceneSamples.isShadedRed(SceneSamples.color(client, capture, eye.add(SceneSamples.SPHERE).add(0.5D, 0.4D, 0.0D)))).as("the sphere beside the wall").isTrue();
+        Assertions.assertThat(SceneSamples.isShadedRed(SceneSamples.color(client, capture, eye.add(SceneSamples.SPHERE).add(-0.5D, 0.4D, 0.0D)))).as("the sphere behind the wall").isFalse();
+        capture.assertGolden("visible_circle_and_sphere_are_cut_by_wall");
+    }
+    
+    @ClientTest
+    public static void hiddenCircleAndSphereShowOnlyBehindWall(Client client) {
+        Vec3 eye = SceneSamples.drawCircleAndSphere(client, Paint.Depth.HIDDEN);
+        Capture capture = client.capture();
+        SceneSamples.assertColor(client, capture, eye.add(SceneSamples.CIRCLE).add(0.6D, 0.0D, 0.0D), SceneSamples.RED);
+        SceneSamples.assertColor(client, capture, eye.add(SceneSamples.CIRCLE).add(1.0D, 0.0D, 0.0D), SceneSamples.BLUE);
+        Assertions.assertThat(SceneSamples.color(client, capture, eye.add(SceneSamples.CIRCLE).add(-0.6D, 0.0D, 0.0D))).as("the disc beside the wall").isNotEqualTo(SceneSamples.RED);
+        Assertions.assertThat(SceneSamples.isShadedRed(SceneSamples.color(client, capture, eye.add(SceneSamples.SPHERE).add(-0.5D, 0.4D, 0.0D)))).as("the sphere behind the wall").isTrue();
+        Assertions.assertThat(SceneSamples.isShadedRed(SceneSamples.color(client, capture, eye.add(SceneSamples.SPHERE).add(0.5D, 0.4D, 0.0D)))).as("the sphere beside the wall").isFalse();
+        capture.assertGolden("hidden_circle_and_sphere_show_only_behind_wall");
+    }
+    
+    @ClientTest
+    public static void alwaysCircleAndSphereShowEverywhere(Client client) {
+        Vec3 eye = SceneSamples.drawCircleAndSphere(client, Paint.Depth.ALWAYS);
+        Capture capture = client.capture();
+        SceneSamples.assertColor(client, capture, eye.add(SceneSamples.CIRCLE).add(-0.6D, 0.0D, 0.0D), SceneSamples.RED);
+        SceneSamples.assertColor(client, capture, eye.add(SceneSamples.CIRCLE).add(0.6D, 0.0D, 0.0D), SceneSamples.RED);
+        SceneSamples.assertColor(client, capture, eye.add(SceneSamples.CIRCLE).add(-1.0D, 0.0D, 0.0D), SceneSamples.BLUE);
+        SceneSamples.assertColor(client, capture, eye.add(SceneSamples.CIRCLE).add(1.0D, 0.0D, 0.0D), SceneSamples.BLUE);
+        Assertions.assertThat(SceneSamples.isShadedRed(SceneSamples.color(client, capture, eye.add(SceneSamples.SPHERE).add(0.5D, 0.4D, 0.0D)))).as("the sphere beside the wall").isTrue();
+        Assertions.assertThat(SceneSamples.isShadedRed(SceneSamples.color(client, capture, eye.add(SceneSamples.SPHERE).add(-0.5D, 0.4D, 0.0D)))).as("the sphere behind the wall").isTrue();
+        capture.assertGolden("always_circle_and_sphere_show_everywhere");
+    }
+    
+    @ClientTest
+    public static void nearSphereFillsItsSilhouette(Client client) {
+        Vec3 eye = SceneSamples.enter(client, 0.0F);
+        SceneSamples.scene().draw(Shape.sphere(eye.add(0.0D, 0.0D, SceneSamples.NEAR_DISTANCE), SceneSamples.NEAR_RADIUS), Paint.fill(SceneSamples.RED));
+        client.tick();
+        
+        Capture capture = client.capture();
+        double silhouette = Math.asin(SceneSamples.NEAR_RADIUS / SceneSamples.NEAR_DISTANCE);
+        double centerPlane = Math.atan(SceneSamples.NEAR_RADIUS / SceneSamples.NEAR_DISTANCE);
+        double inside = (silhouette + centerPlane) / 2.0D;
+        double outside = silhouette + Math.toRadians(4.0D);
+        for (double side : new double[]{ -1.0D, 1.0D }) {
+            Vec3 grown = eye.add(side * Math.sin(inside), 0.0D, Math.cos(inside));
+            Vec3 past = eye.add(side * Math.sin(outside), 0.0D, Math.cos(outside));
+            Assertions.assertThat(SceneSamples.isShadedRed(SceneSamples.color(client, capture, grown))).as("the sphere past the extent of its center plane").isTrue();
+            Assertions.assertThat(SceneSamples.isShadedRed(SceneSamples.color(client, capture, past))).as("the sky past the silhouette").isFalse();
+        }
+        
+        capture.assertGolden("near_sphere_fills_its_silhouette");
+    }
+    
+    @ClientTest
+    public static void edgeOnRingKeepsItsBand(Client client) {
+        Vec3 eye = SceneSamples.enter(client, 0.0F);
+        Vec3 center = eye.add(0.0D, 0.0D, 5.0D);
+        SceneSamples.scene().draw(Shape.circle(center, Vec3.Y_AXIS, 1.5D), Paint.stroke(SceneSamples.BLUE).withLineWidth(SceneSamples.RING_WIDTH));
+        client.tick();
+        
+        Capture capture = client.capture();
+        Pixel front = SceneSamples.pixel(client, center.add(0.0D, 0.0D, -1.5D));
+        capture.assertPixel(front.x(), front.y(), SceneSamples.BLUE);
+        capture.assertPixel(front.x(), front.y() - 2, SceneSamples.BLUE);
+        capture.assertPixel(front.x(), front.y() + 2, SceneSamples.BLUE);
+        SceneSamples.assertColor(client, capture, center.add(1.5D, 0.0D, 0.0D), SceneSamples.BLUE);
+        SceneSamples.assertColor(client, capture, center.add(-1.5D, 0.0D, 0.0D), SceneSamples.BLUE);
+        Assertions.assertThat(SceneSamples.color(client, capture, center.add(2.0D, 0.0D, 0.0D))).as("the line past the end of the ring").isNotEqualTo(SceneSamples.BLUE);
+        Assertions.assertThat(capture.pixel(front.x(), front.y() - 8)).as("the sky above the band").isNotEqualTo(SceneSamples.BLUE);
+        capture.assertGolden("edge_on_ring_keeps_its_band");
+    }
+    
+    @ClientTest
     public static void debugRendererAfterTheEventThrows(Client client) {
         Render render = Nexus.getMod().getRender();
         Assertions.assertThatIllegalStateException()
@@ -286,6 +373,17 @@ public class SceneSamples {
         client.awaitStill(SceneSamples.STILL_FRAMES);
     }
     
+    private static Vec3 drawCircleAndSphere(Client client, Paint.Depth depth) {
+        Vec3 eye = SceneSamples.enter(client, 0.0F);
+        SceneSamples.wall(client, eye);
+        Paint paint = new Paint(SceneSamples.BLUE, SceneSamples.RING_WIDTH, SceneSamples.RED, depth);
+        Scene scene = SceneSamples.scene();
+        scene.draw(Shape.circle(eye.add(SceneSamples.CIRCLE), new Vec3(0.0D, 0.0D, 1.0D), 1.0D), paint);
+        scene.draw(Shape.sphere(eye.add(SceneSamples.SPHERE), 1.0D), paint);
+        client.tick();
+        return eye;
+    }
+    
     private static AABB slab(Vec3 eye) {
         return new AABB(eye.x - 3.0D, eye.y - 2.0D, eye.z + 7.0D, eye.x + 3.0D, eye.y + 2.0D, eye.z + 7.5D);
     }
@@ -302,6 +400,10 @@ public class SceneSamples {
     private static int color(Client client, Capture capture, Vec3 point) {
         Pixel pixel = SceneSamples.pixel(client, point);
         return capture.pixel(pixel.x(), pixel.y());
+    }
+    
+    private static boolean isShadedRed(int argb) {
+        return (argb & 0x0000FFFF) == 0 && (argb >> 16 & 0xFF) > 0x40;
     }
     
     private static Pixel pixel(Client client, Vec3 point) {

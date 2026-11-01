@@ -60,6 +60,41 @@ public interface Brush {
     void quad(Quad quad, Sprite sprite, int argb);
     
     ///
+    /// Draws a filled circle around the given center, in the plane with the given normal.
+    ///
+    /// The length of the normal is ignored.
+    ///
+    /// @param center The center of the circle.
+    /// @param normal The normal of the plane the circle lies in.
+    /// @param radius The radius of the circle.
+    /// @param argb   The ARGB color of the circle.
+    ///
+    void disc(Vec3 center, Vec3 normal, double radius, int argb);
+    
+    ///
+    /// Draws the outline of a circle around the given center, in the plane with the given normal.
+    ///
+    /// The outline is as wide as the line width of the paint.
+    ///
+    /// The length of the normal is ignored.
+    ///
+    /// @param center The center of the circle.
+    /// @param normal The normal of the plane the circle lies in.
+    /// @param radius The radius of the circle.
+    /// @param argb   The ARGB color of the outline.
+    ///
+    void ring(Vec3 center, Vec3 normal, double radius, int argb);
+    
+    ///
+    /// Draws a filled sphere around the given center.
+    ///
+    /// @param center The center of the sphere.
+    /// @param radius The radius of the sphere.
+    /// @param argb   The ARGB color of the sphere.
+    ///
+    void sphere(Vec3 center, double radius, int argb);
+    
+    ///
     /// Draws the given text centered on the given point, facing the camera.
     ///
     /// The text is depth tested under [Paint.Depth#VISIBLE] only.

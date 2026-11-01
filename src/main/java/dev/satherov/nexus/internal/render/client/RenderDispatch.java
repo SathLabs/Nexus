@@ -69,7 +69,7 @@ import java.util.function.BiConsumer;
 /// - Ticks the debug renderers after each client tick.
 /// - Starts the scenes and the glows on login and ends them when the level of the client unloads.
 /// - Projects world positions onto the screen for [Render].
-/// - Registers the reload listener of the programs and stores the pipelines built from program files.
+/// - Registers the reload listener of the programs and stores the pipelines created from program files.
 ///
 /// Should only ever be loaded on the client.
 ///
@@ -120,6 +120,8 @@ public class RenderDispatch {
     /// @param nexusBus The mod bus of Nexus.
     ///
     public static void listen(IEventBus nexusBus) {
+        // The shape pipelines are created here because RenderDispatch#program refuses them once the registration event ran.
+        ShapePipelines.init();
         nexusBus.addListener(RegisterRenderPipelinesEvent.class, RenderDispatch::registerPipelines);
         nexusBus.addListener(AddClientReloadListenersEvent.class, Programs::register);
         nexusBus.addListener(RegisterGuiLayersEvent.class, RenderDispatch::registerHudLayers);
@@ -136,7 +138,7 @@ public class RenderDispatch {
         NeoForge.EVENT_BUS.addListener(ExtractBlockOutlineRenderStateEvent.class, RenderDispatch::extractOutline);
         NeoForge.EVENT_BUS.addListener(RenderLevelStageEvent.AfterTranslucentFeatures.class, event -> RenderDispatch.DRAW_HOOKS.drawInLevel(event.getPoseStack()));
         NeoForge.EVENT_BUS.addListener(RenderLevelStageEvent.AfterTranslucentBlocks.class, RenderDispatch::drawScenes);
-        NeoForge.EVENT_BUS.addListener(RenderLevelStageEvent.AfterLevel.class, event -> RenderDispatch.DRAW_HOOKS.drawAfterLevel(event.getModelViewMatrix()));
+        NeoForge.EVENT_BUS.addListener(RenderLevelStageEvent.AfterLevel.class, RenderDispatch::drawAfterLevel);
         NeoForge.EVENT_BUS.addListener(ClientTickEvent.Post.class, _ -> DebugRenderers.INSTANCE.tick());
         // The client session only opens the client scope at normal priority, so we have to start after it.
         NeoForge.EVENT_BUS.addListener(EventPriority.LOW, ClientPlayerNetworkEvent.LoggingIn.class, RenderDispatch::start);
@@ -255,6 +257,17 @@ public class RenderDispatch {
     }
     
     ///
+    /// Draws the held back batches of the draw hooks, the own-shaded buffers of every scene, and then the held back meshes of the outline rules.
+    ///
+    /// @param event The render stage event after the level.
+    ///
+    private static void drawAfterLevel(RenderLevelStageEvent.AfterLevel event) {
+        RenderDispatch.DRAW_HOOKS.drawAfterLevel(event.getModelViewMatrix());
+        Scenes.INSTANCE.drawAfterLevel(event.getModelViewMatrix(), Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(false));
+        OutlineRules.INSTANCE.drawAfterLevel(event.getModelViewMatrix());
+    }
+    
+    ///
     /// Starts the scenes and the glows on login.
     ///
     /// @param event The login event.
@@ -296,16 +309,16 @@ public class RenderDispatch {
     }
     
     ///
-    /// Builds the render pipeline of the given pipeline from its program file and stores the pipeline for its bindings.
+    /// Stores the given pipeline created from a program file by its render pipeline, which is resolved here.
     ///
-    /// The pipeline never goes through the registration event, which only assigns it the Iris program of its shading.
-    /// If the registration event already ran, the program file will not be read.
+    /// The pipeline is not registered with the registration event, which only assigns it the Iris program of its shading.
+    /// If the registration event already ran, the render pipeline will not be resolved.
     ///
-    /// Should only ever be called from [Render#pipeline(String, ClientOnly, Shading)] and [Render#pipeline(String, Shading)].
+    /// Should only ever be called from [Render#pipeline(String, ClientOnly, Shading)], [Render#pipeline(String, Shading)], and [ShapePipelines].
     ///
     /// @param pipeline The pipeline to store.
     ///
-    /// @throws IllegalArgumentException If the program file is missing or [Programs#create(NexusMod, String, RenderPipeline.Snippet)] rejects it.
+    /// @throws IllegalArgumentException If the render pipeline is created from a missing program file or one that fails [Programs#create(NexusMod, String, RenderPipeline.Snippet)].
     /// @throws IllegalStateException    If the registration event already ran.
     ///
     public static void program(Pipeline pipeline) {
@@ -314,6 +327,18 @@ public class RenderDispatch {
         }
         
         RenderDispatch.PIPELINES.put(pipeline.getPipeline().get().get(), pipeline);
+    }
+    
+    ///
+    /// If the geometry of the given render pipeline is drawn after the level, which is the case for [Shading#OWN] while a shader pack is in use.
+    ///
+    /// @param renderPipeline The render pipeline.
+    ///
+    /// @return `true` if the geometry is drawn after the level.
+    ///
+    public static boolean isDrawnAfterLevel(RenderPipeline renderPipeline) {
+        Pipeline pipeline = RenderDispatch.PIPELINES.get(renderPipeline);
+        return pipeline != null && pipeline.getShading() == Shading.OWN && ModList.get().isLoaded("iris") && IrisBridge.isShaderPackInUse();
     }
     
     ///

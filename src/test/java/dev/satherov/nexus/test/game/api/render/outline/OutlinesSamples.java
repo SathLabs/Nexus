@@ -33,6 +33,8 @@ public class OutlinesSamples {
     
     private static final int RED = 0xFFFF0000;
     
+    private static final int BLUE = 0xFF0000FF;
+    
     private static final int STILL_FRAMES = 10;
     
     private static final double HEIGHT = 4.0D;
@@ -48,6 +50,12 @@ public class OutlinesSamples {
     private static final Vec3 MARK_FRONT = new Vec3(0.25D, 0.25D, -0.05D);
     
     private static final Vec3 TOP_EDGE = new Vec3(0.25D, 1.0D, 0.0D);
+    
+    private static final double ROUND_RADIUS = 0.15D;
+    
+    private static final Vec3 DISC = new Vec3(0.3D, 0.5D, -0.05D);
+    
+    private static final Vec3 BALL = new Vec3(0.7D, 0.5D, -0.25D);
     
     @ClientTest
     public static void replacingRuleHidesVanillaOutline(Client client) {
@@ -71,6 +79,23 @@ public class OutlinesSamples {
         OutlinesSamples.assertColor(client, capture, pos, OutlinesSamples.MARK_FRONT, OutlinesSamples.RED);
         Assertions.assertThat(OutlinesSamples.edge(client, capture, pos)).as("the top edge beside the addition").isNotEqualTo(bare);
         OutlinesSamples.face(client, capture, pos).assertGolden("adding_rule_keeps_vanilla_outline");
+    }
+    
+    @ClientTest
+    public static void ruleDrawsCirclesAndSpheres(Client client) {
+        Shape rounds = Shape.of(Shape.circle(OutlinesSamples.DISC, new Vec3(0.0D, 0.0D, 1.0D), OutlinesSamples.ROUND_RADIUS), Shape.sphere(OutlinesSamples.BALL, OutlinesSamples.ROUND_RADIUS));
+        Paint paint = new Paint(OutlinesSamples.BLUE, 4.0F, OutlinesSamples.RED, Paint.Depth.VISIBLE);
+        OutlinesSamples.outlines().add(target -> target.state().is(Blocks.LAPIS_BLOCK) ? new Outline(rounds, paint) : null);
+        BlockPos pos = OutlinesSamples.aim(client, Blocks.LAPIS_BLOCK);
+        
+        Capture capture = client.capture();
+        OutlinesSamples.assertColor(client, capture, pos, OutlinesSamples.DISC, OutlinesSamples.RED);
+        OutlinesSamples.assertColor(client, capture, pos, OutlinesSamples.DISC.add(OutlinesSamples.ROUND_RADIUS, 0.0D, 0.0D), OutlinesSamples.BLUE);
+        Pixel ball = OutlinesSamples.pixel(client, Vec3.atLowerCornerOf(pos).add(OutlinesSamples.BALL).add(OutlinesSamples.ROUND_RADIUS / 2.0D, OutlinesSamples.ROUND_RADIUS / 2.0D, 0.0D));
+        int shaded = capture.pixel(ball.x(), ball.y());
+        Assertions.assertThat(shaded & 0x0000FFFF).as("the green and blue of the sphere").isZero();
+        Assertions.assertThat(shaded >> 16 & 0xFF).as("the red of the sphere").isGreaterThan(0x40);
+        OutlinesSamples.face(client, capture, pos).assertGolden("rule_draws_circles_and_spheres");
     }
     
     @ClientTest

@@ -13,6 +13,7 @@ import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
 
 import org.jetbrains.annotations.ApiStatus;
@@ -23,15 +24,27 @@ import java.util.List;
 import java.util.Map;
 
 ///
-/// A brush that records the lines, quads, and labels of a shape into [Primitives].
+/// A brush that records the lines, quads, discs, rings, spheres, and labels of a shape into [Primitives].
 ///
 @ApiStatus.Internal
 public final class MeshBrush implements Brush {
     
     ///
+    /// The corners of the quad of a disc, ring, or sphere, in the order the quad mode reads them.
+    ///
+    private static final List<Vec2> CORNERS = List.of(new Vec2(-1.0F, -1.0F), new Vec2(1.0F, -1.0F), new Vec2(1.0F, 1.0F), new Vec2(-1.0F, 1.0F));
+    
+    ///
     /// The vertices recorded so far, by render type.
     ///
     private final Map<RenderType, List<Primitives.Vertex>> verticesByType = new LinkedHashMap<>();
+    
+    ///
+    /// The vertices of the rings recorded so far, by render type.
+    ///
+    /// The rings go after the other vertices of their render type in [#finish()], so they are drawn over the fills.
+    ///
+    private final Map<RenderType, List<Primitives.Vertex>> ringsByType = new LinkedHashMap<>();
     
     ///
     /// The labels recorded so far.
@@ -152,6 +165,65 @@ public final class MeshBrush implements Brush {
     }
     
     ///
+    /// Records a filled circle in the shape render type of the current depth mode.
+    ///
+    /// @param center The center of the circle.
+    /// @param normal The normal of the plane the circle lies in.
+    /// @param radius The radius of the circle.
+    /// @param argb   The ARGB color of the circle.
+    ///
+    @Override
+    public void disc(Vec3 center, Vec3 normal, double radius, int argb) {
+        this.round(Primitives.ShapeInputs.Kind.DISC, center, normal.normalize(), radius, argb);
+    }
+    
+    ///
+    /// Records a circle outline at the current line width in the shape render type of the current depth mode.
+    ///
+    /// @param center The center of the circle.
+    /// @param normal The normal of the plane the circle lies in.
+    /// @param radius The radius of the circle.
+    /// @param argb   The ARGB color of the outline.
+    ///
+    @Override
+    public void ring(Vec3 center, Vec3 normal, double radius, int argb) {
+        this.round(Primitives.ShapeInputs.Kind.RING, center, normal.normalize(), radius, argb);
+    }
+    
+    ///
+    /// Records a filled sphere in the shape render type of the current depth mode.
+    ///
+    /// @param center The center of the sphere.
+    /// @param radius The radius of the sphere.
+    /// @param argb   The ARGB color of the sphere.
+    ///
+    @Override
+    public void sphere(Vec3 center, double radius, int argb) {
+        this.round(Primitives.ShapeInputs.Kind.SPHERE, center, Vec3.ZERO, radius, argb);
+    }
+    
+    ///
+    /// Records the four corners of the quad of a disc, ring, or sphere in the shape render type of the current depth mode.
+    ///
+    /// A ring takes the current line width as its width and goes into [#ringsByType].
+    ///
+    /// @param kind   The kind of the shape.
+    /// @param center The center of the shape.
+    /// @param axis   The unit normal of the plane of a disc or ring, or [Vec3#ZERO] for a sphere.
+    /// @param radius The radius of the shape.
+    /// @param argb   The ARGB color of the shape.
+    ///
+    private void round(Primitives.ShapeInputs.Kind kind, Vec3 center, Vec3 axis, double radius, int argb) {
+        RenderType type = ShapePipelines.shape(this.paint.depth());
+        boolean ring = kind == Primitives.ShapeInputs.Kind.RING;
+        List<Primitives.Vertex> vertices = ring ? this.ringsByType.computeIfAbsent(type, _ -> new ArrayList<>()) : this.vertices(type);
+        float width = ring ? this.paint.lineWidth() : 0.0F;
+        for (Vec2 corner : MeshBrush.CORNERS) {
+            vertices.add(new Primitives.Vertex(center, argb, 0.0F, 0.0F, Vec3.ZERO, 0.0F, new Primitives.ShapeInputs(center, axis, (float) radius, width, corner, kind)));
+        }
+    }
+    
+    ///
     /// The vertices recorded so far for the given render type, created empty on first use.
     ///
     /// @param type The render type of the vertices.
@@ -202,6 +274,7 @@ public final class MeshBrush implements Brush {
     /// @return The primitives recorded so far.
     ///
     public Primitives finish() {
+        this.ringsByType.forEach((type, rings) -> this.vertices(type).addAll(rings));
         return new Primitives(this.verticesByType, this.labels);
     }
 }
