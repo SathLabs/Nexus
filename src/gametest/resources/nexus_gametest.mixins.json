@@ -6,6 +6,7 @@
     "GameTestServerMixin"
   ],
   "client": [
+    "ClientCommonPacketListenerImplMixin",
     "DeltaTrackerTimerMixin",
     "FramerateLimiterMixin",
     "KeyboardHandlerAccess",

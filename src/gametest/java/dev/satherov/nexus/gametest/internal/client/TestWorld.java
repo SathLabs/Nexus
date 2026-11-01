@@ -5,12 +5,26 @@ import lombok.RequiredArgsConstructor;
 
 import dev.satherov.nexus.gametest.api.client.Client;
 import dev.satherov.nexus.gametest.internal.level.VoidLevel;
+import dev.satherov.nexus.gametest.mixin.ClientCommonPacketListenerImplMixin;
 
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
+
+import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.Options;
+import net.minecraft.client.PrioritizeChunkUpdates;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
 import net.minecraft.client.server.IntegratedServer;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
+import net.minecraft.core.SectionPos;
+import net.minecraft.network.protocol.common.ClientboundPingPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -23,17 +37,21 @@ import net.minecraft.world.level.storage.LevelStorageSource;
 import net.minecraft.world.phys.Vec3;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jspecify.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.concurrent.atomic.AtomicReference;
 
 ///
 /// A reference to a world the player is in and what the player can do within it.
 ///
 /// @see VoidLevel
+/// @see ClientCommonPacketListenerImplMixin
 ///
 @ApiStatus.Internal
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
+@EventBusSubscriber(modid = "nexus_gametest", value = Dist.CLIENT)
 public final class TestWorld {
     
     ///
@@ -42,6 +60,38 @@ public final class TestWorld {
     /// If the name is already taken, vanilla will just add a number to it.
     ///
     private static final String SAVE_NAME = "nexus-gametest";
+    
+    ///
+    /// The maximum distance between the camera and the eyes of the player for the camera to count as being at the eyes.
+    ///
+    /// Vanilla smooths the eye height of the camera, and it never fully reaches the eye height of the player.
+    ///
+    private static final double CAMERA_TOLERANCE = 1.0E-4D;
+    
+    ///
+    /// If [Options#prioritizeChunkUpdates] is set to [PrioritizeChunkUpdates#NEARBY] vanilla will rebuild the section within the same frame it was changed,
+    /// if its center it is closer than this many blocks to the camera position.
+    ///
+    /// See the `isNearby` assignment inside the [LevelRenderer#compileSections(Camera)] method.
+    ///
+    private static final double SYNC_REBUILD_DISTANCE_SQUARED = 768.0D;
+    
+    ///
+    /// The ping that [#settle()] asked for and the server has not sent yet, or `null` if there is none.
+    ///
+    /// Set on the render thread and taken on the server thread.
+    ///
+    private static final AtomicReference<@Nullable Ping> PENDING_PING = new AtomicReference<>();
+    
+    ///
+    /// How many pings [#settle()] has asked for so far, which is also the identifier of the last one.
+    ///
+    private static int pings;
+    
+    ///
+    /// The identifier of the last ping of [#settle()] that the client handled, or `0` if it handled none yet.
+    ///
+    private static int handledPing;
     
     ///
     /// The client that joined the level.
@@ -109,13 +159,43 @@ public final class TestWorld {
     }
     
     ///
-    /// Waits until the player is floating at the level's spawnpoint and the level's clocks are stopped.
+    /// Marks the given ping as handled by the client, if it is the last one that [#settle()] sent.
+    ///
+    /// Runs on the render thread, like [#settle()].
+    ///
+    /// @param id The identifier of the ping the client handled.
+    ///
+    public static void onPingHandled(int id) {
+        if (id == TestWorld.pings) {
+            TestWorld.handledPing = id;
+        }
+    }
+    
+    ///
+    /// Sends the currently pending ping of [#settle()] to every player after the server has finished the tick that started after the ping was requested.
+    ///
+    /// The server sends the changes of all its levels before the end of the tick, so a ping will be sent after all changes made before [#settle()] was called.
+    ///
+    /// @param event The event of the tick the server finished.
+    ///
+    @SubscribeEvent
+    public static void onServerTickPost(ServerTickEvent.Post event) {
+        MinecraftServer server = event.getServer();
+        Ping ping = TestWorld.PENDING_PING.get();
+        if (ping != null && server.getTickCount() > ping.tick() && TestWorld.PENDING_PING.compareAndSet(ping, null)) {
+            server.getPlayerList().broadcastAll(new ClientboundPingPacket(ping.id()));
+        }
+    }
+    
+    ///
+    /// Waits until the player is floating at the level's spawnpoint, the level's clocks are stopped, and the loading screen is closed.
     ///
     public void awaitSpawn() {
         this.freeze();
         this.client.until("the player to log in", () -> !this.overworld().players().isEmpty());
         this.floatAtSpawn();
         this.client.until("the player to float at the spawn", () -> TestWorld.isFloating(this.client.minecraft()));
+        this.client.until("the loading screen to close", () -> this.client.screen() == null);
     }
     
     ///
@@ -164,6 +244,67 @@ public final class TestWorld {
     }
     
     ///
+    /// Teleports the player to the given position and rotation and then waits until the camera of the client has arrived there.
+    ///
+    /// @param position The position to put the player at.
+    /// @param yaw      The horizontal rotation of the player, in degrees.
+    /// @param pitch    The vertical rotation of the player, in degrees.
+    ///
+    public void pose(Vec3 position, float yaw, float pitch) {
+        ServerLevel level = this.overworld();
+        ServerPlayer player = level.players().getFirst();
+        level.getServer().execute(() -> player.connection.teleport(position.x, position.y, position.z, yaw, pitch));
+        
+        Vec3 eyes = position.add(0.0D, player.getEyeHeight(), 0.0D);
+        this.client.until("the camera to be at " + eyes + " looking along " + yaw + ", " + pitch, () -> this.isCameraAt(eyes, yaw, pitch));
+    }
+    
+    ///
+    /// Checks if the camera of the client is at the given position and looks along the given yaw and pitch.
+    ///
+    /// @param eyes  The position of the eyes of the player.
+    /// @param yaw   The horizontal rotation of the player, in degrees.
+    /// @param pitch The vertical rotation of the player, in degrees.
+    ///
+    /// @return `true` if the camera is at the given position and looks along the given yaw and pitch.
+    ///
+    private boolean isCameraAt(Vec3 eyes, float yaw, float pitch) {
+        Camera camera = this.client.minecraft().gameRenderer.getMainCamera();
+        return camera.position().closerThan(eyes, TestWorld.CAMERA_TOLERANCE) && camera.yRot() == yaw && camera.xRot() == pitch;
+    }
+    
+    ///
+    /// Asks the server for a ping at the end of its next tick, waits until the client handled it, and then waits until the sections are rebuilt.
+    ///
+    /// The client handles packets in the order the server sent them, so every packet sent before the ping is handled once the ping is.
+    ///
+    public void settle() {
+        int id = ++TestWorld.pings;
+        TestWorld.PENDING_PING.set(new Ping(id, this.overworld().getServer().getTickCount()));
+        this.client.until("the client to handle the ping '" + id + "'", () -> TestWorld.handledPing == id);
+        this.client.until("the sections near the camera to be rebuilt", this::areNearbySectionsRebuilt);
+    }
+    
+    ///
+    /// Checks if no visible section near the camera is waiting to be rebuilt.
+    ///
+    /// A section counts as near if the squared distance between its center and the block of the camera is below
+    /// {@value TestWorld#SYNC_REBUILD_DISTANCE_SQUARED}, the same test vanilla uses.
+    ///
+    /// @return `true` if every visible section near the camera is rebuilt.
+    ///
+    private boolean areNearbySectionsRebuilt() {
+        BlockPos camera = this.client.minecraft().gameRenderer.getMainCamera().blockPosition();
+        for (SectionRenderDispatcher.RenderSection section : this.client.minecraft().levelRenderer.getVisibleSections()) {
+            if (section.isDirty() && SectionPos.of(section.getSectionNode()).center().distSqr(camera) < TestWorld.SYNC_REBUILD_DISTANCE_SQUARED) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    ///
     /// Gets the server level of the test worlds overworld, which must exist.
     ///
     /// @return The overworld of the integrated server.
@@ -203,4 +344,12 @@ public final class TestWorld {
             throw new UncheckedIOException("failed to delete the test world '" + this.name + "'", failure);
         }
     }
+    
+    ///
+    /// One ping that [#settle()] requested.
+    ///
+    /// @param id   The identifier of the ping.
+    /// @param tick The tick count of the server when the ping was asked for.
+    ///
+    private record Ping(int id, int tick) { }
 }

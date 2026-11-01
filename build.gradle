@@ -118,6 +118,9 @@ dependencies {
     implementation libs.zelqro
     jarJar libs.zelqro
     compileOnly libs.mcdev.annotations
+    compileOnly(libs.iris) {
+        transitive = false
+    }
 
     gametestApi project(':')
     gametestApi libs.assertj.core

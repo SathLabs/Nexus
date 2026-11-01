@@ -6,6 +6,9 @@
     "tick.BlockEntityMixin",
     "tick.LevelMixin"
   ],
+  "client": [
+    "render.GameRendererMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   },

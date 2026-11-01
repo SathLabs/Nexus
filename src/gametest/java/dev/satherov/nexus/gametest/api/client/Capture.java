@@ -1,12 +1,16 @@
 package dev.satherov.nexus.gametest.api.client;
 
+import lombok.AccessLevel;
 import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import lombok.experimental.Accessors;
 
 import dev.satherov.nexus.gametest.internal.option.RunOptions;
 
 import net.minecraft.client.Screenshot;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.ARGB;
+import net.minecraft.util.CommonColors;
 
 import com.mojang.blaze3d.buffers.GpuFence;
 import com.mojang.blaze3d.pipeline.RenderTarget;
@@ -30,7 +34,13 @@ import java.util.Objects;
 /// One rendered frame captured from the framebuffer.
 ///
 @Accessors(fluent = true)
+@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class Capture {
+    
+    ///
+    /// The brightness that the matching pixels of a diff image are scaled to.
+    ///
+    private static final float DIFF_BRIGHTNESS = 0.25F;
     
     ///
     /// The identifier of the test that the frame was captured in.
@@ -65,10 +75,7 @@ public final class Capture {
     /// @param image The native image the frame was read back into.
     ///
     private Capture(Identifier test, NativeImage image) {
-        this.test = test;
-        this.width = image.getWidth();
-        this.height = image.getHeight();
-        this.pixels = image.getPixels();
+        this(test, image.getWidth(), image.getHeight(), image.getPixels());
     }
     
     ///
@@ -120,6 +127,59 @@ public final class Capture {
     }
     
     ///
+    /// Fails the test if the pixel at the given position is not exactly the given color.
+    ///
+    /// The failure message will contain both colors.
+    ///
+    /// @param x    The horizontal position of the pixel, starting from the left side.
+    /// @param y    The vertical position of the pixel, starting from the top side.
+    /// @param argb The ARGB color the pixel should have.
+    ///
+    /// @throws AssertionError            If the pixel has any other color.
+    /// @throws IndexOutOfBoundsException If the position is outside the frame.
+    ///
+    public void assertPixel(int x, int y, int argb) {
+        int pixel = this.pixel(x, y);
+        if (pixel != argb) {
+            throw new AssertionError(String.format(Locale.ROOT, "The pixel at '%d, %d' is '%08X' instead of '%08X'", x, y, pixel, argb));
+        }
+    }
+    
+    ///
+    /// The given rectangle of this capture as a capture of its own.
+    ///
+    /// @param x      The horizontal position of the rectangle, starting from the left side.
+    /// @param y      The vertical position of the rectangle, starting from the top side.
+    /// @param width  The width of the rectangle in framebuffer pixels.
+    /// @param height The height of the rectangle in framebuffer pixels.
+    ///
+    /// @return The pixels inside the rectangle as a capture of the same test.
+    ///
+    /// @throws IllegalArgumentException If the rectangle does not lie inside this capture.
+    ///
+    public Capture region(int x, int y, int width, int height) {
+        if (x < 0 || y < 0 || width < 1 || height < 1 || width > this.width - x || height > this.height - y) {
+            throw new IllegalArgumentException(String.format(
+                    Locale.ROOT,
+                    "The region '%d, %d, %dx%d' does not lie inside the capture of '%dx%d'",
+                    x,
+                    y,
+                    width,
+                    height,
+                    this.width,
+                    this.height
+            ));
+        }
+        
+        int[] pixels = new int[width * height];
+        for (int row = 0; row < height; row++) {
+            System.arraycopy(this.pixels, x + (y + row) * this.width, pixels, row * width, width);
+        }
+        
+        return new Capture(this.test, width, height, pixels);
+    }
+    
+    ///
     /// Writes the captured frame to the given path as a png file.
     ///
     /// @param path The path to write the frame to.
@@ -146,6 +206,12 @@ public final class Capture {
     ///
     /// If the `-Precord` property is set, the frame will instead be written to the path specified under the `-Pgoldens` property.
     ///
+    /// If the frame differs, the frame and a diff image will be written into the directory of the report,
+    /// as `failures/<modid>/<class>/<method>/<name>.png` and `<name>.diff.png`, while the failure message will contain both paths.
+    /// - `<method>` is the test method written in snake case.
+    ///
+    /// The diff image shows every differing pixel in red over a dark gray copy of the frame.
+    ///
     /// @param name The name of the golden, without the `.png`.
     ///
     public void assertGolden(String name) {
@@ -157,7 +223,8 @@ public final class Capture {
             return;
         }
         
-        this.assertMatches(this.golden(path), path);
+        Path failures = this.test.resolveAgainst(options.report().toAbsolutePath().getParent().resolve("failures"));
+        this.assertMatches(this.golden(path), path, failures, name);
     }
     
     ///
@@ -211,28 +278,103 @@ public final class Capture {
     ///
     /// Fails the test with the location of the first pixel that differs from the given golden.
     ///
-    /// @param golden The golden the captured frame is compared against.
-    /// @param path   The path of the golden, used for error messages.
+    /// @param golden   The golden the captured frame is compared against.
+    /// @param path     The path of the golden, used for error messages.
+    /// @param failures The directory the frame and its diff are written into if the frame differs.
+    /// @param name     The name of the golden, without the `.png`.
     ///
     /// @throws AssertionError If the captured frame differs from the golden, in size or pixel color.
     ///
-    private void assertMatches(Capture golden, String path) {
+    private void assertMatches(Capture golden, String path, Path failures, String name) {
         if (golden.width != this.width || golden.height != this.height) {
-            throw new AssertionError(String.format(Locale.ROOT, "The captured frame is %dx%d and the golden '%s', is %dx%d", this.width, this.height, path, golden.width, golden.height));
+            throw this.writeFailure(
+                    String.format(Locale.ROOT, "The captured frame is %dx%d and the golden '%s', is %dx%d", this.width, this.height, path, golden.width, golden.height),
+                    golden,
+                    failures,
+                    name
+            );
         }
         
         for (int i = 0; i < this.pixels.length; i++) {
             if (this.pixels[i] != golden.pixels[i]) {
-                throw new AssertionError(String.format(
-                        Locale.ROOT,
-                        "The captured frame differs from the golden '%s' at %d, %d: %08X instead of %08X",
-                        path,
-                        i % this.width,
-                        i / this.width,
-                        this.pixels[i],
-                        golden.pixels[i]
-                ));
+                throw this.writeFailure(
+                        String.format(
+                                Locale.ROOT,
+                                "The captured frame differs from the golden '%s' at %d, %d: %08X instead of %08X",
+                                path,
+                                i % this.width,
+                                i / this.width,
+                                this.pixels[i],
+                                golden.pixels[i]
+                        ),
+                        golden,
+                        failures,
+                        name
+                );
             }
         }
+    }
+    
+    ///
+    /// Writes the captured frame and its diff against the given golden into the given directory and then creates the failure.
+    ///
+    /// @param message  The message of the failure, without the paths of the written files.
+    /// @param golden   The golden the captured frame differs from.
+    /// @param failures The directory the frame and its diff are written into.
+    /// @param name     The name of the golden, without the `.png`.
+    ///
+    /// @return The failure with the given message and the paths of both files.
+    ///
+    /// @throws UncheckedIOException If the directory could not be created or a file could not be written.
+    ///
+    private AssertionError writeFailure(String message, Capture golden, Path failures, String name) {
+        try {
+            Files.createDirectories(failures);
+        } catch (IOException failure) {
+            throw new UncheckedIOException("Could not create the directory '" + failures + "' for the failure of '" + this.test + "'", failure);
+        }
+        
+        Path frame = failures.resolve(name + ".png");
+        Path diff = failures.resolve(name + ".diff.png");
+        this.write(frame);
+        this.diff(golden).write(diff);
+        return new AssertionError(message + ", the frame was written to '" + frame + "' and the diff to '" + diff + "'");
+    }
+    
+    ///
+    /// Creates the diff image of the captured frame against the given golden, with the larger width and the larger height of the two.
+    ///
+    /// Every pixel that differs, or that only one of the two has, is red.
+    /// Every other pixel is the pixel of the frame in dark gray.
+    ///
+    /// @param golden The golden the captured frame is compared against.
+    ///
+    /// @return The diff image of the captured frame against the golden.
+    ///
+    private Capture diff(Capture golden) {
+        int width = Math.max(this.width, golden.width);
+        int height = Math.max(this.height, golden.height);
+        int[] pixels = new int[width * height];
+        
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                pixels[x + y * width] = this.matchesAt(golden, x, y) ? ARGB.opaque(ARGB.scaleRGB(ARGB.greyscale(this.pixel(x, y)), Capture.DIFF_BRIGHTNESS)) : CommonColors.RED;
+            }
+        }
+        
+        return new Capture(this.test, width, height, pixels);
+    }
+    
+    ///
+    /// If both the captured frame and the given golden have a pixel at the given position, and it has the same color in both.
+    ///
+    /// @param golden The golden the captured frame is compared against.
+    /// @param x      The horizontal position of the pixel, starting from the left side.
+    /// @param y      The vertical position of the pixel, starting from the top side.
+    ///
+    /// @return `true` if both have the same pixel at the given position.
+    ///
+    private boolean matchesAt(Capture golden, int x, int y) {
+        return x < this.width && x < golden.width && y < this.height && y < golden.height && this.pixel(x, y) == golden.pixel(x, y);
     }
 }

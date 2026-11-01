@@ -18,8 +18,11 @@ import net.neoforged.neoforge.common.util.Lazy;
 
 import net.minecraft.client.CloudStatus;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.PrioritizeChunkUpdates;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.resources.Identifier;
+
+import com.mojang.blaze3d.pipeline.RenderTarget;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
@@ -54,6 +57,26 @@ public class ClientRun {
     private static final int LOADING_FRAMES = 60_000;
     
     ///
+    /// The width of the window every test runs in, in pixels.
+    ///
+    private static final int WIDTH = 854;
+    
+    ///
+    /// The height of the window every test runs in, in pixels.
+    ///
+    private static final int HEIGHT = 480;
+    
+    ///
+    /// The GUI scale every test runs at.
+    ///
+    private static final int GUI_SCALE = 2;
+    
+    ///
+    /// How many frames the window is allowed to take to resize.
+    ///
+    private static final int RESIZE_FRAMES = 1_000;
+    
+    ///
     /// Every client test that was found.
     ///
     private static final Lazy<List<Discovered>> TESTS = Lazy.of(ClientRun::selected);
@@ -78,6 +101,8 @@ public class ClientRun {
     /// Reports are written even if a failure occurs.
     ///
     /// The number of failed tests corresponds to the system exit code.
+    ///
+    /// Every test runs in a window of {@value ClientRun#WIDTH} by {@value ClientRun#HEIGHT} pixels at GUI scale {@value ClientRun#GUI_SCALE}.
     ///
     /// @param minecraft The client the tests run on.
     ///
@@ -114,11 +139,18 @@ public class ClientRun {
         minecraft.options.hideSplashTexts().set(true);
         minecraft.options.panoramaSpeed().set(0.0D);
         minecraft.options.cloudStatus().set(CloudStatus.OFF);
+        minecraft.options.vignette().set(false);
+        
+        // Rebuild every changed section near the camera in the frame that changed it, so a block change shows up in the next capture.
+        minecraft.options.prioritizeChunkUpdates().set(PrioritizeChunkUpdates.NEARBY);
         
         Pump pump = new Pump(minecraft, options.realtime());
         List<Discovered> tests = ClientRun.TESTS.get();
         
         ClientRun.awaitLoaded(minecraft, pump);
+        
+        // Goldens only match if every machine renders them at the same size.
+        ClientRun.pinWindow(minecraft, pump);
         ClientRun.reset(minecraft, pump);
         ClientRun.baseline(pump);
         
@@ -155,6 +187,31 @@ public class ClientRun {
         }
         
         throw new IllegalStateException("the client did not finish loading in " + ClientRun.LOADING_FRAMES + " frames");
+    }
+    
+    ///
+    /// Resizes the window to {@value ClientRun#WIDTH} by {@value ClientRun#HEIGHT} pixels and waits until the main render target has that size,
+    /// and then sets the GUI scale to {@value ClientRun#GUI_SCALE}.
+    ///
+    /// @param minecraft The minecraft client whose window is resized.
+    /// @param pump      The pump that executes each frame.
+    ///
+    /// @throws IllegalStateException If the main render target does not have that size after {@value ClientRun#RESIZE_FRAMES} frames.
+    ///
+    private static void pinWindow(Minecraft minecraft, Pump pump) {
+        minecraft.getWindow().setWindowed(ClientRun.WIDTH, ClientRun.HEIGHT);
+        
+        RenderTarget target = minecraft.getMainRenderTarget();
+        for (int frame = 0; target.width != ClientRun.WIDTH || target.height != ClientRun.HEIGHT; frame++) {
+            if (frame >= ClientRun.RESIZE_FRAMES) {
+                throw new IllegalStateException("The window did not resize to '" + ClientRun.WIDTH + "x" + ClientRun.HEIGHT + "' within '" + ClientRun.RESIZE_FRAMES + "' frames");
+            }
+            
+            pump.frame();
+        }
+        
+        // Minecraft does not accept scales that don't fit into the current window, so we cannot set that before the window is resized.
+        minecraft.options.guiScale().set(ClientRun.GUI_SCALE);
     }
     
     ///
@@ -219,6 +276,7 @@ public class ClientRun {
         } finally {
             ClientRun.release("The keys it held", client.keyboard()::releaseAll);
             ClientRun.release("The buttons it held", client.mouse()::releaseAll);
+            ClientRun.release("The HUD it hid", () -> client.hideHud(false));
             ClientRun.release("The world it was in", client::leaveWorld);
         }
     }

@@ -24,6 +24,12 @@ dependencyResolutionManagement {
         maven {
             url = 'https://maven.satherov.dev/releases'
         }
+        maven {
+            url = 'https://api.modrinth.com/maven'
+            content {
+                includeGroup 'maven.modrinth'
+            }
+        }
     }
 }
 

@@ -4,6 +4,7 @@ import lombok.Getter;
 
 import dev.satherov.nexus.api.network.Network;
 import dev.satherov.nexus.api.registry.Registrations;
+import dev.satherov.nexus.api.render.Render;
 import dev.satherov.nexus.api.text.Translations;
 import dev.satherov.nexus.api.tick.Scheduler;
 import dev.satherov.nexus.internal.text.tooltip.TooltipDispatch;
@@ -74,6 +75,14 @@ public final class NexusMod {
     ///
     @Getter(lazy = true)
     private final Scheduler scheduler = new Scheduler(this);
+    
+    ///
+    /// The mod's render, created when its getter is first called.
+    ///
+    /// Safe to call on a dedicated server.
+    ///
+    @Getter(lazy = true)
+    private final Render render = new Render(this);
     
     ///
     /// Creates the handle of the mod the given container belongs to.
