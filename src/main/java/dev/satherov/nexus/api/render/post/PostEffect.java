@@ -15,9 +15,8 @@ import org.jetbrains.annotations.ApiStatus;
 ///
 /// A screen-wide effect of one mod, the post chain in `assets/<modid>/post_effect/<name>.json`.
 ///
-/// The active effects of every mod run in activation order after vanilla's own effect, with and without a shader pack.
-///
-/// Every method but [#getId()] throws an [IllegalStateException] on a dedicated server or off the client thread.
+/// The active effects of all mods run after vanilla's own effect, in activation order.
+/// They run under a shader pack as well.
 ///
 /// Can be accessed through [Render#postEffect(String)].
 ///
@@ -30,7 +29,7 @@ public final class PostEffect {
     private final Identifier id;
     
     ///
-    /// `true` from activation until deactivation.
+    /// If the effect is active.
     ///
     private boolean active;
     
@@ -45,11 +44,13 @@ public final class PostEffect {
     }
     
     ///
-    /// Runs the effect from the next frame on, after every effect activated earlier, until deactivated.
+    /// Runs the effect from the next frame on until [#deactivate()] is called.
     ///
     /// Does nothing while active.
     ///
-    /// A missing or broken file is logged once per resource reload and runs nothing.
+    /// If the file is missing or broken, it will be logged once per resource reload and nothing runs.
+    ///
+    /// @throws IllegalStateException If called on a dedicated server or off the client thread.
     ///
     public void activate() {
         this.checkClientThread();
@@ -62,6 +63,8 @@ public final class PostEffect {
     ///
     /// Does nothing while inactive.
     ///
+    /// @throws IllegalStateException If called on a dedicated server or off the client thread.
+    ///
     public void deactivate() {
         this.checkClientThread();
         this.active = false;
@@ -71,13 +74,17 @@ public final class PostEffect {
     ///
     /// @return `true` if the effect is active.
     ///
+    /// @throws IllegalStateException If called on a dedicated server or off the client thread.
+    ///
     public boolean isActive() {
         this.checkClientThread();
         return this.active;
     }
     
     ///
-    /// Throws an [IllegalStateException] if called on a dedicated server or off the client thread.
+    /// Checks that we are on the client thread.
+    ///
+    /// @throws IllegalStateException If called on a dedicated server or off the client thread.
     ///
     private void checkClientThread() {
         if (!FMLEnvironment.getDist().isClient()) {

@@ -39,15 +39,14 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Stream;
 
 ///
-/// Every outline rule of every mod, in registration order: asks them at the outline extraction when the target changed, keeps the results
-/// and their primitives, and is the custom outline renderer added to the extraction when any rule answered.
+/// A custom block outline renderer that draws the outlines the rules of every mod return.
 ///
 @ApiStatus.Internal
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class OutlineRules implements CustomBlockOutlineRenderer {
     
     ///
-    /// The rules.
+    /// The only instance.
     ///
     public static final OutlineRules INSTANCE = new OutlineRules();
     
@@ -57,37 +56,41 @@ public final class OutlineRules implements CustomBlockOutlineRenderer {
     private static final Comparator<RenderType> DRAW_ORDER = Comparator.comparing(type -> type.mode() == VertexFormat.Mode.LINES);
     
     ///
-    /// Every replacing rule, in the order they were added.
+    /// Every replacing rule.
     ///
     private final List<OutlineRule> replacing = new CopyOnWriteArrayList<>();
     
     ///
-    /// Every adding rule, in the order they were added.
+    /// Every adding rule.
     ///
     private final List<OutlineRule> adding = new CopyOnWriteArrayList<>();
     
     ///
-    /// The byte buffer builder of every render type drawn so far, kept for the next frame.
+    /// The byte buffer builders by render type, kept across frames.
     ///
     private final Map<RenderType, ByteBufferBuilder> memoryByType = new HashMap<>();
     
     ///
-    /// The target the kept results are for, or `null` if no block was targeted yet.
+    /// The targeted block the kept primitives are for, or `null` if there is none.
     ///
     private @Nullable TargetedBlock target;
     
     ///
-    /// The primitives of every outline the rules answered with for the target, the replacement first.
+    /// The primitives of every outline the rules returned for the targeted block, the replacement first.
     ///
     private List<Primitives> primitives = List.of();
     
     ///
-    /// If a replacing rule answered for the target.
+    /// If a replacing rule returned an outline for the targeted block.
     ///
     private boolean replaced;
     
     ///
-    /// Records the shape of the given outline with its paint.
+    /// Records the shape of the given outline with the paint of the outline.
+    ///
+    /// @param outline The outline to record.
+    ///
+    /// @return The primitives of the outline.
     ///
     private static Primitives primitivesOf(Outline outline) {
         MeshBrush brush = new MeshBrush(outline.paint());
@@ -96,7 +99,7 @@ public final class OutlineRules implements CustomBlockOutlineRenderer {
     }
     
     ///
-    /// Adds a replacing rule after every rule added so far.
+    /// Adds the given rule as a replacing rule.
     ///
     /// Should only ever be called from [Outlines#replace(OutlineRule)].
     ///
@@ -107,7 +110,7 @@ public final class OutlineRules implements CustomBlockOutlineRenderer {
     }
     
     ///
-    /// Adds an adding rule after every rule added so far.
+    /// Adds the given rule as an adding rule.
     ///
     /// Should only ever be called from [Outlines#add(OutlineRule)].
     ///
@@ -118,11 +121,13 @@ public final class OutlineRules implements CustomBlockOutlineRenderer {
     }
     
     ///
-    /// Updates the kept results for the target, asking the rules only when it changed.
+    /// Collects the outlines every rule returns for the given targeted block and records their primitives.
     ///
-    /// @param target The block under the crosshair.
+    /// If the targeted block equals the one of the last call, the kept primitives will be reused.
     ///
-    /// @return `true` if any rule answered for the target.
+    /// @param target The targeted block.
+    ///
+    /// @return `true` if any rule returned an outline for the targeted block.
     ///
     public boolean update(TargetedBlock target) {
         if (target.equals(this.target)) {
@@ -132,8 +137,11 @@ public final class OutlineRules implements CustomBlockOutlineRenderer {
         Optional<Outline> replacement = this.replacing.stream()
                 .flatMap(rule -> Stream.ofNullable(rule.outline(target)))
                 .findFirst();
+        // noinspection RedundantTypeArguments
         List<Outline> additions = this.adding.stream()
-                .flatMap(rule -> Stream.ofNullable(rule.outline(target)))
+                // yeah, don't question why we need this, intelliJ says it's pointless, yet if we remove it,
+                // it'll cry about nullability issues that aren't real.
+                .<Outline>flatMap(rule -> Stream.ofNullable(rule.outline(target)))
                 .toList();
         
         this.target = target;
@@ -143,7 +151,7 @@ public final class OutlineRules implements CustomBlockOutlineRenderer {
     }
     
     ///
-    /// Drops the kept results and their primitives. Called whenever the level of the client unloads, on a dimension change and on logout alike.
+    /// Drops the kept primitives and the targeted block they are for.
     ///
     public void end() {
         this.target = null;
@@ -152,15 +160,17 @@ public final class OutlineRules implements CustomBlockOutlineRenderer {
     }
     
     ///
-    /// Draws the kept outlines at the block's position in the pass that matches the block.
+    /// Draws the kept primitives and labels at the targeted block.
     ///
-    /// @param state           The block outline render state of the frame.
+    /// Does nothing if the pass does not match the translucency of the targeted block.
+    ///
+    /// @param state           The block outline render-state of the frame.
     /// @param buffers         The buffer source the labels are drawn into.
     /// @param pose            The pose stack of the frame, whose origin is the camera.
     /// @param translucentPass If this is the pass of the translucent blocks.
-    /// @param levelState      The level render state of the frame.
+    /// @param levelState      The level render-state of the frame.
     ///
-    /// @return `true` if a replacing rule answered, which hides vanilla's outline.
+    /// @return `true` if a replacing rule returned an outline.
     ///
     @Override
     public boolean render(BlockOutlineRenderState state, MultiBufferSource.BufferSource buffers, PoseStack pose, boolean translucentPass, LevelRenderState levelState) {
@@ -176,7 +186,9 @@ public final class OutlineRules implements CustomBlockOutlineRenderer {
     }
     
     ///
-    /// Writes the kept primitives into one buffer per render type, relative to the given origin, and then draws each buffer, lines last.
+    /// Writes the kept primitives into one buffer per render type, relative to the given origin, and then draws every buffer, lines last.
+    ///
+    /// @param origin The position of the camera, in the coordinates of the outlines.
     ///
     private void draw(Vec3 origin) {
         List<RenderType> types = ShapePipelines.getAllRenderTypes().stream().sorted(OutlineRules.DRAW_ORDER).toList();
@@ -205,6 +217,10 @@ public final class OutlineRules implements CustomBlockOutlineRenderer {
     
     ///
     /// The byte buffer builder of the given render type, created on first use.
+    ///
+    /// @param type The render type of the byte buffer builder.
+    ///
+    /// @return The byte buffer builder of the render type.
     ///
     private ByteBufferBuilder memory(RenderType type) {
         return this.memoryByType.computeIfAbsent(type, _ -> new ByteBufferBuilder(type.bufferSize()));

@@ -22,23 +22,25 @@ import java.util.Collection;
 import java.util.Map;
 
 ///
-/// One shape in a scene. Its coordinates are world coordinates until it follows an entity.
+/// A shape drawn in a scene with a paint.
+///
+/// The coordinates of the shape are world coordinates until the drawing follows an entity.
 ///
 /// Every method throws an [IllegalStateException] off the client thread.
 ///
-/// Can be started through [Scene#draw(Object, Shape, Paint)] and [Scene#draw(Shape, Paint)].
+/// Can be created through [Scene#draw(Object, Shape, Paint)] and [Scene#draw(Shape, Paint)].
 ///
 public final class Drawing {
+    
+    ///
+    /// The key of the drawing instance, or `null` if there is none.
+    ///
+    final @Nullable Object key;
     
     ///
     /// The scene the drawing is in.
     ///
     private final Scene scene;
-    
-    ///
-    /// The key the drawing is under, or `null` if it has none.
-    ///
-    final @Nullable Object key;
     
     ///
     /// The shape the drawing draws.
@@ -51,12 +53,12 @@ public final class Drawing {
     private Paint paint;
     
     ///
-    /// What the shape emitted with the paint.
+    /// The primitives the shape drew with the paint.
     ///
     private Primitives primitives;
     
     ///
-    /// The entity the coordinates are relative to, or `null` if the drawing follows none.
+    /// The entity the drawing follows, or `null` if there is none.
     ///
     private @Nullable Entity entity;
     
@@ -74,9 +76,9 @@ public final class Drawing {
     /// Should only ever be called from [Scene#draw(Object, Shape, Paint)] and [Scene#draw(Shape, Paint)].
     ///
     /// @param scene The scene the drawing is in.
-    /// @param key   The key the drawing is under, or `null` if it has none.
-    /// @param shape The shape the drawing draws.
-    /// @param paint The paint the shape is drawn with.
+    /// @param key   The key to draw the shape under, or `null` to draw it under no key.
+    /// @param shape The shape to draw.
+    /// @param paint The paint to draw the shape with.
     ///
     Drawing(Scene scene, @Nullable Object key, Shape shape, Paint paint) {
         this.scene = scene;
@@ -90,6 +92,11 @@ public final class Drawing {
     ///
     /// Draws the given shape into a new brush of the given paint.
     ///
+    /// @param shape The shape to draw.
+    /// @param paint The paint to draw the shape with.
+    ///
+    /// @return The primitives the shape drew.
+    ///
     private static Primitives emit(Shape shape, Paint paint) {
         MeshBrush brush = new MeshBrush(paint);
         shape.draw(brush);
@@ -97,7 +104,7 @@ public final class Drawing {
     }
     
     ///
-    /// The paint it is drawn with.
+    /// The paint the shape is drawn with.
     ///
     /// @return The paint of the drawing.
     ///
@@ -107,7 +114,7 @@ public final class Drawing {
     }
     
     ///
-    /// @return `true` until removed, expired, replaced under its key, dropped with its entity, or dropped on leaving the level.
+    /// @return `true` until the drawing is removed.
     ///
     public boolean isActive() {
         this.scene.checkThread();
@@ -115,13 +122,13 @@ public final class Drawing {
     }
     
     ///
-    /// Draws the shape again with the paint, keeping key, entity, and expiry.
+    /// Draws the shape again with the given paint.
     ///
-    /// Does nothing once inactive.
+    /// Does nothing if the drawing was already removed.
     ///
     /// @param paint The paint to draw the shape with.
     ///
-    /// @return This drawing for chaining.
+    /// @return The drawing for chaining.
     ///
     @CanIgnoreReturnValue
     public Drawing repaint(Paint paint) {
@@ -137,15 +144,15 @@ public final class Drawing {
     }
     
     ///
-    /// Makes the coordinates relative to the entity's position, interpolated between ticks.
+    /// Makes the coordinates of the shape relative to the position of the given entity.
     ///
-    /// The drawing is removed when the entity leaves the client's level.
+    /// The drawing will be removed once the entity leaves the level of the client.
     ///
-    /// Does nothing once inactive.
+    /// Does nothing if the drawing was already removed.
     ///
     /// @param entity The entity to follow.
     ///
-    /// @return This drawing for chaining.
+    /// @return The drawing for chaining.
     ///
     @CanIgnoreReturnValue
     public Drawing follow(Entity entity) {
@@ -160,15 +167,15 @@ public final class Drawing {
     }
     
     ///
-    /// Removes the drawing once the given number of client ticks passed, counted from now.
+    /// Removes the drawing after the given number of client ticks.
     ///
     /// A second call restarts the count.
     ///
     /// @param ticks The number of client ticks until the drawing is removed.
     ///
-    /// @return This drawing for chaining.
+    /// @return The drawing for chaining.
     ///
-    /// @throws IllegalArgumentException If the ticks are below `1`.
+    /// @throws IllegalArgumentException If the given number of ticks is below `1`.
     ///
     @CanIgnoreReturnValue
     public Drawing expire(@Range(from = 1, to = Integer.MAX_VALUE) int ticks) {
@@ -185,7 +192,7 @@ public final class Drawing {
     ///
     /// Removes the drawing.
     ///
-    /// Does nothing once inactive.
+    /// Does nothing if the drawing was already removed.
     ///
     public void remove() {
         this.scene.checkThread();
@@ -199,7 +206,7 @@ public final class Drawing {
     ///
     /// Should only ever be called by Nexus itself.
     ///
-    /// @return The followed entity, or `null` if the drawing follows none.
+    /// @return The entity the drawing follows, or `null` if there is none.
     ///
     @ApiStatus.Internal
     public @Nullable Entity getEntity() {
@@ -208,12 +215,12 @@ public final class Drawing {
     }
     
     ///
-    /// Appends the vertex data of the shape into the given builders by render type, relative to the given origin.
+    /// Appends the vertex data of the shape to the given buffer builders, relative to the given origin.
     ///
     /// Should only ever be called from [SceneMesh#rebuild(Collection)].
     ///
-    /// @param builders The builders by render type, which should hold one for every shape render type.
-    /// @param origin   The position that the written positions are relative to, in the coordinates of the drawing.
+    /// @param builders The buffer builders by render type, which should hold one for every render type a shape draws with.
+    /// @param origin   The position the written vertices are relative to, in the coordinates of the drawing.
     ///
     @ApiStatus.Internal
     public void writeInto(Map<RenderType, BufferBuilder> builders, Vec3 origin) {
@@ -243,12 +250,14 @@ public final class Drawing {
     }
     
     ///
-    /// Draws the labels of the shape, at the interpolated position of the entity if the drawing follows one.
+    /// Draws the labels of the shape.
+    ///
+    /// If the drawing follows an entity, the labels will be drawn relative to its interpolated position.
     ///
     /// @param pose        The pose stack of the frame, whose origin is the camera.
     /// @param camera      The position of the camera.
     /// @param partialTick The partial tick of the frame.
-    /// @param buffers     The buffer source the font draws into.
+    /// @param buffers     The buffer source the labels are drawn into.
     ///
     void drawLabels(PoseStack pose, Vec3 camera, float partialTick, MultiBufferSource.BufferSource buffers) {
         Entity followed = this.entity;

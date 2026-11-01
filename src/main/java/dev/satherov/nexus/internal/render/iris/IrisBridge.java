@@ -4,28 +4,29 @@ import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.api.render.pipeline.Shading;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
 import net.irisshaders.iris.api.v0.IrisApi;
 import net.irisshaders.iris.api.v0.IrisProgram;
+
+import com.mojang.blaze3d.pipeline.RenderPipeline;
 
 import org.jetbrains.annotations.ApiStatus;
 
 ///
-/// The only class that uses the Iris API.
+/// The one class that calls the Iris API.
 ///
 /// Should only ever be loaded if the mod `iris` is present.
 ///
 @UtilityClass
 @ApiStatus.Internal
 public class IrisBridge {
-
+    
     ///
-    /// Assigns the given pipeline the pack program of the given shading.
+    /// Assigns the given render pipeline the Iris program of the given shading.
     ///
     /// Does nothing for [Shading#OWN].
     ///
     /// @param pipeline The render pipeline.
-    /// @param shading  The shading of the pipeline.
+    /// @param shading  The shading of the render pipeline.
     ///
     public static void assign(RenderPipeline pipeline, Shading shading) {
         IrisProgram program = switch (shading) {
@@ -43,14 +44,14 @@ public class IrisBridge {
             case BEACON_BEAM -> IrisProgram.BEACON_BEAM;
             case OWN -> null;
         };
-
+        
         if (program == null) {
             return;
         }
-
+        
         IrisApi.getInstance().assignPipeline(pipeline, program);
     }
-
+    
     ///
     /// @return `true` if a shader pack is in use.
     ///

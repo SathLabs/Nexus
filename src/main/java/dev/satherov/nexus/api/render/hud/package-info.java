@@ -1,7 +1,7 @@
 ///
-/// HUD layers and where they sit among the others.
-/// - [HudLayer]: A mod's own layer, drawn every frame the HUD is shown.
-/// - [HudSlot]: The place of a layer above or below another one, or above or below all of them.
+/// The HUD layers of mods and where they sit.
+/// - [HudLayer]: The layer a mod draws.
+/// - [HudSlot]: The place of a layer, above or below another one or all of them.
 ///
 @NullMarked
 @CheckReturnValue

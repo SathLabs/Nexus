@@ -22,35 +22,35 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 ///
-/// The mods' debug renderers: a debug entry per renderer for the toggle, a scene per renderer, and the per-tick call while enabled.
+/// The debug renderers of every mod, each with its scene and the debug entry that switches it on.
 ///
 @ApiStatus.Internal
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class DebugRenderers {
     
     ///
-    /// The renderers.
+    /// The one instance.
     ///
     public static final DebugRenderers INSTANCE = new DebugRenderers();
     
     ///
-    /// The scene and the renderer of every debug renderer, by the identifier of its debug entry.
+    /// The scene and renderer of every debug renderer, by the identifier of its debug entry.
     ///
     private final Map<Identifier, DebugScene> sceneById = new ConcurrentHashMap<>();
     
     ///
-    /// If the debug entries were registered.
+    /// If the debug entries were registered already.
     ///
     private boolean entriesRegistered;
     
     ///
-    /// Adds a renderer under the id.
+    /// Adds a renderer under the given identifier.
     ///
-    /// @param mod      The handle of the mod that owns the renderer.
+    /// @param mod      The mod that owns the renderer.
     /// @param id       The identifier of the renderer and its debug entry.
-    /// @param renderer The renderer, called with the scene of the debug renderer.
+    /// @param renderer The renderer, called with its scene.
     ///
-    /// @throws IllegalStateException If the id is taken or if the debug entries were already registered.
+    /// @throws IllegalStateException If the identifier is taken or if the debug entries were registered already.
     ///
     public void add(NexusMod mod, Identifier id, ClientOnly<Consumer<Scene>> renderer) {
         if (this.entriesRegistered) {
@@ -66,9 +66,9 @@ public final class DebugRenderers {
     }
     
     ///
-    /// Registers the debug entries. Called from the registration event.
+    /// Registers a debug entry per renderer with the given registrar.
     ///
-    /// @param registrar The registrar of the event, called with the identifier and the debug entry of every renderer.
+    /// @param registrar The registrar, called with the identifier and the debug entry of every renderer.
     ///
     public void registerEntries(BiConsumer<Identifier, DebugScreenEntry> registrar) {
         this.sceneById.keySet().forEach(id -> registrar.accept(id, new DebugEntryNoop()));
@@ -76,7 +76,7 @@ public final class DebugRenderers {
     }
     
     ///
-    /// Clears and refills the scene of every enabled renderer, and clears the scene of every renderer switched off since the last tick.
+    /// Refills the scene of every enabled renderer and clears the scene of every renderer that was switched off.
     ///
     /// Does nothing while the client is in no level.
     ///
@@ -101,17 +101,17 @@ public final class DebugRenderers {
         private final Scene scene;
         
         ///
-        /// The renderer of a mod.
+        /// The renderer that fills the scene.
         ///
         private final Consumer<Scene> renderer;
         
         ///
-        /// If the renderer filled the scene on the last tick.
+        /// If the scene was filled on the last tick.
         ///
         private boolean filled;
         
         ///
-        /// Clears the scene and refills it if the renderer is enabled, or clears it once after it was switched off.
+        /// Refills the scene if the renderer is enabled, or clears it once after the renderer was switched off.
         ///
         /// @param enabled If the debug entry of the renderer is enabled.
         ///

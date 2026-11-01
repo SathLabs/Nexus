@@ -14,8 +14,11 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.Options;
+import net.minecraft.client.PrioritizeChunkUpdates;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.core.BlockPos;
@@ -66,8 +69,10 @@ public final class TestWorld {
     private static final double CAMERA_TOLERANCE = 1.0E-4D;
     
     ///
-    /// The squared distance between the center of a section and the block of the camera below which vanilla rebuilds a changed section
-    /// in the frame that changed it, if nearby chunk updates are prioritized.
+    /// If [Options#prioritizeChunkUpdates] is set to [PrioritizeChunkUpdates#NEARBY] vanilla will rebuild the section within the same frame it was changed,
+    /// if its center it is closer than this many blocks to the camera position.
+    ///
+    /// See the `isNearby` assignment inside the [LevelRenderer#compileSections(Camera)] method.
     ///
     private static final double SYNC_REBUILD_DISTANCE_SQUARED = 768.0D;
     
@@ -84,7 +89,7 @@ public final class TestWorld {
     private static int pings;
     
     ///
-    /// The identifier of the last ping of [#settle()] that the client handled, or `0` if it handled none.
+    /// The identifier of the last ping of [#settle()] that the client handled, or `0` if it handled none yet.
     ///
     private static int handledPing;
     
@@ -167,9 +172,9 @@ public final class TestWorld {
     }
     
     ///
-    /// Sends the pending ping of [#settle()] to every player, once the server has finished a tick that started after the ping was asked for.
+    /// Sends the currently pending ping of [#settle()] to every player after the server has finished the tick that started after the ping was requested.
     ///
-    /// The server sends the changes of its levels before the end of its tick, so the ping follows every change made before [#settle()] was called.
+    /// The server sends the changes of all its levels before the end of the tick, so a ping will be sent after all changes made before [#settle()] was called.
     ///
     /// @param event The event of the tick the server finished.
     ///
@@ -183,9 +188,7 @@ public final class TestWorld {
     }
     
     ///
-    /// Waits until the player is floating at the level's spawnpoint and the level's clocks are stopped.
-    ///
-    /// Then waits until the loading screen is closed.
+    /// Waits until the player is floating at the level's spawnpoint, the level's clocks are stopped, and the loading screen is closed.
     ///
     public void awaitSpawn() {
         this.freeze();
@@ -241,7 +244,7 @@ public final class TestWorld {
     }
     
     ///
-    /// Teleports the player to the given position and rotation on the server and then waits until the camera of the client is there.
+    /// Teleports the player to the given position and rotation and then waits until the camera of the client has arrived there.
     ///
     /// @param position The position to put the player at.
     /// @param yaw      The horizontal rotation of the player, in degrees.
@@ -271,8 +274,7 @@ public final class TestWorld {
     }
     
     ///
-    /// Asks the server for a ping at the end of its next tick, waits until the client handled it,
-    /// and then waits until the sections that vanilla rebuilds in the frame that changed them are rebuilt.
+    /// Asks the server for a ping at the end of its next tick, waits until the client handled it, and then waits until the sections are rebuilt.
     ///
     /// The client handles packets in the order the server sent them, so every packet sent before the ping is handled once the ping is.
     ///
@@ -344,7 +346,7 @@ public final class TestWorld {
     }
     
     ///
-    /// A ping that [#settle()] asked for.
+    /// One ping that [#settle()] requested.
     ///
     /// @param id   The identifier of the ping.
     /// @param tick The tick count of the server when the ping was asked for.

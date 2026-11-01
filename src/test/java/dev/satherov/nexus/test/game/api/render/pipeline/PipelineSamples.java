@@ -21,7 +21,7 @@ import org.jspecify.annotations.Nullable;
 import java.util.Objects;
 
 ///
-/// The client tests that check a mod's own pipeline drawn through the draw hook, its bound uniform blocks, and its registration after the event.
+/// Checks that a mod's pipeline draws through the draw hook with its bound uniform blocks.
 ///
 public class PipelineSamples {
     

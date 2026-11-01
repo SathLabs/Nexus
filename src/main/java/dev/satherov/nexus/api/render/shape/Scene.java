@@ -21,29 +21,29 @@ import java.util.Map;
 import java.util.Set;
 
 ///
-/// The drawings of one mod in the client's level.
+/// The drawings of one mod in the level of the client.
 ///
-/// Every method throws an [IllegalStateException] off the client thread,
-/// and every method but [#tick()] also while the client is in no level.
+/// Every method throws an [IllegalStateException] off the client thread.
+/// Every method but [#tick()] also throws one while the client is in no level.
 ///
-/// Every drawing is dropped whenever the level of the client unloads, on a dimension change and on logout alike.
+/// Every drawing is removed once the level of the client unloads.
 ///
 /// Can be accessed through [Render#getScene()].
 ///
 public final class Scene {
     
     ///
-    /// The handle of the mod.
+    /// The mod the drawings belong to.
     ///
     private final NexusMod mod;
     
     ///
-    /// Every active drawing, keyed or not, in the order they were drawn.
+    /// Every active drawing.
     ///
     private final Set<Drawing> drawings = new LinkedHashSet<>();
     
     ///
-    /// The active drawings under a key, by key.
+    /// The active drawings under a key, by their key.
     ///
     private final Map<Object, Drawing> drawingByKey = new HashMap<>();
     
@@ -60,7 +60,7 @@ public final class Scene {
     ///
     /// Should only ever be called by Nexus itself.
     ///
-    /// @param mod The handle of the mod.
+    /// @param mod The mod the drawings belong to.
     ///
     @ApiStatus.Internal
     public Scene(NexusMod mod) {
@@ -68,9 +68,9 @@ public final class Scene {
     }
     
     ///
-    /// Draws the shape until removed.
+    /// Draws the given shape with the given paint under the given key until the drawing is removed.
     ///
-    /// A drawing of this mod under an equal key is removed first.
+    /// If a drawing is already under an equal key, it will be removed first.
     ///
     /// @param key   The key to draw the shape under.
     /// @param shape The shape to draw.
@@ -93,7 +93,7 @@ public final class Scene {
     }
     
     ///
-    /// Draws the shape until removed, under no key, so only its handle reaches it.
+    /// Draws the given shape with the given paint under no key until the drawing is removed.
     ///
     /// @param shape The shape to draw.
     /// @param paint The paint to draw the shape with.
@@ -110,11 +110,11 @@ public final class Scene {
     }
     
     ///
-    /// The active drawing under the key.
+    /// The drawing under the given key, or `null` if there is none.
     ///
     /// @param key The key of the drawing.
     ///
-    /// @return The active drawing under the key, or `null` if there is none.
+    /// @return The drawing under the key, or `null` if there is none.
     ///
     public @Nullable Drawing get(Object key) {
         this.checkUsable();
@@ -122,9 +122,9 @@ public final class Scene {
     }
     
     ///
-    /// Removes the drawing under the key.
+    /// Removes the drawing under the given key.
     ///
-    /// Does nothing without one.
+    /// Does nothing if no drawing is under the key.
     ///
     /// @param key The key of the drawing.
     ///
@@ -137,7 +137,7 @@ public final class Scene {
     }
     
     ///
-    /// Removes every drawing of this mod, keyed or not.
+    /// Removes every drawing.
     ///
     public void clear() {
         this.checkUsable();
@@ -148,7 +148,9 @@ public final class Scene {
     }
     
     ///
-    /// Ages every drawing by one tick and removes the expired and the entity-less ones.
+    /// Ages every drawing by one client tick.
+    ///
+    /// Expired drawings and drawings whose entity left the level will be removed.
     ///
     /// Does nothing while the client is in no level.
     ///
@@ -169,9 +171,9 @@ public final class Scene {
     }
     
     ///
-    /// Removes the given drawing from this scene and marks it as removed.
+    /// Removes the given drawing and ends it.
     ///
-    /// @param drawing The active drawing to remove.
+    /// @param drawing The drawing to remove.
     ///
     void drop(Drawing drawing) {
         this.drawings.remove(drawing);
@@ -181,7 +183,7 @@ public final class Scene {
     }
     
     ///
-    /// Ends every drawing and frees the buffers.
+    /// Removes every drawing and frees the GPU buffers.
     ///
     /// Should only ever be called by Nexus itself.
     ///
@@ -193,7 +195,9 @@ public final class Scene {
     }
     
     ///
-    /// Draws the scene's buffers, rebuilding them first if a drawing changed, and its labels.
+    /// Draws every drawing and its labels.
+    ///
+    /// If a drawing was added, changed, or removed since the last frame, the GPU buffers will be rebuilt first.
     ///
     /// Should only ever be called by Nexus itself.
     ///
@@ -217,7 +221,9 @@ public final class Scene {
     }
     
     ///
-    /// Throws an [IllegalStateException] if called off the client thread or while the client is in no level.
+    /// Checks that the call is on the client thread and the client is in a level.
+    ///
+    /// @throws IllegalStateException If called off the client thread or while the client is in no level.
     ///
     private void checkUsable() {
         this.checkThread();
@@ -227,7 +233,9 @@ public final class Scene {
     }
     
     ///
-    /// Throws an [IllegalStateException] if called off the client thread.
+    /// Checks that the call is on the client thread.
+    ///
+    /// @throws IllegalStateException If called off the client thread.
     ///
     void checkThread() {
         if (!Minecraft.getInstance().isSameThread()) {

@@ -41,19 +41,23 @@ import java.util.function.Supplier;
 ///
 /// What one mod draws and registers with the renderer.
 ///
-/// The registrations are called from the mod's constructor on both sides and do nothing on a dedicated server.
-/// The scene, the glows, and the queries throw an [IllegalStateException] there.
+/// The registrations are called from the mod's constructor on either side and do nothing on a dedicated server.
 ///
 /// Can be accessed through [NexusMod#getRender()].
 ///
 public final class Render {
-
+    
     ///
     /// The handle of the mod.
     ///
     @Getter
     private final NexusMod mod;
-
+    
+    ///
+    /// The post-effects of the mod by name.
+    ///
+    private final Map<String, PostEffect> postEffectByName = new HashMap<>();
+    
     ///
     /// The scene of the mod, or `null` until [#getScene()] is first called.
     ///
@@ -70,11 +74,6 @@ public final class Render {
     private @Nullable Glows glows;
     
     ///
-    /// The post effects of the mod by name.
-    ///
-    private final Map<String, PostEffect> postEffectByName = new HashMap<>();
-    
-    ///
     /// Should only ever be called from [NexusMod#getRender()].
     ///
     /// @param mod The handle of the mod.
@@ -83,22 +82,22 @@ public final class Render {
     public Render(NexusMod mod) {
         this.mod = mod;
     }
-
+    
     ///
-    /// If a shader pack is replacing vanilla's shaders right now.
+    /// If a shader pack is replacing vanilla's shaders.
     ///
-    /// Always `false` without Iris.
+    /// Always `false` without iris and on a dedicated server.
     ///
-    /// @return `true` if a shader pack is replacing vanilla's shaders right now.
+    /// @return `true` if a shader pack is replacing vanilla's shaders.
     ///
     public boolean isShaderPackActive() {
         return FMLEnvironment.getDist().isClient() && ModList.get().isLoaded("iris") && IrisBridge.isShaderPackInUse();
     }
     
     ///
-    /// The mod's scene of shapes in the client's level, created on first call.
+    /// The mod's scene of shapes in the client's level, created on the first call.
     ///
-    /// Its drawings are dropped whenever the level of the client unloads, on a dimension change and on logout alike.
+    /// Its drawings are dropped whenever the client's level unloads.
     ///
     /// @return The scene of the mod.
     ///
@@ -118,7 +117,7 @@ public final class Render {
     }
     
     ///
-    /// The mod's block outline rules, created on first call.
+    /// The mod's block outline rules, created on the first call.
     ///
     /// @return The block outline rules of the mod.
     ///
@@ -131,7 +130,7 @@ public final class Render {
     }
     
     ///
-    /// The mod's glows, created on first call.
+    /// The mod's glows, created on the first call.
     ///
     /// They are dropped when the client leaves a level.
     ///
@@ -153,11 +152,11 @@ public final class Render {
     }
     
     ///
-    /// The GUI-scaled screen position of a world position.
+    /// Projects the given world position onto the screen, in GUI-scaled pixels.
     ///
     /// @param position The world position to project.
     ///
-    /// @return The position on the screen, starting from the top left corner, or `null` if the world position lies behind the camera.
+    /// @return The screen position, starting from the top left corner, or `null` if the world position lies behind the camera.
     ///
     /// @throws IllegalStateException If called on a dedicated server or off the client thread.
     ///
@@ -170,7 +169,7 @@ public final class Render {
     }
     
     ///
-    /// Registers the pipeline when the client registers render pipelines and fixes what a shader pack does with it.
+    /// Registers the given render pipeline and the shading a shader pack gives it.
     ///
     /// @param pipeline The render pipeline to register.
     /// @param shading  The shading a shader pack gives the pipeline.
@@ -190,12 +189,11 @@ public final class Render {
     }
     
     ///
-    /// Runs the drawer on every frame that renders a level, after the translucent features,
-    /// with the camera-relative pose stack and a buffer source of our own.
+    /// Runs the given drawer on every frame that renders a level, after the translucent features.
+    /// The pose stack is relative to the camera and the buffer source is our own.
     ///
-    /// A render type over a pipeline registered here is ended in the slot its shading asks for, any other inside the level.
-    ///
-    /// Registered until the game closes.
+    /// A render type over a pipeline registered with [#pipeline(ClientOnly, Shading)] ends in the slot its shading asks for.
+    /// Any other render type ends inside the level.
     ///
     /// @param drawer The drawer, called with the pose stack and the buffer source.
     ///
@@ -208,7 +206,7 @@ public final class Render {
     }
     
     ///
-    /// Registers the HUD layer `<modid>:<name>` at the slot, hidden with the HUD.
+    /// Registers the given HUD layer as `<modid>:<name>` at the given slot.
     ///
     /// @param name  The name of the layer.
     /// @param slot  The place of the layer among the others.
@@ -223,7 +221,7 @@ public final class Render {
     }
     
     ///
-    /// Registers the debug renderer `<modid>:<name>`, toggled by the player in the debug options screen.
+    /// Registers the given debug renderer as `<modid>:<name>`, toggled by the player in the debug options screen.
     ///
     /// While it is on, its own scene is cleared and the renderer called once per client tick.
     /// Its scene will be empty from the first tick it is off.
@@ -240,7 +238,7 @@ public final class Render {
     }
     
     ///
-    /// The post effect `assets/<modid>/post_effect/<name>.json`, one handle per name.
+    /// Gets the post effect with the given name, the same handle on every call.
     ///
     /// @param name The name of the post effect.
     ///

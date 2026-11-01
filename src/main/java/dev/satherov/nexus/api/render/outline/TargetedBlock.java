@@ -8,7 +8,7 @@ import net.minecraft.world.level.block.state.BlockState;
 ///
 /// The block under the crosshair as the client sees it.
 ///
-/// A rule is asked again when any component changes.
+/// A rule is asked again once any component changes.
 ///
 /// @param level The client's level.
 /// @param pos   The position of the block.

@@ -25,19 +25,14 @@ import java.util.Optional;
 import java.util.SequencedSet;
 
 ///
-/// The active post effects of every mod in activation order, run after vanilla's own effect by the game renderer mixin.
+/// The active post effects of every mod.
 ///
 /// @see GameRendererMixin
 ///
 @Slf4j
 @ApiStatus.Internal
-@NoArgsConstructor(access = AccessLevel.PRIVATE)
-public final class PostEffects {
-    
-    ///
-    /// The effects.
-    ///
-    public static final PostEffects INSTANCE = new PostEffects();
+public enum PostEffects {
+    INSTANCE;
     
     ///
     /// The active effects, in activation order.
@@ -45,49 +40,53 @@ public final class PostEffects {
     private final SequencedSet<PostEffect> active = new LinkedHashSet<>();
     
     ///
-    /// The post chain of the given identifier, or `null` if it could not be loaded.
+    /// Loads the post-chain of the given identifier.
+    ///
+    /// @param id The identifier of the post-chain.
+    ///
+    /// @return The post-chain, or `null` if it could not be loaded.
     ///
     private static @Nullable PostChain chain(Identifier id) {
-        // ShaderManager#getPostChain would hand a failure to the resource pack recovery,
+        // We don't go through ShaderManager#getPostChain here, because it would pass a failure on to the resource pack recovery,
         // which clears the selected packs or leaves the world.
         ShaderManager.CompilationCache cache = Minecraft.getInstance().getShaderManager().compilationCache;
         try {
             return cache.getOrLoadPostChain(id, LevelTargetBundle.MAIN_TARGETS);
         } catch (ShaderManager.CompilationException exception) {
             PostEffects.log.error("Could not load the post effect '{}'", id, exception);
-            // Cached as missing like vanilla does, so the failure is logged once per resource reload.
+            // Cache it as missing like vanilla does, so the failure is only logged once per resource reload.
             cache.postChains.put(id, Optional.empty());
             return null;
         }
     }
     
     ///
-    /// Appends the effect, if absent.
+    /// Adds the given effect if it isn't active yet.
     ///
     /// Should only ever be called from [PostEffect#activate()].
     ///
-    /// @param effect The effect to append.
+    /// @param effect The effect.
     ///
     public void activate(PostEffect effect) {
         this.active.add(effect);
     }
     
     ///
-    /// Removes the effect, if present.
+    /// Removes the given effect if it is active.
     ///
     /// Should only ever be called from [PostEffect#deactivate()].
     ///
-    /// @param effect The effect to remove.
+    /// @param effect The effect.
     ///
     public void deactivate(PostEffect effect) {
         this.active.remove(effect);
     }
     
     ///
-    /// Processes every active chain on the target with the renderer's resource pool.
+    /// Runs the post-chain of every active effect over the given render target.
     ///
     /// @param target The main render target.
-    /// @param pool   The resource pool of the game renderer.
+    /// @param pool   The graphics resource allocator of the game renderer.
     ///
     public void run(RenderTarget target, GraphicsResourceAllocator pool) {
         if (this.active.isEmpty()) {

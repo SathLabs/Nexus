@@ -27,7 +27,7 @@ import org.joml.Vector2f;
 import java.util.Objects;
 
 ///
-/// The client tests that check the color of an entity glow, the glow of a block that is broken, the glow of a chest as it opens, and the expiry of a glow.
+/// Checks where and for how long a glow draws around an entity or a block.
 ///
 public class GlowsSamples {
     

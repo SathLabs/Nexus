@@ -1,5 +1,5 @@
 ///
-/// The glows of every mod, the cached models of the glowing blocks, and the collector that submits them as outlines.
+/// The glows of every mod, their glowing blocks, and the collector that submits a block as an outline.
 ///
 @NullMarked
 @CheckReturnValue

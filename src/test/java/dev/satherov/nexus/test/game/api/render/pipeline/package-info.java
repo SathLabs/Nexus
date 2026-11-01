@@ -1,7 +1,7 @@
 ///
 /// The gametests of [dev.satherov.nexus.api.render.pipeline].
 ///
-/// Holds the sample pipelines, render types, and draw hook that the tests share.
+/// The tests share the pipelines and the draw hook of [SampleQuads].
 ///
 @NullMarked
 @CheckReturnValue

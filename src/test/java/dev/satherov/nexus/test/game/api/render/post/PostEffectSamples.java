@@ -14,7 +14,7 @@ import net.minecraft.world.phys.Vec3;
 import org.assertj.core.api.Assertions;
 
 ///
-/// The client tests that check the activation, the order, the deactivation, and the missing files of post effects.
+/// Checks what an active post effect does to the frame and in which order several run.
 ///
 public class PostEffectSamples {
     

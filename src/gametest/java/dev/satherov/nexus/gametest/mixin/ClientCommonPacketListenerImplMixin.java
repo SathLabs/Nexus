@@ -19,9 +19,9 @@ public abstract class ClientCommonPacketListenerImplMixin {
     ///
     /// Passes the identifier of the handled ping to [TestWorld#onPingHandled(int)].
     ///
-    /// Only the render thread reaches the tail, because vanilla throws on the netty thread to hand the packet over to it.
+    /// Only the render thread reaches the tail, since vanilla throws on the netty thread to hand the packet over.
     ///
-    /// @param packet   The ping the client handled.
+    /// @param packet   The handled ping.
     /// @param callback The callback of the injection.
     ///
     @Inject(

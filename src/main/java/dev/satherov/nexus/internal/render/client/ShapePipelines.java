@@ -7,7 +7,6 @@ import dev.satherov.nexus.api.render.pipeline.Shading;
 import dev.satherov.nexus.api.render.shape.Paint;
 import dev.satherov.nexus.internal.render.iris.IrisBridge;
 
-import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModList;
 
 import net.minecraft.client.renderer.RenderPipelines;
@@ -34,15 +33,12 @@ import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
 ///
-/// The library's own pipelines and render types for lines, untextured quads, and sprite quads, each in the three depth modes,
-/// over vanilla's shaders.
-///
-/// If Iris is present, they will be assigned the pack's line, basic, and textured programs.
+/// The pipelines and render types of lines, untextured quads, and sprite quads, one of each per depth mode.
 ///
 @UtilityClass
 @ApiStatus.Internal
 public class ShapePipelines {
-
+    
     ///
     /// The line pipelines by depth mode.
     ///
@@ -50,7 +46,7 @@ public class ShapePipelines {
             Paint.Depth.class,
             depth -> ShapePipelines.pipeline(RenderPipelines.LINES_SNIPPET, "lines", depth)
     );
-
+    
     ///
     /// The untextured quad pipelines by depth mode.
     ///
@@ -58,7 +54,7 @@ public class ShapePipelines {
             Paint.Depth.class,
             depth -> ShapePipelines.pipeline(RenderPipelines.DEBUG_FILLED_SNIPPET, "fill", depth)
     );
-
+    
     ///
     /// The sprite quad pipelines by depth mode.
     ///
@@ -66,9 +62,9 @@ public class ShapePipelines {
             Paint.Depth.class,
             depth -> ShapePipelines.pipeline(RenderPipelines.GUI_TEXTURED_SNIPPET, "sprite", depth)
     );
-
+    
     ///
-    /// The render setup of every render type created so far, in the order they were created.
+    /// The render setup of every render type created so far.
     ///
     private static final Map<RenderType, RenderSetup> SETUPS = new LinkedHashMap<>();
     
@@ -79,7 +75,7 @@ public class ShapePipelines {
             Paint.Depth.class,
             depth -> ShapePipelines.type("nexus_lines", ShapePipelines.setup(ShapePipelines.LINE_PIPELINES.get(depth)).createRenderSetup())
     );
-
+    
     ///
     /// The untextured quad render types by depth mode.
     ///
@@ -87,7 +83,7 @@ public class ShapePipelines {
             Paint.Depth.class,
             depth -> ShapePipelines.type("nexus_fill", ShapePipelines.setup(ShapePipelines.FILL_PIPELINES.get(depth)).sortOnUpload().createRenderSetup())
     );
-
+    
     ///
     /// The sprite quad render types by atlas and depth mode, created on first use.
     ///
@@ -97,9 +93,15 @@ public class ShapePipelines {
                     ShapePipelines.setup(ShapePipelines.SPRITE_PIPELINES.get(depth)).sortOnUpload().withTexture("Sampler0", atlas).createRenderSetup()
             )
     );
-
+    
     ///
-    /// Creates a new pipeline from the given snippet, with the depth test of the given depth mode and without culling.
+    /// Creates a new pipeline from the given snippet without culling and with the depth test of the given depth mode.
+    ///
+    /// @param snippet The vanilla snippet to build on.
+    /// @param kind    The kind of shape, part of the identifier of the pipeline.
+    /// @param depth   The depth mode.
+    ///
+    /// @return The pipeline.
     ///
     private static RenderPipeline pipeline(RenderPipeline.Snippet snippet, String kind, Paint.Depth depth) {
         CompareOp test = switch (depth) {
@@ -107,23 +109,32 @@ public class ShapePipelines {
             case HIDDEN -> CompareOp.GREATER_THAN;
             case ALWAYS -> CompareOp.ALWAYS_PASS;
         };
-
+        
         return RenderPipeline.builder(snippet)
                 .withLocation(Identifier.fromNamespaceAndPath(Nexus.MOD_ID, "pipeline/" + kind + "_" + depth.name().toLowerCase(Locale.ROOT)))
                 .withCull(false)
                 .withDepthStencilState(new DepthStencilState(test, false))
                 .build();
     }
-
+    
     ///
-    /// Starts a new render setup over the given pipeline, shifted toward the camera like vanilla's lines.
+    /// Starts a new render setup over the given pipeline with the view offset layering of vanilla.
+    ///
+    /// @param pipeline The pipeline of the render setup.
+    ///
+    /// @return The render setup builder.
     ///
     private static RenderSetup.RenderSetupBuilder setup(RenderPipeline pipeline) {
         return RenderSetup.builder(pipeline).setLayeringTransform(LayeringTransform.VIEW_OFFSET_Z_LAYERING);
     }
-
+    
     ///
     /// Creates a new render type over the given render setup and keeps the render setup in [#SETUPS].
+    ///
+    /// @param name  The name of the render type.
+    /// @param setup The render setup.
+    ///
+    /// @return The render type.
     ///
     private static RenderType type(String name, RenderSetup setup) {
         RenderType type = RenderType.create(name, setup);
@@ -132,7 +143,11 @@ public class ShapePipelines {
     }
     
     ///
-    /// Registers the given pipelines with the given registrar and assigns each the pack program of the given shading if Iris is present.
+    /// Registers the given pipelines with the given registrar and assigns them the given shading if iris is present.
+    ///
+    /// @param registrar The registrar of the registration event.
+    /// @param pipelines The pipelines by depth mode.
+    /// @param shading   The shading of the pipelines.
     ///
     private static void register(Consumer<RenderPipeline> registrar, Map<Paint.Depth, RenderPipeline> pipelines, Shading shading) {
         boolean iris = ModList.get().isLoaded("iris");
@@ -143,9 +158,9 @@ public class ShapePipelines {
             }
         }
     }
-
+    
     ///
-    /// The render type for lines in the given depth mode.
+    /// Gets the line render type of the given depth mode.
     ///
     /// @param depth The depth mode.
     ///
@@ -154,11 +169,9 @@ public class ShapePipelines {
     public static RenderType lines(Paint.Depth depth) {
         return ShapePipelines.LINE_TYPES.get(depth);
     }
-
+    
     ///
-    /// The render type for untextured quads and triangles in the given depth mode.
-    ///
-    /// A triangle is written as a quad with its last vertex repeated.
+    /// Gets the untextured quad render type of the given depth mode.
     ///
     /// @param depth The depth mode.
     ///
@@ -167,9 +180,9 @@ public class ShapePipelines {
     public static RenderType fill(Paint.Depth depth) {
         return ShapePipelines.FILL_TYPES.get(depth);
     }
-
+    
     ///
-    /// The render type for sprite quads of the given atlas in the given depth mode.
+    /// Gets the sprite quad render type of the given atlas in the given depth mode.
     ///
     /// @param atlas The identifier of the atlas texture.
     /// @param depth The depth mode.
@@ -179,20 +192,20 @@ public class ShapePipelines {
     public static RenderType sprite(Identifier atlas, Paint.Depth depth) {
         return ShapePipelines.SPRITE_TYPES.apply(atlas, depth);
     }
-
+    
     ///
-    /// Every render type of this class that was created so far, in the order they were created.
+    /// Every render type of this class created so far.
     ///
-    /// @return The render types created so far.
+    /// @return The render types.
     ///
     public static @UnmodifiableView Set<RenderType> getAllRenderTypes() {
         return Collections.unmodifiableSet(ShapePipelines.SETUPS.keySet());
     }
     
     ///
-    /// The textures that the given render type samples, by sampler name.
+    /// Gets the textures of the given render type by sampler name.
     ///
-    /// @param type The render type, which should be one of this class.
+    /// @param type The render type, one of this class.
     ///
     /// @return The textures and their samplers by sampler name.
     ///
@@ -205,9 +218,9 @@ public class ShapePipelines {
     ///
     /// Registers every pipeline with the given registrar.
     ///
-    /// If Iris is present, each pipeline will also be assigned its pack program.
+    /// If iris is present, each pipeline will also be assigned its shading.
     ///
-    /// Should only ever be called from the registration event that [RenderDispatch#listen(IEventBus)] subscribes to.
+    /// Should only ever be called from [RenderDispatch] on the pipeline registration event.
     ///
     /// @param registrar The registrar of the registration event.
     ///

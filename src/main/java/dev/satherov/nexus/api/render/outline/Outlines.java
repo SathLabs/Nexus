@@ -11,8 +11,8 @@ import org.jetbrains.annotations.ApiStatus;
 ///
 /// The block outline rules of one mod.
 ///
-/// Both methods may be called from common code at any time, and a rule registered later is asked after one registered earlier.
-/// Both do nothing on a dedicated server.
+/// Rules may be added from common code at any time and do nothing on a dedicated server.
+/// A rule added later is asked after one added earlier.
 ///
 /// Can be accessed through [Render#getOutlines()].
 ///
@@ -29,7 +29,7 @@ public final class Outlines {
     ///
     /// Adds a rule whose outline is drawn instead of vanilla's.
     ///
-    /// The first replacing rule of any mod that returns one wins.
+    /// The first replacing rule to return an outline wins, across all mods.
     ///
     /// @param rule The rule to add.
     ///
@@ -42,7 +42,7 @@ public final class Outlines {
     ///
     /// Adds a rule whose outline is drawn beside vanilla's or the replacement.
     ///
-    /// Every adding rule is asked.
+    /// Every rule added this way is asked.
     ///
     /// @param rule The rule to add.
     ///

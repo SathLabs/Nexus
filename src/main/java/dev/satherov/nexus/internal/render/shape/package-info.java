@@ -1,5 +1,5 @@
 ///
-/// The brush that records the shapes of a scene, the primitives it records, and the GPU buffers they are drawn from.
+/// The brush that records a shape into primitives, the GPU buffers of a scene, and the scenes of every mod.
 ///
 @NullMarked
 @CheckReturnValue

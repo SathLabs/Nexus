@@ -25,7 +25,7 @@ import java.util.Map;
 import java.util.Objects;
 
 ///
-/// What one drawing emitted: vertex data per render type and its labels, kept until the drawing ends.
+/// The vertices and labels of one recorded shape.
 ///
 /// Can be created through [MeshBrush#finish()].
 ///
@@ -39,18 +39,17 @@ public final class Primitives {
     private final Map<RenderType, List<Vertex>> verticesByType;
     
     ///
-    /// The labels, in the order they were drawn.
+    /// The labels.
     ///
     private final List<Label> labels;
     
     ///
-    /// Appends the vertex data, offset by the origin, into the builders by render type.
-    /// Every position is written relative to the origin.
+    /// Writes the vertices into the buffer builder of their render type, relative to the given origin.
     ///
-    /// @param builders The builders by render type, which should hold one for every render type of [ShapePipelines].
+    /// @param builders The buffer builders by render type, which should hold one for every render type of [ShapePipelines].
     /// @param origin   The position that the written positions are relative to.
     ///
-    /// @throws NullPointerException If the builders don't hold one for a render type of these primitives.
+    /// @throws NullPointerException If there is no buffer builder for a render type of these vertices.
     ///
     public void writeInto(Map<RenderType, BufferBuilder> builders, Vec3 origin) {
         this.verticesByType.forEach((type, vertices) -> {
@@ -60,12 +59,11 @@ public final class Primitives {
     }
     
     ///
-    /// Draws the labels through the font at the origin.
-    /// Every label faces the camera and is drawn relative to the origin.
+    /// Draws every label through the font, facing the camera.
     ///
     /// @param pose    The pose stack of the frame, whose origin is the camera.
-    /// @param origin  The position of the labels' coordinates that lies at the origin of the pose stack.
-    /// @param buffers The buffer source the font draws into.
+    /// @param origin  The origin of the pose stack, in the coordinates of the labels.
+    /// @param buffers The buffer source the labels are drawn into.
     ///
     public void drawLabels(PoseStack pose, Vec3 origin, MultiBufferSource.BufferSource buffers) {
         Minecraft minecraft = Minecraft.getInstance();
@@ -94,9 +92,9 @@ public final class Primitives {
     }
     
     ///
-    /// One vertex, with every element that the vertex formats of the shape render types have.
+    /// A vertex with every element that the vertex formats of the render types of [ShapePipelines] have.
     ///
-    /// @param position  The position of the vertex, in the coordinates of its drawing.
+    /// @param position  The position of the vertex, in the coordinates of its shape.
     /// @param argb      The ARGB color of the vertex.
     /// @param u         The horizontal texture coordinate in the atlas, or `0` if the vertex shows no sprite.
     /// @param v         The vertical texture coordinate in the atlas, or `0` if the vertex shows no sprite.
@@ -106,10 +104,11 @@ public final class Primitives {
     record Vertex(Vec3 position, int argb, float u, float v, Vec3 normal, float lineWidth) {
         
         ///
-        /// Writes this vertex into the given builder, relative to the given origin.
-        /// The builder leaves out every element that its vertex format doesn't have.
+        /// Writes this vertex into the given buffer builder, relative to the given origin.
         ///
-        /// @param builder The builder of the render type of the vertex.
+        /// The buffer builder skips every element that its vertex format doesn't have.
+        ///
+        /// @param builder The buffer builder of the render type of the vertex.
         /// @param origin  The position that the written position is relative to.
         ///
         private void writeInto(BufferBuilder builder, Vec3 origin) {
@@ -123,11 +122,11 @@ public final class Primitives {
     }
     
     ///
-    /// One text drawn through the font each frame.
+    /// A text drawn through the font, facing the camera.
     ///
-    /// @param at       The point to center the text on, in the coordinates of its drawing.
+    /// @param at       The point to center the text on, in the coordinates of its shape.
     /// @param text     The text to draw.
-    /// @param scale    The scale of the text, where `1` is name tag size.
+    /// @param scale    The scale of the text relative to a name tag.
     /// @param argb     The ARGB color of the text.
     /// @param backdrop The ARGB color of the backdrop, or `0` for none.
     /// @param mode     The display mode the font draws the text in.

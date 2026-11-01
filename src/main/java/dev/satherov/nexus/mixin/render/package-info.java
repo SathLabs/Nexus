@@ -1,5 +1,5 @@
 ///
-/// The mixins that run the post effects of every mod after vanilla's own.
+/// The mixins of the render feature.
 ///
 @NullMarked
 @CheckReturnValue

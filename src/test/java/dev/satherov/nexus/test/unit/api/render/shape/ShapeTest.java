@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 ///
-/// Checks the lines, triangles, quads, and text that the built-in shapes draw into a brush.
+/// Checks what each built-in shape draws into a brush.
 ///
 public class ShapeTest {
     

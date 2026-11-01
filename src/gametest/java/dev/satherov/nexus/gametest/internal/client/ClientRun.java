@@ -210,7 +210,7 @@ public class ClientRun {
             pump.frame();
         }
         
-        // The option only accepts scales that fit into the current window, so it can only be set once the window is resized.
+        // Minecraft does not accept scales that don't fit into the current window, so we cannot set that before the window is resized.
         minecraft.options.guiScale().set(ClientRun.GUI_SCALE);
     }
     

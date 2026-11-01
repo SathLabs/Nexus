@@ -5,17 +5,17 @@ import net.minecraft.resources.Identifier;
 import org.jspecify.annotations.Nullable;
 
 ///
-/// Where a HUD layer sits among the others.
+/// The place of a HUD layer among the others.
 ///
-/// @param relation The side of the anchor that the layer draws on.
-/// @param anchor   The identifier of the layer it sits next to, or `null` for every layer.
+/// The anchor has to be registered before the layer in this slot.
+///
+/// @param relation The side of the anchor the layer draws on.
+/// @param anchor   The identifier of the layer it sits next to, or `null` for all of them.
 ///
 public record HudSlot(Relation relation, @Nullable Identifier anchor) {
     
     ///
     /// Creates a slot directly above the layer with the given identifier.
-    ///
-    /// The anchor must be registered before the layer in this slot.
     ///
     /// @param anchor The identifier of the layer to sit above.
     ///
@@ -27,8 +27,6 @@ public record HudSlot(Relation relation, @Nullable Identifier anchor) {
     
     ///
     /// Creates a slot directly below the layer with the given identifier.
-    ///
-    /// The anchor must be registered before the layer in this slot.
     ///
     /// @param anchor The identifier of the layer to sit below.
     ///
@@ -57,16 +55,16 @@ public record HudSlot(Relation relation, @Nullable Identifier anchor) {
     }
     
     ///
-    /// A position above or below the anchor.
+    /// The side of the anchor a layer draws on.
     ///
     public enum Relation {
         ///
-        /// Drawn after the anchor, so over it.
+        /// Over the anchor, drawn after it.
         ///
         ABOVE,
         
         ///
-        /// Drawn before the anchor, so under it.
+        /// Under the anchor, drawn before it.
         ///
         BELOW
     }

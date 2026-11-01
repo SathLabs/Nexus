@@ -23,8 +23,7 @@ import java.util.List;
 import java.util.Map;
 
 ///
-/// The brush a shape draws into: records lines, triangles, quads and labels per render type into a drawing's primitive list, with the
-/// current paint swapped around a painted part.
+/// A brush that records the lines, quads, and labels of a shape into [Primitives].
 ///
 @ApiStatus.Internal
 public final class MeshBrush implements Brush {
@@ -40,21 +39,21 @@ public final class MeshBrush implements Brush {
     private final List<Primitives.Label> labels = new ArrayList<>();
     
     ///
-    /// The current paint, which is the paint of the drawing outside a painted part.
+    /// The paint of the painted part being drawn, or the paint of the whole shape outside one.
     ///
     private Paint paint;
     
     ///
-    /// A brush for the paint.
+    /// Creates a new brush with the given paint as the current one.
     ///
-    /// @param paint The paint of the drawing.
+    /// @param paint The paint of the whole shape.
     ///
     public MeshBrush(Paint paint) {
         this.paint = paint;
     }
     
     ///
-    /// The current paint, which is the paint of the drawing outside a painted part.
+    /// The current paint.
     ///
     /// @return The current paint.
     ///
@@ -79,7 +78,7 @@ public final class MeshBrush implements Brush {
     }
     
     ///
-    /// Records the triangle as a quad with its last corner repeated, in the fill render type of the current depth mode.
+    /// Records the triangle as a quad that repeats the third corner, in the fill render type of the current depth mode.
     ///
     /// @param a    The first corner.
     /// @param b    The second corner.
@@ -104,7 +103,13 @@ public final class MeshBrush implements Brush {
     }
     
     ///
-    /// Records the quad between the given corners, in order, in the fill render type of the current depth mode.
+    /// Records the quad between the given corners in the fill render type of the current depth mode.
+    ///
+    /// @param argb   The ARGB color of the quad.
+    /// @param first  The first corner.
+    /// @param second The second corner.
+    /// @param third  The third corner.
+    /// @param fourth The fourth corner.
     ///
     private void fill(int argb, Vec3 first, Vec3 second, Vec3 third, Vec3 fourth) {
         List<Primitives.Vertex> vertices = this.vertices(ShapePipelines.fill(this.paint.depth()));
@@ -117,7 +122,8 @@ public final class MeshBrush implements Brush {
     ///
     /// Records the quad in the sprite render type of the sprite's atlas and the current depth mode.
     ///
-    /// The sprite is resolved now, and a texture that is no atlas is shown whole.
+    /// The texture coordinates of the sprite are looked up while recording.
+    /// If the texture of the atlas is not a [TextureAtlas], the whole texture will be shown.
     ///
     /// @param quad   The quad to show the sprite on.
     /// @param sprite The sprite to show.
@@ -148,16 +154,20 @@ public final class MeshBrush implements Brush {
     ///
     /// The vertices recorded so far for the given render type, created empty on first use.
     ///
+    /// @param type The render type of the vertices.
+    ///
+    /// @return The vertices of the render type.
+    ///
     private List<Primitives.Vertex> vertices(RenderType type) {
         return this.verticesByType.computeIfAbsent(type, _ -> new ArrayList<>());
     }
     
     ///
-    /// Records the text as a label, see-through under every depth mode other than [Paint.Depth#VISIBLE].
+    /// Records the text as a label, drawn see-through unless the current depth mode is [Paint.Depth#VISIBLE].
     ///
     /// @param at       The point to center the text on.
     /// @param text     The text to draw.
-    /// @param scale    The scale of the text, where `1` is name tag size.
+    /// @param scale    The scale of the text relative to a name tag.
     /// @param argb     The ARGB color of the text.
     /// @param backdrop The ARGB color of the backdrop, or `0` for none.
     ///
@@ -168,7 +178,7 @@ public final class MeshBrush implements Brush {
     }
     
     ///
-    /// Draws the given part with the given paint as the current one and then restores the current one, even if the part throws.
+    /// Draws the given part with the given paint as the current one and then restores the previous one, even if the part throws.
     ///
     /// @param part  The shape to draw.
     /// @param paint The paint to draw the part with.
@@ -185,7 +195,9 @@ public final class MeshBrush implements Brush {
     }
     
     ///
-    /// The recorded primitives.
+    /// Creates the primitives of everything recorded so far.
+    ///
+    /// The primitives share their vertices and labels with this brush, so this should be the last call on it.
     ///
     /// @return The primitives recorded so far.
     ///

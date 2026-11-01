@@ -9,7 +9,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 ///
 /// One layer of the HUD.
 ///
-/// Called every frame the HUD is shown, on the client thread, never while it is hidden.
+/// Called on the client thread every frame the HUD is shown.
 ///
 /// Can be registered through [Render#hudLayer(String, HudSlot, ClientOnly)].
 ///

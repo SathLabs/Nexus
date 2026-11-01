@@ -26,15 +26,13 @@ import org.jspecify.annotations.Nullable;
 import java.util.Objects;
 
 ///
-/// One glowing block, with its model cached while the block keeps its state and the resources aren't reloaded.
-///
-/// Its block entity is extracted again in every frame.
+/// A glowing block that caches its model until the state of the block or the block model set changes.
 ///
 @ApiStatus.Internal
 public final class GlowingBlock {
     
     ///
-    /// The display context the models of glowing blocks are resolved in.
+    /// The display context the model is resolved in.
     ///
     private static final BlockDisplayContext CONTEXT = BlockDisplayContext.create();
     
@@ -44,7 +42,7 @@ public final class GlowingBlock {
     private final BlockPos pos;
     
     ///
-    /// The model of the block in the cached state.
+    /// The model of the block, resolved for [#state] from [#models].
     ///
     private final BlockModelRenderState model = new BlockModelRenderState();
     
@@ -54,7 +52,7 @@ public final class GlowingBlock {
     private @Nullable BlockState state;
     
     ///
-    /// The block models the model was resolved from, or `null` until the first submission.
+    /// The block model set the model was resolved from, or `null` until the first submission.
     ///
     private @Nullable BlockModelSet models;
     
@@ -68,15 +66,15 @@ public final class GlowingBlock {
     }
     
     ///
-    /// Submits the outline of the block in the given color,
-    /// resolving its model again first if its state changed or the resources were reloaded.
+    /// Submits the outline of the block in the given color.
+    /// The model is resolved again first if the state of the block or the block model set changed.
     ///
     /// If the block entity at the position has a renderer, the outline will also cover what that renderer submits in this frame.
     ///
     /// Does nothing while the position holds air.
     ///
     /// @param pose      The pose stack of the frame, whose origin is the camera.
-    /// @param collector The collector of the frame that the outline is submitted to.
+    /// @param collector The collector of the frame.
     /// @param camera    The position of the camera.
     /// @param argb      The ARGB color of the outline.
     ///
@@ -97,7 +95,7 @@ public final class GlowingBlock {
         
         pose.pushPose();
         pose.translate(Vec3.atLowerCornerOf(this.pos).subtract(camera));
-        // Only the model parts, because a special model would draw the item form of what the block entity renderer draws live.
+        // We submit only the model parts, because a special model would draw the item form of what the block entity renderer draws live.
         this.model.submitOnlyOutline(pose, collector, LightCoordsUtil.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, argb);
         BlockEntity blockEntity = level.getBlockEntity(this.pos);
         if (blockEntity != null) {

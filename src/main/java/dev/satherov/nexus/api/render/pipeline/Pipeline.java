@@ -50,11 +50,11 @@ public final class Pipeline {
     }
     
     ///
-    /// Supplies the named uniform block to every draw of the pipeline through [Render#draw(ClientOnly)], read once per draw.
+    /// Binds the given buffer slice to the uniform block of the given name for every draw through [Render#draw(ClientOnly)].
     ///
     /// Replaces an earlier binding of the name.
     ///
-    /// If the pipeline does not declare a uniform of that name, the first such draw will throw an [IllegalStateException].
+    /// If the pipeline does not declare a uniform block of that name, the first such draw will throw an [IllegalStateException].
     ///
     /// @param block The name of the uniform block.
     /// @param value The buffer slice that holds the block, called once per draw.

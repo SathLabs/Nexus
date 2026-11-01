@@ -3,19 +3,18 @@ package dev.satherov.nexus.api.render.shape;
 import lombok.With;
 
 ///
-/// How a shape is colored and where it passes the depth test.
-/// A color of `0` switches that part off.
+/// The style that a shape is drawn with.
 ///
-/// @param stroke    The ARGB color of edges and text, or `0` for none.
-/// @param lineWidth The width of edges in pixels, above `0`.
-/// @param fill      The ARGB color of faces and backdrops, or `0` for none.
-/// @param depth     Where the shape passes the depth test.
+/// @param stroke    The ARGB color of lines and text, or `0` to draw neither.
+/// @param lineWidth The width of lines in pixels.
+/// @param fill      The ARGB color of faces and backdrops, or `0` to draw neither.
+/// @param depth     The depth test the shape is drawn with.
 ///
 @With
 public record Paint(int stroke, float lineWidth, int fill, Depth depth) {
     
     ///
-    /// Vanilla's line width, `2.5` pixels.
+    /// The line width vanilla draws its block outline with, which it scales up on windows wider than 1920 pixels.
     ///
     public static final float DEFAULT_LINE_WIDTH = 2.5F;
     
@@ -31,43 +30,47 @@ public record Paint(int stroke, float lineWidth, int fill, Depth depth) {
     }
     
     ///
-    /// Creates a paint of edges only, at the default width, depth tested.
+    /// Creates a new paint with the given stroke and no fill.
     ///
-    /// @param argb The ARGB color of the edges.
+    /// The line width will be {@value #DEFAULT_LINE_WIDTH} and the depth test [Depth#VISIBLE].
     ///
-    /// @return The paint of the edges.
+    /// @param argb The ARGB color of the stroke.
+    ///
+    /// @return The paint.
     ///
     public static Paint stroke(int argb) {
         return new Paint(argb, Paint.DEFAULT_LINE_WIDTH, 0, Depth.VISIBLE);
     }
     
     ///
-    /// Creates a paint of faces only, depth tested.
+    /// Creates a new paint with the given fill and no stroke.
     ///
-    /// @param argb The ARGB color of the faces.
+    /// The line width will be {@value #DEFAULT_LINE_WIDTH} and the depth test [Depth#VISIBLE].
     ///
-    /// @return The paint of the faces.
+    /// @param argb The ARGB color of the fill.
+    ///
+    /// @return The paint.
     ///
     public static Paint fill(int argb) {
         return new Paint(0, Paint.DEFAULT_LINE_WIDTH, argb, Depth.VISIBLE);
     }
     
     ///
-    /// Where a shape passes the depth test.
+    /// The depth test that a shape may be drawn with.
     ///
     public enum Depth {
         ///
-        /// Only where nothing in the level is in front of it.
+        /// The shape is drawn only where nothing in the level is in front of it.
         ///
         VISIBLE,
         
         ///
-        /// Only where something in the level is in front of it.
+        /// The shape is drawn only where something in the level is in front of it.
         ///
         HIDDEN,
         
         ///
-        /// Everywhere.
+        /// The shape is drawn everywhere.
         ///
         ALWAYS
     }

@@ -29,7 +29,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 ///
-/// The client side of the pipeline samples.
+/// The sample pipelines and the draw hook that draws a quad in the shown one.
 ///
 public final class SampleQuads {
     

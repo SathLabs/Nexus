@@ -1,24 +1,17 @@
 ///
 /// What mods draw and register with the renderer.
-/// - [Render]: The drawing and render registrations of one mod, accessed through [NexusMod#getRender()].
+/// - [Render]: The drawings and registrations of one mod.
 ///
-/// For the shapes and their paint see [dev.satherov.nexus.api.render.shape].
-///
-/// For the block outline rules see [dev.satherov.nexus.api.render.outline].
-///
-/// For the glowing outlines of entities and blocks see [dev.satherov.nexus.api.render.glow].
-///
-/// For the HUD layers see [dev.satherov.nexus.api.render.hud].
-///
-/// For the shading of pipelines under a shader pack see [dev.satherov.nexus.api.render.pipeline].
-///
-/// For the screen-wide post effects see [dev.satherov.nexus.api.render.post].
+/// The shapes and their paint are in [dev.satherov.nexus.api.render.shape].
+/// The block outline rules are in [dev.satherov.nexus.api.render.outline].
+/// The glowing outlines of entities and blocks are in [dev.satherov.nexus.api.render.glow].
+/// The HUD layers are in [dev.satherov.nexus.api.render.hud].
+/// The shading of pipelines under a shader pack is in [dev.satherov.nexus.api.render.pipeline].
+/// The screen-wide post effects are in [dev.satherov.nexus.api.render.post].
 ///
 @NullMarked
 @CheckReturnValue
 package dev.satherov.nexus.api.render;
-
-import dev.satherov.nexus.api.mod.NexusMod;
 
 import com.google.errorprone.annotations.CheckReturnValue;
 

@@ -27,7 +27,7 @@ import java.util.List;
 import java.util.Objects;
 
 ///
-/// The client tests that check that a replacing rule hides vanilla's outline, that an adding rule keeps it, and that a rule is asked once per target.
+/// Checks what an outline rule does to vanilla's outline and how often it is asked.
 ///
 public class OutlinesSamples {
     

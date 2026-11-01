@@ -60,10 +60,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiConsumer;
 
 ///
-/// The only class that uses client render events.
-/// - Registers the pipelines of the library and the mods, the HUD layers, the debug renderers, and the entity glow modifier.
-/// - Runs the scenes, the draw hooks, the glows, and the outline rules at their points of the frame, and the debug renderers once per client tick.
-/// - Starts them on login and ends them whenever the client's level unloads.
+/// The client event listeners of the render feature.
+/// - Registers the pipelines of the library and the mods, the HUD layers, the debug renderers, and the glow modifier of the entities.
+/// - Runs the scenes, the draw hooks, the glows, and the outline rules at their stage of the frame.
+/// - Ticks the debug renderers after each client tick.
+/// - Starts the scenes and the glows on login and ends them when the level of the client unloads.
 /// - Projects world positions onto the screen for [Render].
 ///
 /// Should only ever be loaded on the client.
@@ -73,17 +74,17 @@ import java.util.function.BiConsumer;
 public class RenderDispatch {
     
     ///
-    /// The pipelines of the mods that wait for the registration event, in the order they were registered.
+    /// The mod pipelines queued for the registration event.
     ///
     private static final List<Pipeline> WAITING_PIPELINES = new CopyOnWriteArrayList<>();
     
     ///
-    /// The pipelines of the mods by their render pipeline, filled by the registration event.
+    /// The mod pipelines by their render pipeline, filled by the registration event.
     ///
     private static final Map<RenderPipeline, Pipeline> PIPELINES = new HashMap<>();
     
     ///
-    /// The draw hooks of the mods, in the order they were registered.
+    /// The draw hooks of the mods.
     ///
     private static final List<BiConsumer<PoseStack, MultiBufferSource>> HOOKS = new CopyOnWriteArrayList<>();
     
@@ -93,7 +94,7 @@ public class RenderDispatch {
     private static final DrawHooks DRAW_HOOKS = new DrawHooks(RenderDispatch.HOOKS, RenderDispatch.PIPELINES);
     
     ///
-    /// The HUD layers of the mods that wait for the registration event, by their identifier, in the order they were registered.
+    /// The mod HUD layers queued for the registration event, by their identifier.
     ///
     private static final Map<Identifier, WaitingHudLayer> WAITING_HUD_LAYERS = Collections.synchronizedMap(new LinkedHashMap<>());
     
@@ -108,10 +109,9 @@ public class RenderDispatch {
     private static boolean hudLayersRegistered;
     
     ///
-    /// Subscribes on the mod bus of Nexus and the game bus.
+    /// Subscribes to the mod bus of Nexus and the game bus.
     ///
-    /// Should only ever be called once from [Nexus], behind the dist check.
-    /// The registrations of every [Render] are only queued.
+    /// Should only ever be called once from [Nexus].
     ///
     /// @param nexusBus The mod bus of Nexus.
     ///
@@ -133,14 +133,17 @@ public class RenderDispatch {
         NeoForge.EVENT_BUS.addListener(RenderLevelStageEvent.AfterTranslucentBlocks.class, RenderDispatch::drawScenes);
         NeoForge.EVENT_BUS.addListener(RenderLevelStageEvent.AfterLevel.class, event -> RenderDispatch.DRAW_HOOKS.drawAfterLevel(event.getModelViewMatrix()));
         NeoForge.EVENT_BUS.addListener(ClientTickEvent.Post.class, _ -> DebugRenderers.INSTANCE.tick());
-        // The client scope only exists once the client session marked the login, which it does at the normal priority.
+        // The client session only opens the client scope at normal priority, so we have to start after it.
         NeoForge.EVENT_BUS.addListener(EventPriority.LOW, ClientPlayerNetworkEvent.LoggingIn.class, RenderDispatch::start);
         NeoForge.EVENT_BUS.addListener(LevelEvent.Unload.class, RenderDispatch::end);
     }
     
     ///
-    /// Registers the library's pipelines and then the mods' pipelines,
-    /// and assigns each mod pipeline the pack program of its shading if Iris is present.
+    /// Registers the pipelines of the library and then the mod pipelines.
+    ///
+    /// If iris is present, every pipeline will also be assigned its shading.
+    ///
+    /// @param event The registration event.
     ///
     private static void registerPipelines(RegisterRenderPipelinesEvent event) {
         ShapePipelines.register(event::registerPipeline);
@@ -160,7 +163,11 @@ public class RenderDispatch {
     }
     
     ///
-    /// Registers the mods' HUD layers at their slots, each skipped while the HUD is hidden.
+    /// Registers the queued HUD layers at their slots.
+    ///
+    /// A layer draws nothing while the HUD is hidden.
+    ///
+    /// @param event The registration event.
     ///
     private static void registerHudLayers(RegisterGuiLayersEvent event) {
         RenderDispatch.WAITING_HUD_LAYERS.forEach((id, waiting) -> {
@@ -195,7 +202,10 @@ public class RenderDispatch {
     }
     
     ///
-    /// Sets the outline color of the entity's render state to the color of its glow, if any mod glows the entity.
+    /// Sets the outline color of the render state to the glow color of the entity, if any mod glows it.
+    ///
+    /// @param entity The entity.
+    /// @param state  The render state of the entity.
     ///
     private static void glow(Entity entity, EntityRenderState state) {
         int color = GlowOutlines.INSTANCE.colorOf(entity);
@@ -205,7 +215,9 @@ public class RenderDispatch {
     }
     
     ///
-    /// Turns on the outline post chain of the frame while any glow exists.
+    /// Turns on the outline processing of the frame if any glow exists.
+    ///
+    /// @param event The frame graph setup event.
     ///
     private static void enableGlows(FrameGraphSetupEvent event) {
         if (GlowOutlines.INSTANCE.hasAny()) {
@@ -214,7 +226,9 @@ public class RenderDispatch {
     }
     
     ///
-    /// Updates the outline rules for the block under the crosshair and adds them as a custom renderer if any rule answered.
+    /// Updates the outline rules with the targeted block and adds them as a custom renderer if any rule applies to it.
+    ///
+    /// @param event The extraction event of the block outline.
     ///
     private static void extractOutline(ExtractBlockOutlineRenderStateEvent event) {
         TargetedBlock target = new TargetedBlock(event.getLevel(), event.getBlockPos().immutable(), event.getBlockState(), event.getHitResult().getDirection());
@@ -224,7 +238,9 @@ public class RenderDispatch {
     }
     
     ///
-    /// Draws every scene once the translucent blocks are drawn and then draws the labels of the scenes.
+    /// Draws every scene into the buffer source of the client and then ends its batch.
+    ///
+    /// @param event The render stage event after the translucent blocks.
     ///
     private static void drawScenes(RenderLevelStageEvent.AfterTranslucentBlocks event) {
         Minecraft minecraft = Minecraft.getInstance();
@@ -234,7 +250,9 @@ public class RenderDispatch {
     }
     
     ///
-    /// Starts the tickers of the scenes and the glows on login.
+    /// Starts the scenes and the glows on login.
+    ///
+    /// @param event The login event.
     ///
     private static void start(ClientPlayerNetworkEvent.LoggingIn event) {
         Scenes.INSTANCE.start();
@@ -242,7 +260,9 @@ public class RenderDispatch {
     }
     
     ///
-    /// Ends every scene, every glow, and the kept outlines once the level of the client unloads, on a dimension change and on logout alike.
+    /// Ends the scenes, the glows, and the outline rules when a client level unloads.
+    ///
+    /// @param event The unload event of the level.
     ///
     private static void end(LevelEvent.Unload event) {
         if (event.getLevel().isClientSide()) {
@@ -253,11 +273,11 @@ public class RenderDispatch {
     }
     
     ///
-    /// Registers a mod's pipeline for the pipeline registration event and the Iris assignment.
+    /// Queues a mod pipeline for the registration event.
     ///
     /// Should only ever be called from [Render#pipeline(ClientOnly, Shading)].
     ///
-    /// @param pipeline The pipeline to register.
+    /// @param pipeline The pipeline to queue.
     ///
     /// @throws IllegalStateException If the registration event already ran.
     ///
@@ -271,15 +291,15 @@ public class RenderDispatch {
     }
     
     ///
-    /// Queues a HUD layer for the layer registration event.
+    /// Queues a mod HUD layer for the registration event.
     ///
     /// Should only ever be called from [Render#hudLayer(String, HudSlot, ClientOnly)].
     ///
     /// @param id    The identifier of the layer.
-    /// @param slot  The place of the layer among the others.
-    /// @param layer The layer of a mod.
+    /// @param slot  The slot of the layer.
+    /// @param layer The layer to queue.
     ///
-    /// @throws IllegalStateException If the registration event already ran or if the identifier is already taken.
+    /// @throws IllegalStateException If the registration event already ran or the identifier is already taken.
     ///
     public static void hudLayer(Identifier id, HudSlot slot, ClientOnly<HudLayer> layer) {
         if (RenderDispatch.hudLayersRegistered) {
@@ -296,23 +316,23 @@ public class RenderDispatch {
     ///
     /// Should only ever be called from [Render#draw(ClientOnly)].
     ///
-    /// @param drawer The drawer of a mod.
+    /// @param drawer The draw hook to queue.
     ///
     public static void draw(ClientOnly<BiConsumer<PoseStack, MultiBufferSource>> drawer) {
         RenderDispatch.HOOKS.add(drawer.get());
     }
     
     ///
-    /// The GUI-scaled screen position of the given world position.
+    /// Projects the given world position onto the screen, in GUI-scaled pixels.
     ///
     /// Should only ever be called from [Render#project(Vec3)].
     ///
     /// @param position The world position to project.
-    /// @param modId    The id of the mod that asks, used in the failure message.
+    /// @param modId    The id of the calling mod, used in the failure message.
     ///
-    /// @return The position on the screen, starting from the top left corner, or `null` if the world position lies behind the camera.
+    /// @return The screen position, starting from the top left corner, or `null` if the world position lies behind the camera.
     ///
-    /// @throws IllegalStateException If called off the client thread.
+    /// @throws IllegalStateException If not called on the client thread.
     ///
     public static @Nullable Vector2f project(Vec3 position, String modId) {
         Minecraft minecraft = Minecraft.getInstance();
@@ -331,10 +351,10 @@ public class RenderDispatch {
     }
     
     ///
-    /// A HUD layer of a mod that waits for the registration event.
+    /// A mod HUD layer queued for the registration event.
     ///
-    /// @param slot  The place of the layer among the others.
-    /// @param layer The layer of the mod.
+    /// @param slot  The slot of the layer.
+    /// @param layer The layer.
     ///
     private record WaitingHudLayer(HudSlot slot, HudLayer layer) { }
 }

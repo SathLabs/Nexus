@@ -9,16 +9,18 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 import java.util.List;
 
 ///
-/// Geometry that draws itself into a brush.
-/// Edges take the paint's stroke and faces its fill, and a part whose color is `0` is left out.
+/// A piece of geometry that draws itself with a [Brush].
 ///
-/// Drawn once when a drawing is created or repainted.
+/// The built-in shapes draw their lines in the stroke of the paint and their faces in its fill.
+/// If one of the two colors is `0`, that part will not be drawn.
+///
+/// A shape is drawn once when a drawing is created or repainted and once when the targeted block of an outline changes.
 ///
 @FunctionalInterface
 public interface Shape {
     
     ///
-    /// Creates a line between the given points, stroke only.
+    /// Creates a line between the given points.
     ///
     /// @param from The start of the line.
     /// @param to   The end of the line.
@@ -39,7 +41,7 @@ public interface Shape {
     ///
     /// @param box The box to draw.
     ///
-    /// @return The edges and faces of the box.
+    /// @return The box.
     ///
     static Shape box(AABB box) {
         return brush -> {
@@ -67,7 +69,7 @@ public interface Shape {
     ///
     /// @param quad The quad to draw.
     ///
-    /// @return The edges and face of the quad.
+    /// @return The quad.
     ///
     static Shape face(Quad quad) {
         return brush -> {
@@ -83,12 +85,12 @@ public interface Shape {
     }
     
     ///
-    /// Creates the four edges of the given quad and its face showing the given sprite, tinted by the fill.
+    /// Creates the four edges of the given quad and its face with the given sprite on it, tinted in the fill.
     ///
     /// @param quad   The quad to draw.
     /// @param sprite The sprite to show on the face.
     ///
-    /// @return The edges and textured face of the quad.
+    /// @return The quad with the sprite.
     ///
     static Shape face(Quad quad, Sprite sprite) {
         return brush -> {
@@ -104,13 +106,13 @@ public interface Shape {
     }
     
     ///
-    /// Creates a ring of the given radius around the given center in the plane the normal stands on, with a disc as fill.
+    /// Creates the ring and the disc of a circle around the given center, in the plane with the given normal.
     ///
-    /// @param center The center of the ring.
-    /// @param normal The normal of the plane of the ring.
-    /// @param radius The radius of the ring.
+    /// @param center The center of the circle.
+    /// @param normal The normal of the plane the circle lies in.
+    /// @param radius The radius of the circle.
     ///
-    /// @return The ring and its disc.
+    /// @return The circle.
     ///
     static Shape circle(Vec3 center, Vec3 normal, double radius) {
         Vec3[] points = Shape.ring(center, normal, radius);
@@ -127,7 +129,7 @@ public interface Shape {
     }
     
     ///
-    /// Creates a sphere with three great circles as stroke and the surface as fill.
+    /// Creates the surface of a sphere and its three great circles, one around each axis.
     ///
     /// @param center The center of the sphere.
     /// @param radius The radius of the sphere.
@@ -151,7 +153,8 @@ public interface Shape {
     
     ///
     /// Creates a cylinder from the given base center to the given top center.
-    /// Both rims and four long edges are the stroke, and the mantle and caps the fill.
+    ///
+    /// Its lines are both rims and four edges along the side, its faces the side and both caps.
     ///
     /// @param base   The center of the base.
     /// @param top    The center of the top.
@@ -186,10 +189,10 @@ public interface Shape {
     }
     
     ///
-    /// Creates every edge of the given voxel shape at the given position, stroke only.
+    /// Creates every edge of the given voxel shape, moved to the given position.
     ///
     /// @param shape    The voxel shape to outline.
-    /// @param position The position of the voxel shape's origin.
+    /// @param position The position the voxel shape is placed at.
     ///
     /// @return The edges of the voxel shape.
     ///
@@ -203,13 +206,14 @@ public interface Shape {
     }
     
     ///
-    /// Creates text facing the camera, centered on the given point, at name tag size.
-    /// The text is drawn in the stroke and a backdrop in the fill.
+    /// Creates a label of the given text at name tag size, centered on the given point and facing the camera.
+    /// The text is drawn in the stroke and its backdrop in the fill.
     ///
-    /// Text passes the depth test under [Paint.Depth#VISIBLE] and ignores it under the other two modes.
+    /// If the stroke is `0`, nothing will be drawn.
+    /// If the depth is not [Paint.Depth#VISIBLE], the label will be drawn everywhere.
     ///
-    /// @param at   The point to center the text on.
-    /// @param text The text to draw.
+    /// @param at   The point to center the label on.
+    /// @param text The text of the label.
     ///
     /// @return The label.
     ///
@@ -223,9 +227,9 @@ public interface Shape {
     }
     
     ///
-    /// Creates one shape that draws every given part in order.
+    /// Creates one shape out of the given parts.
     ///
-    /// @param parts The parts to draw, in the order they should be drawn.
+    /// @param parts The shapes to draw together.
     ///
     /// @return The shape of all parts.
     ///
@@ -235,7 +239,12 @@ public interface Shape {
     }
     
     ///
-    /// The corner of the box at the given index, whose bits select the maximum on the x, y, and z axis in that order.
+    /// Gets the corner of the given box with the given index.
+    ///
+    /// @param box   The box to take the corner of.
+    /// @param index The index of the corner, whose bits `1`, `2`, and `4` select the maximum x, y, and z.
+    ///
+    /// @return The corner.
     ///
     private static Vec3 corner(AABB box, int index) {
         return new Vec3(
@@ -248,6 +257,10 @@ public interface Shape {
     ///
     /// Draws the four edges of the given quad.
     ///
+    /// @param brush The brush to draw with.
+    /// @param quad  The quad to outline.
+    /// @param argb  The ARGB color of the edges.
+    ///
     private static void outline(Brush brush, Quad quad, int argb) {
         Vec3 cornerU = quad.origin().add(quad.edgeU());
         Vec3 cornerV = quad.origin().add(quad.edgeV());
@@ -259,15 +272,56 @@ public interface Shape {
     }
     
     ///
-    /// The evenly spaced points of a ring of the given radius around the given center in the plane the normal stands on.
+    /// Computes the number of segments a ring of the given radius takes to sag at most a 64th of a block below its arc.
     ///
-    /// Rings with the same normal start at the same angle.
+    /// The number is a multiple of `4`, at least `16` and at most `256`.
+    ///
+    /// @param radius The radius of the ring.
+    ///
+    /// @return The number of segments.
+    ///
+    private static int segments(double radius) {
+        if (radius <= 1.0D / 64.0D) {
+            return 16;
+        }
+        
+        int exact = (int) Math.ceil(Math.PI / Math.acos(1.0D - 1.0D / (64.0D * radius)));
+        return Math.clamp((exact + 3) / 4 * 4, 16, 256);
+    }
+    
+    ///
+    /// Computes evenly spaced points of a ring of the given radius around the given center, in the plane with the given normal.
+    ///
+    /// The number of points comes from [#segments(double)].
+    ///
+    /// @param center The center of the ring.
+    /// @param normal The normal of the plane the ring lies in.
+    /// @param radius The radius of the ring.
+    ///
+    /// @return The points of the ring, in order around it.
     ///
     private static Vec3[] ring(Vec3 center, Vec3 normal, double radius) {
+        return Shape.ring(center, normal, radius, Shape.segments(radius));
+    }
+    
+    ///
+    /// Computes the given number of evenly spaced points of a ring of the given radius around the given center,
+    /// in the plane with the given normal.
+    ///
+    /// Two rings with the same normal start at the same angle.
+    ///
+    /// @param center   The center of the ring.
+    /// @param normal   The normal of the plane the ring lies in.
+    /// @param radius   The radius of the ring.
+    /// @param segments The number of points.
+    ///
+    /// @return The points of the ring, in order around it.
+    ///
+    private static Vec3[] ring(Vec3 center, Vec3 normal, double radius, int segments) {
         Vec3 axis = normal.normalize();
         Vec3 start = axis.cross(Math.abs(axis.y) < 0.5D ? Vec3.Y_AXIS : Vec3.X_AXIS).normalize().scale(radius);
         Vec3 quarter = axis.cross(start);
-        Vec3[] points = new Vec3[32];
+        Vec3[] points = new Vec3[segments];
         for (int i = 0; i < points.length; i++) {
             double angle = 2.0D * Math.PI * i / points.length;
             points[i] = center.add(start.scale(Math.cos(angle))).add(quarter.scale(Math.sin(angle)));
@@ -277,7 +331,11 @@ public interface Shape {
     }
     
     ///
-    /// Draws the lines between the given points of a ring, closing it.
+    /// Draws a closed loop of lines through the given points.
+    ///
+    /// @param brush  The brush to draw with.
+    /// @param points The points to connect, in the order they should be connected.
+    /// @param argb   The ARGB color of the lines.
     ///
     private static void loop(Brush brush, Vec3[] points, int argb) {
         for (int i = 0; i < points.length; i++) {
@@ -286,7 +344,12 @@ public interface Shape {
     }
     
     ///
-    /// Draws the disc inside the given points of a ring as triangles around its center.
+    /// Draws the disc inside the given ring as triangles around the given center.
+    ///
+    /// @param brush  The brush to draw with.
+    /// @param center The center of the ring.
+    /// @param points The points of the ring, in order around it.
+    /// @param argb   The ARGB color of the disc.
     ///
     private static void disc(Brush brush, Vec3 center, Vec3[] points, int argb) {
         for (int i = 0; i < points.length; i++) {
@@ -295,14 +358,24 @@ public interface Shape {
     }
     
     ///
-    /// Draws the surface of the sphere as triangles between rings of latitude, leaving out the empty triangles at the poles.
+    /// Draws the surface of a sphere of the given radius around the given center as triangles in bands of latitude.
+    ///
+    /// The bands are half as many as the segments of the equator.
+    ///
+    /// The triangles at both poles have no area and are left out.
+    ///
+    /// @param brush  The brush to draw with.
+    /// @param center The center of the sphere.
+    /// @param radius The radius of the sphere.
+    /// @param argb   The ARGB color of the surface.
     ///
     private static void surface(Brush brush, Vec3 center, double radius, int argb) {
-        Vec3[] upper = Shape.ring(center.add(0.0D, radius, 0.0D), Vec3.Y_AXIS, 0.0D);
-        int bands = upper.length / 2;
+        int segments = Shape.segments(radius);
+        Vec3[] upper = Shape.ring(center.add(0.0D, radius, 0.0D), Vec3.Y_AXIS, 0.0D, segments);
+        int bands = segments / 2;
         for (int band = 1; band <= bands; band++) {
             double angle = Math.PI * band / bands;
-            Vec3[] lower = Shape.ring(center.add(0.0D, radius * Math.cos(angle), 0.0D), Vec3.Y_AXIS, radius * Math.sin(angle));
+            Vec3[] lower = Shape.ring(center.add(0.0D, radius * Math.cos(angle), 0.0D), Vec3.Y_AXIS, radius * Math.sin(angle), segments);
             for (int i = 0; i < lower.length; i++) {
                 int next = (i + 1) % lower.length;
                 if (band > 1) {
@@ -319,18 +392,20 @@ public interface Shape {
     }
     
     ///
-    /// Emits the shape into the given brush.
+    /// Draws this shape with the given brush.
     ///
     /// @param brush The brush to draw with.
     ///
     void draw(Brush brush);
     
     ///
-    /// This shape drawn with the given paint instead of its drawing's, colors, width, and depth alike, through [Brush#draw(Shape, Paint)].
+    /// Creates a shape that draws this one with the given paint instead of the paint of the brush.
     ///
     /// @param paint The paint to draw this shape with.
     ///
-    /// @return The shape with its own paint.
+    /// @return The painted shape.
+    ///
+    /// @see Brush#draw(Shape, Paint)
     ///
     default Shape painted(Paint paint) {
         return brush -> brush.draw(this, paint);

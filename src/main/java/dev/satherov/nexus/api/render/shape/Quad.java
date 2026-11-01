@@ -7,19 +7,21 @@ import net.minecraft.world.phys.Vec3;
 ///
 /// A parallelogram spanned from one corner by two edges.
 ///
-/// @param origin The first corner.
-/// @param edgeU  The edge from the origin along which a sprite's `u` runs.
-/// @param edgeV  The edge from the origin along which a sprite's `v` runs.
+/// @param origin The corner both edges start from.
+/// @param edgeU  The edge along which the `u` of a sprite runs.
+/// @param edgeV  The edge along which the `v` of a sprite runs.
 ///
 public record Quad(Vec3 origin, Vec3 edgeU, Vec3 edgeV) {
     
     ///
-    /// Creates the face of the given box on the given side, with the edges chosen so a sprite reads upright from outside the box.
+    /// Creates the face of the given box on the given side.
+    ///
+    /// A sprite on the face will be upright when seen from outside the box.
     ///
     /// @param box  The box to take the face of.
-    /// @param side The side of the face.
+    /// @param side The side of the box the face is on.
     ///
-    /// @return The face of the box.
+    /// @return The face.
     ///
     public static Quad of(AABB box, Direction side) {
         Vec3 east = new Vec3(box.getXsize(), 0.0D, 0.0D);

@@ -1,5 +1,5 @@
 ///
-/// The debug renderers of the mods, their toggles in the debug options screen, and their scenes.
+/// The debug renderers of every mod, their scenes, and the debug entries that switch them on.
 ///
 @NullMarked
 @CheckReturnValue

@@ -41,15 +41,15 @@ import java.util.OptionalInt;
 import java.util.function.Consumer;
 
 ///
-/// The GPU buffers of one scene, one per render type, plus one group per followed drawing. Rebuilt when the scene marks itself changed.
+/// The GPU buffers of one scene, one group per followed drawing plus one for the drawings that follow no entity.
 ///
-/// Every group is drawn at its own origin, the drawings that follow no entity first.
+/// Every group is drawn at its own origin, the unfollowed one first.
 ///
 @ApiStatus.Internal
 public final class SceneMesh implements AutoCloseable {
     
     ///
-    /// The layering transform that every render type of [ShapePipelines] is set up with.
+    /// The layering transform applied to the model view stack before drawing.
     ///
     private static final Consumer<Matrix4fStack> LAYERING = Objects.requireNonNull(LayeringTransform.VIEW_OFFSET_Z_LAYERING.getModifier());
     
@@ -68,7 +68,7 @@ public final class SceneMesh implements AutoCloseable {
     ///
     /// @param drawings The drawings of the group.
     /// @param origin   The position that the vertices are relative to, in the coordinates of the drawings.
-    /// @param memory   The byte buffer builder of every render type, in the order they are drawn, each without an open result.
+    /// @param memory   The byte buffer builders by render type, in the order they are drawn, their results closed.
     ///
     /// @return The buffers of the render types that have any vertex data.
     ///
@@ -93,11 +93,11 @@ public final class SceneMesh implements AutoCloseable {
     }
     
     ///
-    /// Rebuilds every buffer from the drawings' primitives.
+    /// Frees the buffers and then uploads the given drawings again.
     ///
     /// The drawings that follow no entity are written relative to the camera, and each followed drawing relative to its entity.
     ///
-    /// @param drawings The active drawings of the scene.
+    /// @param drawings The drawings of the scene.
     ///
     public void rebuild(Collection<Drawing> drawings) {
         this.close();
@@ -140,7 +140,7 @@ public final class SceneMesh implements AutoCloseable {
             return;
         }
         
-        // Growing an index buffer uploads it, which an open render pass doesn't allow, so every one is grown here.
+        // Growing an index buffer uploads it, which isn't allowed inside an open render pass, so we grow every one here first.
         indexCounts.forEach((mode, count) -> RenderSystem.getSequentialBuffer(mode).getBuffer(count));
         
         Minecraft minecraft = Minecraft.getInstance();
@@ -159,6 +159,7 @@ public final class SceneMesh implements AutoCloseable {
         modelView.popMatrix();
         
         RenderTarget target = minecraft.getMainRenderTarget();
+        //noinspection DataFlowIssue Yes, target#getColorTextureView might be null, but only after the buffer has already been destroyed, so it doesn't matter.
         try (RenderPass pass = RenderSystem.getDevice()
                 .createCommandEncoder()
                 .createRenderPass(() -> "Nexus scene", target.getColorTextureView(), OptionalInt.empty(), target.getDepthTextureView(), OptionalDouble.empty())) {
@@ -199,7 +200,7 @@ public final class SceneMesh implements AutoCloseable {
     ///
     /// @param entity  The entity the origin is relative to, or `null` if the origin is a world position.
     /// @param origin  The position that the vertices are relative to, relative to the entity if there is one.
-    /// @param buffers The buffers of every render type that has vertex data, in the order they are drawn.
+    /// @param buffers The buffers of every render-type that has vertex data in the order they are drawn.
     ///
     private record Group(@Nullable Entity entity, Vec3 origin, List<Buffer> buffers) {
         

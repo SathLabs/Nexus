@@ -8,7 +8,7 @@ import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 ///
-/// Checks the relation and anchor of the slots the factories create.
+/// Checks the relation and the anchor of the slots the factories create.
 ///
 public class HudSlotTest {
     

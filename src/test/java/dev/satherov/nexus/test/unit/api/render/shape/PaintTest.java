@@ -6,7 +6,7 @@ import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 ///
-/// Checks the line widths a paint accepts, its factories, and its copies.
+/// Checks which line widths a paint accepts and what its factories and copies hold.
 ///
 public class PaintTest {
     

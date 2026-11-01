@@ -3,10 +3,13 @@ package dev.satherov.nexus.api.render.shape;
 import net.minecraft.resources.Identifier;
 
 ///
-/// A sprite of an atlas, resolved when the quad is drawn.
-/// A missing sprite draws the missing texture.
+/// A sprite of an atlas.
 ///
-/// @param atlas   The atlas, such as the blocks atlas.
+/// The sprite is looked up when a shape showing it is drawn.
+/// If the texture is not in the atlas, the missing texture will be shown.
+/// If the atlas is not a texture atlas, the whole texture at its identifier will be shown instead.
+///
+/// @param atlas   The identifier of the atlas.
 /// @param texture The texture inside the atlas, without `textures/` and `.png`.
 ///
 public record Sprite(Identifier atlas, Identifier texture) {
@@ -14,9 +17,9 @@ public record Sprite(Identifier atlas, Identifier texture) {
     ///
     /// Creates a sprite of the given texture in the blocks atlas.
     ///
-    /// @param texture The texture inside the atlas, without `textures/` and `.png`.
+    /// @param texture The texture inside the blocks atlas, without `textures/` and `.png`.
     ///
-    /// @return The sprite in the blocks atlas.
+    /// @return The sprite.
     ///
     public static Sprite blocks(Identifier texture) {
         return new Sprite(Identifier.withDefaultNamespace("textures/atlas/blocks.png"), texture);
@@ -25,9 +28,9 @@ public record Sprite(Identifier atlas, Identifier texture) {
     ///
     /// Creates a sprite of the given texture in the items atlas.
     ///
-    /// @param texture The texture inside the atlas, without `textures/` and `.png`.
+    /// @param texture The texture inside the items atlas, without `textures/` and `.png`.
     ///
-    /// @return The sprite in the items atlas.
+    /// @return The sprite.
     ///
     public static Sprite items(Identifier texture) {
         return new Sprite(Identifier.withDefaultNamespace("textures/atlas/items.png"), texture);

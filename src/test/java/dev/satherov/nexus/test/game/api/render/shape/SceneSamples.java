@@ -35,7 +35,7 @@ import org.jspecify.annotations.Nullable;
 import java.util.Objects;
 
 ///
-/// The client tests that check the depth modes, the water, the keys, the expiry, the followed entities, the repaint, and the end of the drawings of a scene, and a debug renderer's scene.
+/// Checks how a drawing of the scene or a debug renderer shows up and how long it stays.
 ///
 public class SceneSamples {
     

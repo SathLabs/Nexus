@@ -15,7 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 ///
-/// Checks that the face of a box on every side covers that side and reads upright from outside the box.
+/// Checks that the quad of a box side covers it and shows its sprite unmirrored from outside.
 ///
 public class QuadTest {
     

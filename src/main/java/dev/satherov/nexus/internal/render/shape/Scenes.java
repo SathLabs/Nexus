@@ -19,41 +19,35 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 ///
-/// Every scene of every mod: ticks them through one ticker on Nexus's client scope started on login, draws them per frame and ends them
-/// whenever the level of the client unloads.
+/// The scenes of every mod, ticked by one ticker on the client scope.
 ///
 @ApiStatus.Internal
-@NoArgsConstructor(access = AccessLevel.PRIVATE)
-public final class Scenes {
+public enum Scenes {
+    INSTANCE;
     
     ///
-    /// The scenes.
-    ///
-    public static final Scenes INSTANCE = new Scenes();
-    
-    ///
-    /// Every scene created so far, in the order they were created.
+    /// Every scene added so far.
     ///
     private final List<Scene> scenes = new CopyOnWriteArrayList<>();
     
     ///
-    /// The ticker of the scenes on the client scope of the current session, or `null` if none was started yet.
+    /// The ticker of the scenes, or `null` if none was started yet.
     ///
     private @Nullable Ticker ticker;
     
     ///
-    /// Registers a scene.
+    /// Adds the given scene.
     ///
-    /// @param scene The scene of a mod.
+    /// @param scene The scene to add.
     ///
     public void add(Scene scene) {
         this.scenes.add(scene);
     }
     
     ///
-    /// Starts the ticker on the client scope. Called on login.
+    /// Starts the ticker on the client scope.
     ///
-    /// Does nothing while the ticker of an earlier login still runs.
+    /// Does nothing if the ticker is still active.
     ///
     public void start() {
         if (this.ticker != null && this.ticker.isActive()) {
@@ -80,7 +74,7 @@ public final class Scenes {
     }
     
     ///
-    /// Ends every scene. Called whenever the level of the client unloads, on a dimension change and on logout alike.
+    /// Ends every scene.
     ///
     public void end() {
         this.scenes.forEach(Scene::end);

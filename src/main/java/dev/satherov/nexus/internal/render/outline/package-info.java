@@ -1,5 +1,5 @@
 ///
-/// The outline rules of every mod and the custom block outline renderer that draws their outlines.
+/// The block outline rules of every mod and the renderer that draws their outlines.
 ///
 @NullMarked
 @CheckReturnValue

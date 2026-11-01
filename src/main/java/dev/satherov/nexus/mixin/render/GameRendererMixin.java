@@ -17,7 +17,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 ///
-/// Runs the mods' post effects right after vanilla's own post effect and before the GUI.
+/// Runs the post effects of every mod after vanilla's own post effect.
 ///
 @Mixin(GameRenderer.class)
 public abstract class GameRendererMixin {
@@ -30,8 +30,7 @@ public abstract class GameRendererMixin {
     private CrossFrameResourcePool resourcePool;
     
     ///
-    /// Calls [PostEffects#run(RenderTarget, GraphicsResourceAllocator)] at the profiler pop that closes the world section of `render`,
-    /// right after the post effect block.
+    /// Calls [PostEffects#run(RenderTarget, GraphicsResourceAllocator)] on the main render target at the first profiler pop of `render`.
     ///
     /// @param callback The callback of the injection.
     ///

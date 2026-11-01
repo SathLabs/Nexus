@@ -3,7 +3,7 @@ package dev.satherov.nexus.api.render.outline;
 import org.jspecify.annotations.Nullable;
 
 ///
-/// Decides the outline of the block under the crosshair.
+/// A rule that decides the outline of the block under the crosshair.
 ///
 /// Can be added through [Outlines#replace(OutlineRule)] or [Outlines#add(OutlineRule)].
 ///
@@ -11,13 +11,13 @@ import org.jspecify.annotations.Nullable;
 public interface OutlineRule {
     
     ///
-    /// The outline for the target, or `null` to leave it to vanilla and the other rules.
+    /// Gets the outline of the given target, or `null` to leave it to vanilla and the other rules.
     ///
-    /// Called on the client thread when the target changes, and the result is kept until it changes again.
+    /// Called on the client thread when the target changes, and the outline is kept until it changes again.
     ///
-    /// @param target The block under the crosshair.
+    /// @param target The targeted block.
     ///
-    /// @return The outline for the target, or `null` to leave it to vanilla and the other rules.
+    /// @return The outline of the target, or `null` to leave it to vanilla and the other rules.
     ///
     @Nullable Outline outline(TargetedBlock target);
 }

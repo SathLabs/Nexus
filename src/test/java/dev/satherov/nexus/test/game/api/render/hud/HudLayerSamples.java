@@ -25,7 +25,7 @@ import org.jspecify.annotations.Nullable;
 import java.util.Objects;
 
 ///
-/// The client tests that check a HUD layer above the crosshair, the order of the slots, a layer drawn at a projected block, and a layer under the hidden HUD.
+/// Checks where a HUD layer draws and that a hidden HUD skips it.
 ///
 public class HudLayerSamples {
     

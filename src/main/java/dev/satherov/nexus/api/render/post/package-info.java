@@ -1,12 +1,10 @@
 ///
 /// The screen-wide post effects of mods.
-/// - [PostEffect]: One post effect of a mod, accessed through [Render#postEffect(String)].
+/// - [PostEffect]: One post effect of a mod.
 ///
 @NullMarked
 @CheckReturnValue
 package dev.satherov.nexus.api.render.post;
-
-import dev.satherov.nexus.api.render.Render;
 
 import com.google.errorprone.annotations.CheckReturnValue;
 

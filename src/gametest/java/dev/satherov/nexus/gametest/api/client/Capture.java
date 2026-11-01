@@ -207,7 +207,7 @@ public final class Capture {
     /// If the `-Precord` property is set, the frame will instead be written to the path specified under the `-Pgoldens` property.
     ///
     /// If the frame differs, the frame and a diff image will be written into the directory of the report,
-    /// as `failures/<modid>/<class>/<method>/<name>.png` and `<name>.diff.png`, and the failure message will contain both paths.
+    /// as `failures/<modid>/<class>/<method>/<name>.png` and `<name>.diff.png`, while the failure message will contain both paths.
     /// - `<method>` is the test method written in snake case.
     ///
     /// The diff image shows every differing pixel in red over a dark gray copy of the frame.

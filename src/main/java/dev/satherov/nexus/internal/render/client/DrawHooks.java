@@ -46,15 +46,13 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 ///
-/// Runs the mods' draw hooks into one buffer source, ends the batches of pack-shaded types in the level and
-/// holds the own-shaded ones for the after-level slot while a pack is active,
-/// drawing a type with bound uniforms through a render pass of its own.
+/// Runs the draw hooks of the mods and then draws what they drew, one batch per render type.
 ///
 @ApiStatus.Internal
 public final class DrawHooks {
     
     ///
-    /// The draw hooks of the mods, in the order they were registered.
+    /// The draw hooks of the mods.
     ///
     private final List<BiConsumer<PoseStack, MultiBufferSource>> hooks;
     
@@ -69,24 +67,24 @@ public final class DrawHooks {
     private final MultiBufferSource buffers = this::begin;
     
     ///
-    /// The buffer builder of every render type the hooks drew into this frame, in the order they were first asked for.
+    /// The open buffer builder of this frame by render type.
     ///
     private final Map<RenderType, BufferBuilder> builderByType = new LinkedHashMap<>();
     
     ///
-    /// The byte buffer builder of every render type drawn so far, kept for the next frame.
+    /// The byte buffer builder by render type, kept across frames.
     ///
     private final Map<RenderType, ByteBufferBuilder> memoryByType = new HashMap<>();
     
     ///
-    /// The batches held for the after-level slot, in the order they were ended.
+    /// The batches held back for [#drawAfterLevel(Matrix4fc)].
     ///
     private final List<Batch> held = new ArrayList<>();
     
     ///
     /// Should only ever be called from [RenderDispatch].
     ///
-    /// @param hooks     The draw hooks of the mods, in the order they were registered.
+    /// @param hooks     The draw hooks of the mods.
     /// @param pipelines The pipelines of the mods by their render pipeline.
     ///
     public DrawHooks(List<BiConsumer<PoseStack, MultiBufferSource>> hooks, Map<RenderPipeline, Pipeline> pipelines) {
@@ -95,9 +93,9 @@ public final class DrawHooks {
     }
     
     ///
-    /// Runs the hooks and ends what belongs in the level.
+    /// Runs every draw hook and then draws or holds back the batch of every render type they drew into.
     ///
-    /// @param pose The pose stack of the frame, whose origin is the camera.
+    /// @param pose The pose stack of the frame.
     ///
     public void drawInLevel(PoseStack pose) {
         for (BiConsumer<PoseStack, MultiBufferSource> hook : this.hooks) {
@@ -109,8 +107,12 @@ public final class DrawHooks {
     }
     
     ///
-    /// Starts a new buffer builder for the given render type,
-    /// or continues the one of this frame if the render type can join consecutive geometry.
+    /// Starts a new buffer builder for the given render type or
+    /// continues the open one if the render type can consolidate consecutive geometry.
+    ///
+    /// @param type The render type a hook draws with.
+    ///
+    /// @return The buffer builder to draw into.
     ///
     private VertexConsumer begin(RenderType type) {
         BufferBuilder builder = this.builderByType.get(type);
@@ -128,8 +130,12 @@ public final class DrawHooks {
     }
     
     ///
-    /// Ends the batch of the given builder and then draws it,
-    /// or holds it for the after-level slot if its pipeline is own-shaded and a pack is active.
+    /// Builds the mesh of the given buffer builder and then draws it as a batch.
+    ///
+    /// If the shading of its pipeline is [Shading#OWN] and a shader pack is in use, the batch will be held back for [#drawAfterLevel(Matrix4fc)].
+    ///
+    /// @param type    The render type of the buffer builder.
+    /// @param builder The buffer builder to build the mesh of.
     ///
     private void end(RenderType type, BufferBuilder builder) {
         MeshData mesh = builder.build();
@@ -152,14 +158,18 @@ public final class DrawHooks {
     }
     
     ///
-    /// The byte buffer builder of the given render type, created on first use.
+    /// Gets the byte buffer builder of the given render type, creating it on first use.
+    ///
+    /// @param type The render type of the byte buffer builder.
+    ///
+    /// @return The byte buffer builder.
     ///
     private ByteBufferBuilder memory(RenderType type) {
         return this.memoryByType.computeIfAbsent(type, _ -> new ByteBufferBuilder(type.bufferSize()));
     }
     
     ///
-    /// Ends what was held, with the stage's model-view matrix since that stage has no pose stack.
+    /// Applies the given model-view matrix and then draws every held back batch.
     ///
     /// @param modelView The model-view matrix of the frame.
     ///
@@ -177,16 +187,16 @@ public final class DrawHooks {
     }
     
     ///
-    /// A batch of one render type, ended and ready to draw.
+    /// A batch of one render type, ready to draw.
     ///
     /// @param type     The render type of the batch.
     /// @param mesh     The mesh of the batch, closed once drawn.
-    /// @param pipeline The pipeline of a mod that the render type draws with, or `null` if no mod registered its render pipeline here.
+    /// @param pipeline The mod pipeline of the render type, or `null` if none exists.
     ///
     private record Batch(RenderType type, MeshData mesh, @Nullable Pipeline pipeline) {
         
         ///
-        /// Draws the mesh like vanilla, or through a render pass of our own if the pipeline has bound uniforms.
+        /// Draws the mesh through the render type, or through a render pass of our own if the pipeline binds any uniform block.
         ///
         private void draw() {
             Map<String, GpuBufferSlice> uniforms = this.readUniforms();
@@ -201,7 +211,11 @@ public final class DrawHooks {
         }
         
         ///
-        /// Reads every bound uniform block of the pipeline once and throws on a block that the render pipeline does not declare.
+        /// Reads the buffer slice of every uniform block the pipeline binds.
+        ///
+        /// @return The buffer slices by the name of their uniform block, or an empty map if the batch has no mod pipeline.
+        ///
+        /// @throws IllegalStateException If the render pipeline does not declare one of the bound uniform blocks.
         ///
         private Map<String, GpuBufferSlice> readUniforms() {
             if (this.pipeline == null) {
@@ -221,7 +235,9 @@ public final class DrawHooks {
         }
         
         ///
-        /// Draws the mesh like [RenderType#draw(MeshData)] does, with the given uniform blocks bound as well.
+        /// Draws the mesh the way [RenderType#draw(MeshData)] does and binds the given uniform blocks as well.
+        ///
+        /// @param uniforms The buffer slices of the uniform blocks to bind, by the name of their uniform block.
         ///
         private void drawThroughPass(Map<String, GpuBufferSlice> uniforms) {
             RenderSetup setup = this.type.state;

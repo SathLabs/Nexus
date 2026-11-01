@@ -21,48 +21,41 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 ///
-/// The glows of every mod: looks up the colors of the entity glow modifier, forces the outline chain on while any glow exists,
-/// submits the glowing blocks, ticks the glows through one ticker on Nexus's client scope started on login,
-/// and ends them whenever the level of the client unloads.
+/// The glows of every mod, ticked through one ticker on the client scope of Nexus.
 ///
 @ApiStatus.Internal
-@NoArgsConstructor(access = AccessLevel.PRIVATE)
-public final class GlowOutlines {
+public enum GlowOutlines {
+    INSTANCE;
     
     ///
-    /// The glows.
-    ///
-    public static final GlowOutlines INSTANCE = new GlowOutlines();
-    
-    ///
-    /// The glows of every mod, in the order they were registered.
+    /// The glows of every mod.
     ///
     private final List<Glows> glows = new CopyOnWriteArrayList<>();
     
     ///
-    /// The ticker of the glows on the client scope of the current session, or `null` if none was started yet.
+    /// The ticker of the glows, or `null` if none was started yet.
     ///
     private @Nullable Ticker ticker;
     
     ///
-    /// Registers a mod's glows.
+    /// Adds the glows of a mod.
     ///
-    /// @param glows The glows of a mod.
+    /// @param glows The glows of the mod.
     ///
     public void add(Glows glows) {
         this.glows.add(glows);
     }
     
     ///
-    /// The color the first mod that glows the entity gave it.
+    /// Gets the glow color of the given entity from the first mod that glows it.
     ///
-    /// @param entity The entity to look up.
+    /// @param entity The entity.
     ///
     /// @return The ARGB color of the outline, or `0` if no mod glows the entity.
     ///
     public int colorOf(Entity entity) {
         for (Glows glows : this.glows) {
-            // Mods without a glow are skipped, or an entity drawn while the client is in no level would throw.
+            // Mods without a glow have to be skipped, or an entity drawn while the client is in no level would throw.
             if (!glows.hasAny()) {
                 continue;
             }
@@ -77,17 +70,17 @@ public final class GlowOutlines {
     }
     
     ///
-    /// @return `true` if any mod has any glow.
+    /// @return `true` if any mod has a glow.
     ///
     public boolean hasAny() {
         return this.glows.stream().anyMatch(Glows::hasAny);
     }
     
     ///
-    /// Submits every mod's glowing blocks.
+    /// Submits the glowing blocks of every mod.
     ///
     /// @param pose      The pose stack of the frame, whose origin is the camera.
-    /// @param collector The collector of the frame that the models are submitted to.
+    /// @param collector The collector of the frame.
     /// @param camera    The position of the camera.
     ///
     public void submitBlocks(PoseStack pose, SubmitNodeCollector collector, Vec3 camera) {
@@ -97,9 +90,7 @@ public final class GlowOutlines {
     }
     
     ///
-    /// Starts the ticker on the client scope. Called on login.
-    ///
-    /// Does nothing while the ticker of an earlier login still runs.
+    /// Starts the ticker of the glows, unless one is still active.
     ///
     public void start() {
         if (this.ticker != null && this.ticker.isActive()) {
@@ -113,7 +104,7 @@ public final class GlowOutlines {
     }
     
     ///
-    /// Ends every mod's glows. Called whenever the level of the client unloads, on a dimension change and on logout alike.
+    /// Ends the glows of every mod.
     ///
     public void end() {
         this.glows.forEach(Glows::end);

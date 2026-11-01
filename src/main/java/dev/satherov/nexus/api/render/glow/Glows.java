@@ -15,17 +15,19 @@ import com.mojang.blaze3d.vertex.PoseStack;
 
 import org.jetbrains.annotations.ApiStatus;
 
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 ///
-/// The glowing outlines one mod gives entities and blocks.
+/// The glowing outlines one mod gives to entities and blocks.
+///
+/// A new glow under a key this mod already uses removes the earlier glow first.
 ///
 /// Every method throws an [IllegalStateException] off the client thread,
 /// and every method but [#tick()] and [#hasAny()] also while the client is in no level.
-///
-/// Every glow is dropped whenever the level of the client unloads, on a dimension change and on logout alike.
+/// Every glow is dropped once the level of the client unloads, on a dimension change and on logout alike.
 ///
 /// Can be accessed through [Render#getGlows()].
 ///
@@ -37,9 +39,19 @@ public final class Glows {
     private final NexusMod mod;
     
     ///
-    /// The active glows by key, in the order they were made.
+    /// The active glows by key.
     ///
     private final Map<Object, Glow> glowByKey = new LinkedHashMap<>();
+    
+    ///
+    /// The latest active glow of every outlined entity.
+    ///
+    private final Map<Entity, Glow> glowByEntity = new HashMap<>();
+    
+    ///
+    /// The glowing block of every active block glow.
+    ///
+    private final Map<Glow, GlowingBlock> blockByGlow = new LinkedHashMap<>();
     
     ///
     /// Should only ever be called by Nexus itself.
@@ -52,13 +64,12 @@ public final class Glows {
     }
     
     ///
-    /// Outlines the entity in the color until removed, over its team color.
+    /// Outlines the given entity in the given color until removed.
+    /// The color replaces the team color of the entity.
     ///
-    /// A glow of this mod under an equal key is removed first.
+    /// The glow ends once the entity leaves the level of the client.
     ///
-    /// The glow ends when the entity leaves the client's level.
-    ///
-    /// @param key    The key to make the glow under.
+    /// @param key    The key of the glow instance.
     /// @param entity The entity to outline.
     /// @param argb   The ARGB color of the outline.
     ///
@@ -67,20 +78,20 @@ public final class Glows {
     @CanIgnoreReturnValue
     public Glow entity(Object key, Entity entity, int argb) {
         this.checkUsable();
-        return this.put(new Glow(this, key, argb, entity));
+        Glow glow = this.put(new Glow(this, key, argb, entity));
+        this.glowByEntity.put(entity, glow);
+        return glow;
     }
     
     ///
-    /// Outlines the block at the position in the color until removed, following its state.
+    /// Outlines the block at the given position in the given color until removed, following its state.
     ///
-    /// A glow of this mod under an equal key is removed first.
-    ///
-    /// The outline covers the block's model, and the models and items that its block entity renderer submits in each frame.
-    /// Custom geometry that the block entity renderer submits will not glow.
+    /// The outline covers the model of the block and the models and items its block entity renderer submits.
+    /// Custom geometry of a block entity renderer will not glow.
     ///
     /// If the position holds air, the glow will stay active and draw nothing.
     ///
-    /// @param key  The key to make the glow under.
+    /// @param key  The key of the glow instance.
     /// @param pos  The position of the block to outline.
     /// @param argb The ARGB color of the outline.
     ///
@@ -89,11 +100,17 @@ public final class Glows {
     @CanIgnoreReturnValue
     public Glow block(Object key, BlockPos pos, int argb) {
         this.checkUsable();
-        return this.put(new Glow(this, key, argb, new GlowingBlock(pos.immutable())));
+        Glow glow = this.put(new Glow(this, key, argb));
+        this.blockByGlow.put(glow, new GlowingBlock(pos.immutable()));
+        return glow;
     }
     
     ///
     /// Puts the given glow under its key, after removing the glow under an equal key.
+    ///
+    /// @param glow The glow to put.
+    ///
+    /// @return The given glow.
     ///
     private Glow put(Glow glow) {
         Glow existing = this.glowByKey.get(glow.key);
@@ -106,9 +123,9 @@ public final class Glows {
     }
     
     ///
-    /// Removes the glow under the key.
+    /// Removes the glow under the given key.
     ///
-    /// Does nothing without one.
+    /// Does nothing if there is none.
     ///
     /// @param key The key of the glow.
     ///
@@ -127,6 +144,8 @@ public final class Glows {
         this.checkUsable();
         this.glowByKey.values().forEach(Glow::end);
         this.glowByKey.clear();
+        this.glowByEntity.clear();
+        this.blockByGlow.clear();
     }
     
     ///
@@ -143,7 +162,7 @@ public final class Glows {
     }
     
     ///
-    /// The color this mod gave the entity.
+    /// Gets the color this mod gave the given entity.
     ///
     /// If more than one glow of this mod outlines the entity, the color will be the one of the latest.
     ///
@@ -156,18 +175,12 @@ public final class Glows {
     @ApiStatus.Internal
     public int colorOf(Entity entity) {
         this.checkUsable();
-        int color = 0;
-        for (Glow glow : this.glowByKey.values()) {
-            if (glow.entity == entity) {
-                color = glow.argb;
-            }
-        }
-        
-        return color;
+        Glow glow = this.glowByEntity.get(entity);
+        return glow == null ? 0 : glow.argb;
     }
     
     ///
-    /// Ages every glow by one tick and removes the expired and the entity-less ones.
+    /// Ages every glow by one client tick and removes every glow that expired or whose entity left the level of the client.
     ///
     /// Does nothing while the client is in no level.
     ///
@@ -188,33 +201,39 @@ public final class Glows {
     }
     
     ///
-    /// Removes the given glow from this mod's glows and marks it as removed.
+    /// Removes the given glow and marks it as inactive.
     ///
     /// @param glow The active glow to remove.
     ///
     void drop(Glow glow) {
         this.glowByKey.remove(glow.key, glow);
+        this.blockByGlow.remove(glow);
+        Entity entity = glow.entity;
+        if (entity != null && this.glowByEntity.remove(entity, glow)) {
+            // The latest remaining glow of the entity takes over, or the entity would lose its outline while a glow still outlines it.
+            for (Glow remaining : this.glowByKey.values()) {
+                if (remaining.entity == entity) {
+                    this.glowByEntity.put(entity, remaining);
+                }
+            }
+        }
+        
         glow.end();
     }
     
     ///
-    /// Submits every glowing block's cached model with its outline color.
+    /// Submits the model of every glowing block with its outline color.
     ///
     /// Should only ever be called by Nexus itself.
     ///
     /// @param pose      The pose stack of the frame, whose origin is the camera.
-    /// @param collector The collector of the frame that the models are submitted to.
+    /// @param collector The submit node collector of the frame.
     /// @param camera    The position of the camera.
     ///
     @ApiStatus.Internal
     public void submitBlocks(PoseStack pose, SubmitNodeCollector collector, Vec3 camera) {
         this.checkUsable();
-        for (Glow glow : this.glowByKey.values()) {
-            GlowingBlock block = glow.block;
-            if (block != null) {
-                block.submit(pose, collector, camera, glow.argb);
-            }
-        }
+        this.blockByGlow.forEach((glow, block) -> block.submit(pose, collector, camera, glow.argb));
     }
     
     ///
@@ -228,7 +247,9 @@ public final class Glows {
     }
     
     ///
-    /// Throws an [IllegalStateException] if called off the client thread or while the client is in no level.
+    /// Checks that the call is on the client thread and the client is in a level.
+    ///
+    /// @throws IllegalStateException If called off the client thread or while the client is in no level.
     ///
     private void checkUsable() {
         this.checkThread();
@@ -238,7 +259,9 @@ public final class Glows {
     }
     
     ///
-    /// Throws an [IllegalStateException] if called off the client thread.
+    /// Checks that the call is on the client thread.
+    ///
+    /// @throws IllegalStateException If called off the client thread.
     ///
     void checkThread() {
         if (!Minecraft.getInstance().isSameThread()) {
