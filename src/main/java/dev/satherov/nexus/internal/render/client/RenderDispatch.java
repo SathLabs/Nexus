@@ -3,6 +3,7 @@ package dev.satherov.nexus.internal.render.client;
 import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.Nexus;
+import dev.satherov.nexus.api.mod.NexusMod;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
 import dev.satherov.nexus.api.render.Render;
 import dev.satherov.nexus.api.render.hud.HudLayer;
@@ -14,11 +15,13 @@ import dev.satherov.nexus.internal.render.debug.DebugRenderers;
 import dev.satherov.nexus.internal.render.glow.GlowOutlines;
 import dev.satherov.nexus.internal.render.iris.IrisBridge;
 import dev.satherov.nexus.internal.render.outline.OutlineRules;
+import dev.satherov.nexus.internal.render.shader.Programs;
 import dev.satherov.nexus.internal.render.shape.Scenes;
 
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModList;
+import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.ExtractBlockOutlineRenderStateEvent;
@@ -52,10 +55,10 @@ import org.joml.Vector2f;
 import org.jspecify.annotations.Nullable;
 
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiConsumer;
 
@@ -66,6 +69,7 @@ import java.util.function.BiConsumer;
 /// - Ticks the debug renderers after each client tick.
 /// - Starts the scenes and the glows on login and ends them when the level of the client unloads.
 /// - Projects world positions onto the screen for [Render].
+/// - Registers the reload listener of the programs and stores the pipelines built from program files.
 ///
 /// Should only ever be loaded on the client.
 ///
@@ -79,9 +83,9 @@ public class RenderDispatch {
     private static final List<Pipeline> WAITING_PIPELINES = new CopyOnWriteArrayList<>();
     
     ///
-    /// The mod pipelines by their render pipeline, filled by the registration event.
+    /// The mod pipelines by their render pipeline, filled by the registration event and [#program(Pipeline)].
     ///
-    private static final Map<RenderPipeline, Pipeline> PIPELINES = new HashMap<>();
+    private static final Map<RenderPipeline, Pipeline> PIPELINES = new ConcurrentHashMap<>();
     
     ///
     /// The draw hooks of the mods.
@@ -117,6 +121,7 @@ public class RenderDispatch {
     ///
     public static void listen(IEventBus nexusBus) {
         nexusBus.addListener(RegisterRenderPipelinesEvent.class, RenderDispatch::registerPipelines);
+        nexusBus.addListener(AddClientReloadListenersEvent.class, Programs::register);
         nexusBus.addListener(RegisterGuiLayersEvent.class, RenderDispatch::registerHudLayers);
         nexusBus.addListener(RegisterDebugEntriesEvent.class, event -> DebugRenderers.INSTANCE.registerEntries(event::register));
         nexusBus.addListener(
@@ -147,15 +152,15 @@ public class RenderDispatch {
     ///
     private static void registerPipelines(RegisterRenderPipelinesEvent event) {
         ShapePipelines.register(event::registerPipeline);
-        boolean iris = ModList.get().isLoaded("iris");
         for (Pipeline pipeline : RenderDispatch.WAITING_PIPELINES) {
             RenderPipeline renderPipeline = pipeline.getPipeline().get().get();
             event.registerPipeline(renderPipeline);
-            if (iris) {
-                IrisBridge.assign(renderPipeline, pipeline.getShading());
-            }
-            
             RenderDispatch.PIPELINES.put(renderPipeline, pipeline);
+        }
+        
+        // This also assigns the pipelines built from program files, since the parallel mod constructors that build them shouldn't call into Iris.
+        if (ModList.get().isLoaded("iris")) {
+            RenderDispatch.PIPELINES.forEach((renderPipeline, pipeline) -> IrisBridge.assign(renderPipeline, pipeline.getShading()));
         }
         
         RenderDispatch.WAITING_PIPELINES.clear();
@@ -288,6 +293,27 @@ public class RenderDispatch {
         }
         
         RenderDispatch.WAITING_PIPELINES.add(pipeline);
+    }
+    
+    ///
+    /// Builds the render pipeline of the given pipeline from its program file and stores the pipeline for its bindings.
+    ///
+    /// The pipeline never goes through the registration event, which only assigns it the Iris program of its shading.
+    /// If the registration event already ran, the program file will not be read.
+    ///
+    /// Should only ever be called from [Render#pipeline(String, ClientOnly, Shading)] and [Render#pipeline(String, Shading)].
+    ///
+    /// @param pipeline The pipeline to store.
+    ///
+    /// @throws IllegalArgumentException If the program file is missing or [Programs#create(NexusMod, String, RenderPipeline.Snippet)] rejects it.
+    /// @throws IllegalStateException    If the registration event already ran.
+    ///
+    public static void program(Pipeline pipeline) {
+        if (RenderDispatch.pipelinesRegistered) {
+            throw new IllegalStateException("Could not create a pipeline from a program file, the render pipelines were already registered");
+        }
+        
+        RenderDispatch.PIPELINES.put(pipeline.getPipeline().get().get(), pipeline);
     }
     
     ///

@@ -16,6 +16,7 @@ import dev.satherov.nexus.internal.render.client.RenderDispatch;
 import dev.satherov.nexus.internal.render.debug.DebugRenderers;
 import dev.satherov.nexus.internal.render.glow.GlowOutlines;
 import dev.satherov.nexus.internal.render.iris.IrisBridge;
+import dev.satherov.nexus.internal.render.shader.Programs;
 import dev.satherov.nexus.internal.render.shape.Scenes;
 
 import net.neoforged.fml.ModList;
@@ -24,11 +25,13 @@ import net.neoforged.fml.loading.FMLEnvironment;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.world.phys.Vec3;
 
+import com.google.common.base.Suppliers;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.vertex.PoseStack;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Contract;
 import org.joml.Vector2f;
 import org.jspecify.annotations.Nullable;
 
@@ -189,10 +192,99 @@ public final class Render {
     }
     
     ///
+    /// Creates the pipeline of the program file `assets/<modid>/nexus/shaders/<name>.glsl` and registers it with the shading a shader pack gives it.
+    ///
+    /// The pipeline takes the blend, depth, cull, defines, and uniform blocks of the given state, and its vertex mode, or quads if the state doesn't set one.
+    /// Its vertex format and its shaders are those of the program.
+    ///
+    /// If the program could not be compiled at the last resource reload, it will be logged once and skipped by [#draw(ClientOnly)].
+    /// Drawing a render type over it anywhere else will throw while GL validation is on.
+    ///
+    /// @param program The name of the program.
+    /// @param state   The state of the pipeline.
+    /// @param shading The shading a shader pack gives the pipeline.
+    ///
+    /// @return The registered pipeline.
+    ///
+    /// @throws IllegalArgumentException - If the jar of the mod has no such program file.
+    /// - If the program file doesn't have exactly one `#nexus base` directive with a known base, or has another `#nexus` directive.
+    /// - If the program file declares a `nexus_` function that is no hook, or an input of an unsupported type or with the name of an input of its base.
+    /// - If another program declares an input of the same name with another type, or if the inputs of all programs need more vertex elements than are left.
+    /// @throws IllegalStateException    If the client already registered its render pipelines.
+    ///
+    @CanIgnoreReturnValue
+    public Pipeline pipeline(String program, ClientOnly<Supplier<RenderPipeline.Snippet>> state, Shading shading) {
+        if (!FMLEnvironment.getDist().isClient()) {
+            return new Pipeline(this::noPipeline, shading);
+        }
+        
+        return this.programPipeline(program, state.get().get(), shading);
+    }
+    
+    ///
+    /// Creates the pipeline of the program file `assets/<modid>/nexus/shaders/<name>.glsl` and registers it with the shading a shader pack gives it.
+    ///
+    /// The pipeline has a depth test with depth write, no blend, culling, and quads.
+    /// Its vertex format and its shaders are those of the program.
+    ///
+    /// If the program could not be compiled at the last resource reload, it will be logged once and skipped by [#draw(ClientOnly)].
+    /// Drawing a render type over it anywhere else will throw while GL validation is on.
+    ///
+    /// @param program The name of the program.
+    /// @param shading The shading a shader pack gives the pipeline.
+    ///
+    /// @return The registered pipeline.
+    ///
+    /// @throws IllegalArgumentException - If the jar of the mod has no such program file.
+    /// - If the program file doesn't have exactly one `#nexus base` directive with a known base, or has another `#nexus` directive.
+    /// - If the program file declares a `nexus_` function that is no hook, or an input of an unsupported type or with the name of an input of its base.
+    /// - If another program declares an input of the same name with another type, or if the inputs of all programs need more vertex elements than are left.
+    /// @throws IllegalStateException    If the client already registered its render pipelines.
+    ///
+    @CanIgnoreReturnValue
+    public Pipeline pipeline(String program, Shading shading) {
+        if (!FMLEnvironment.getDist().isClient()) {
+            return new Pipeline(this::noPipeline, shading);
+        }
+        
+        return this.programPipeline(program, null, shading);
+    }
+    
+    ///
+    /// Creates the pipeline of the given program file and registers it with the given shading.
+    ///
+    /// Should only ever be called on the client.
+    ///
+    /// @param program The name of the program.
+    /// @param state   The state of the pipeline, or `null` to use the default state.
+    /// @param shading The shading a shader pack gives the pipeline.
+    ///
+    /// @return The registered pipeline.
+    ///
+    /// @throws IllegalArgumentException If the program file is missing or [Programs#create(NexusMod, String, RenderPipeline.Snippet)] rejects it.
+    /// @throws IllegalStateException    If the client already registered its render pipelines.
+    ///
+    private Pipeline programPipeline(String program, RenderPipeline.@Nullable Snippet state, Shading shading) {
+        // The program file is only read once RenderDispatch#program knows that the render pipelines aren't registered yet.
+        Supplier<RenderPipeline> created = Suppliers.memoize(() -> Programs.create(this.mod, program, state));
+        Pipeline registered = new Pipeline(() -> created, shading);
+        RenderDispatch.program(registered);
+        return registered;
+    }
+    
+    ///
+    /// Throws an [IllegalStateException] since a dedicated server has no render pipelines.
+    ///
+    @Contract("-> fail")
+    private Supplier<RenderPipeline> noPipeline() {
+        throw new IllegalStateException("A dedicated server has no render pipelines, asked for by '" + this.mod.getModId() + "'");
+    }
+    
+    ///
     /// Runs the given drawer on every frame that renders a level, after the translucent features.
     /// The pose stack is relative to the camera and the buffer source is our own.
     ///
-    /// A render type over a pipeline registered with [#pipeline(ClientOnly, Shading)] ends in the slot its shading asks for.
+    /// A render type over a pipeline registered with [#pipeline(ClientOnly, Shading)] or created from a program file ends in the slot its shading asks for.
     /// Any other render type ends inside the level.
     ///
     /// @param drawer The drawer, called with the pose stack and the buffer source.
