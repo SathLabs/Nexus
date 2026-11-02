@@ -23,8 +23,11 @@ import java.util.function.Supplier;
 public final class Pipeline {
     
     ///
-    /// The pipeline as registered.
+    /// The pipeline as registered, to build render types over.
     ///
+    ///  If the pipeline was created from a program file, its vertex format will have an element for every input of the file, under the name of the input.
+    ///
+    @Getter
     private final ClientOnly<Supplier<RenderPipeline>> pipeline;
     
     ///
@@ -64,17 +67,6 @@ public final class Pipeline {
     ///
     public void bind(String block, ClientOnly<Supplier<GpuBufferSlice>> value) {
         this.bindingByBlock.put(block, value);
-    }
-    
-    ///
-    /// The pipeline as registered, to build render types over.
-    ///
-    /// If the pipeline was created from a program file, its vertex format will have an element for every input of the file, under the name of the input.
-    ///
-    /// @return The pipeline as registered.
-    ///
-    public ClientOnly<Supplier<RenderPipeline>> getPipeline() {
-        return this.pipeline;
     }
     
     ///
