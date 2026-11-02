@@ -4,6 +4,7 @@ import dev.satherov.nexus.api.render.pipeline.Pipeline;
 import dev.satherov.nexus.api.render.pipeline.Shading;
 import dev.satherov.nexus.internal.render.iris.IrisBridge;
 import dev.satherov.nexus.internal.render.shader.Programs;
+import dev.satherov.nexus.internal.render.shader.VanillaBlock;
 
 import net.neoforged.fml.ModList;
 
@@ -37,6 +38,7 @@ import org.jspecify.annotations.Nullable;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -52,11 +54,6 @@ import java.util.function.Consumer;
 ///
 @ApiStatus.Internal
 public final class DrawHooks {
-    
-    ///
-    /// The uniform blocks that vanilla binds on every draw.
-    ///
-    private static final Set<String> VANILLA_BLOCKS = Set.of("Projection", "DynamicTransforms", "Fog", "Globals", "Lighting");
     
     ///
     /// The draw hooks of the mods.
@@ -77,6 +74,11 @@ public final class DrawHooks {
     /// The open buffer builder of this frame by render type.
     ///
     private final Map<RenderType, BufferBuilder> builderByType = new LinkedHashMap<>();
+    
+    ///
+    /// The uniform blocks that each mod pipeline had bound when [#checkBindings(RenderType)] last passed for it.
+    ///
+    private final Map<Pipeline, Set<String>> checkedBindings = new HashMap<>();
     
     ///
     /// The byte buffer builder by render type, kept across frames.
@@ -164,10 +166,12 @@ public final class DrawHooks {
     ///
     /// Checks the bindings of the mod pipeline of the given render type, if it has one.
     ///
+    /// Checks again only once the bound blocks differ from the last check that passed.
+    ///
     /// @param type The render type a hook draws with.
     ///
     /// @throws IllegalStateException If the mod pipeline binds a uniform block that the render pipeline does not declare,
-    /// or if its program file declares a uniform block other than one of [#VANILLA_BLOCKS] that is never bound.
+    /// or if its program file declares a uniform block other than a [VanillaBlock] that is never bound.
     ///
     private void checkBindings(RenderType type) {
         RenderPipeline renderPipeline = type.pipeline();
@@ -177,17 +181,25 @@ public final class DrawHooks {
         }
         
         Set<String> bound = pipeline.getBindings().keySet();
+        if (bound.equals(this.checkedBindings.get(pipeline))) {
+            return;
+        }
+        
+        Set<String> declared = new HashSet<>();
+        renderPipeline.getUniforms().forEach(uniform -> declared.add(uniform.name()));
         for (String block : bound) {
-            if (renderPipeline.getUniforms().stream().noneMatch(uniform -> uniform.name().equals(block))) {
+            if (!declared.contains(block)) {
                 throw new IllegalStateException("The pipeline '" + renderPipeline.getLocation() + "' does not declare the uniform '" + block + "'");
             }
         }
         
         for (String block : Programs.blocks(renderPipeline)) {
-            if (!bound.contains(block) && !DrawHooks.VANILLA_BLOCKS.contains(block)) {
+            if (!bound.contains(block) && VanillaBlock.byName(block) == null) {
                 throw new IllegalStateException("The pipeline '" + renderPipeline.getLocation() + "' does not bind the uniform '" + block + "' that its program declares");
             }
         }
+        
+        this.checkedBindings.put(pipeline, Set.copyOf(bound));
     }
     
     ///
@@ -345,7 +357,7 @@ public final class DrawHooks {
                 }
                 
                 RenderSystem.bindDefaultUniforms(pass);
-                pass.setUniform("DynamicTransforms", transforms);
+                pass.setUniform(VanillaBlock.DYNAMIC_TRANSFORMS.getGlslName(), transforms);
                 uniforms.forEach(pass::setUniform);
                 pass.setVertexBuffer(0, vertices);
                 textures.forEach((sampler, texture) -> pass.bindTexture(sampler, texture.textureView(), texture.sampler()));

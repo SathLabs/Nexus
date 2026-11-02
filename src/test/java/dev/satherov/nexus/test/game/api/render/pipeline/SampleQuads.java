@@ -3,6 +3,7 @@ package dev.satherov.nexus.test.game.api.render.pipeline;
 import dev.satherov.nexus.Nexus;
 import dev.satherov.nexus.api.render.pipeline.Pipeline;
 import dev.satherov.nexus.internal.render.shader.Programs;
+import dev.satherov.nexus.internal.render.shader.VanillaSampler;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -115,7 +116,7 @@ public final class SampleQuads {
     }
     
     private static RenderType programType(RenderPipeline pipeline) {
-        RenderSetup.RenderSetupBuilder setup = RenderSetup.builder(pipeline).withTexture("Sampler0", SampleQuads.TEXTURE);
+        RenderSetup.RenderSetupBuilder setup = RenderSetup.builder(pipeline).withTexture(VanillaSampler.TEXTURE.getGlslName(), SampleQuads.TEXTURE);
         if (pipeline.getVertexFormat().contains(VertexFormatElement.UV2)) {
             setup.useLightmap().useOverlay();
         }

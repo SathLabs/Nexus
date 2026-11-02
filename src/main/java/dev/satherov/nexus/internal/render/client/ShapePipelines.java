@@ -8,6 +8,7 @@ import dev.satherov.nexus.api.render.pipeline.Shading;
 import dev.satherov.nexus.api.render.shape.Paint;
 import dev.satherov.nexus.internal.render.iris.IrisBridge;
 import dev.satherov.nexus.internal.render.shader.Programs;
+import dev.satherov.nexus.internal.render.shader.VanillaSampler;
 
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModList;
@@ -110,7 +111,7 @@ public class ShapePipelines {
     private static final BiFunction<Identifier, Paint.Depth, RenderType> SPRITE_TYPES = Util.memoize(
             (atlas, depth) -> ShapePipelines.type(
                     "nexus_sprite",
-                    ShapePipelines.setup(ShapePipelines.SPRITE_PIPELINES.get(depth)).sortOnUpload().withTexture("Sampler0", atlas).createRenderSetup()
+                    ShapePipelines.setup(ShapePipelines.SPRITE_PIPELINES.get(depth)).sortOnUpload().withTexture(VanillaSampler.TEXTURE.getGlslName(), atlas).createRenderSetup()
             )
     );
     

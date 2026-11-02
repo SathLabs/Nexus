@@ -1,7 +1,6 @@
 package dev.satherov.nexus.internal.render.shader;
 
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 
 import dev.satherov.nexus.Nexus;
 import dev.satherov.zelqro.utils.StringUtils;
@@ -18,6 +17,7 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.Arrays;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 ///
 /// A vanilla program that a Nexus program builds on.
@@ -25,23 +25,22 @@ import java.util.Set;
 /// The template of each stage is the text of the vanilla program plus the anchor lines for [Program#generate(ShaderType, String)].
 ///
 @ApiStatus.Internal
-@RequiredArgsConstructor
 public enum Base {
     
     ///
     /// The vanilla `core/position_color` program.
     ///
-    POSITION_COLOR(Set.of("DynamicTransforms", "Projection"), Set.of(), DefaultVertexFormat.POSITION_COLOR),
+    POSITION_COLOR(Set.of(VanillaBlock.DYNAMIC_TRANSFORMS, VanillaBlock.PROJECTION), Set.of(), DefaultVertexFormat.POSITION_COLOR),
     
     ///
     /// The vanilla `core/position_tex_color` program.
     ///
-    POSITION_TEX_COLOR(Set.of("DynamicTransforms", "Projection"), Set.of("Sampler0"), DefaultVertexFormat.POSITION_TEX_COLOR),
+    POSITION_TEX_COLOR(Set.of(VanillaBlock.DYNAMIC_TRANSFORMS, VanillaBlock.PROJECTION), Set.of(VanillaSampler.TEXTURE), DefaultVertexFormat.POSITION_TEX_COLOR),
     
     ///
     /// The vanilla `core/entity` program.
     ///
-    ENTITY(Set.of("DynamicTransforms", "Projection", "Fog", "Lighting"), Set.of("Sampler0", "Sampler2"), DefaultVertexFormat.ENTITY);
+    ENTITY(Set.of(VanillaBlock.DYNAMIC_TRANSFORMS, VanillaBlock.PROJECTION, VanillaBlock.FOG, VanillaBlock.LIGHTING), Set.of(VanillaSampler.TEXTURE, VanillaSampler.LIGHTMAP), DefaultVertexFormat.ENTITY);
     
     ///
     /// The name of the base in the directive and in the file names of its templates.
@@ -49,12 +48,12 @@ public enum Base {
     private final String id = StringUtils.lower(this.name());
     
     ///
-    /// The uniform blocks that the vanilla program reads.
+    /// The GLSL names of the uniform blocks that the vanilla program reads.
     ///
     private final @Unmodifiable Set<String> blocks;
     
     ///
-    /// The samplers that the vanilla snippet of the program declares.
+    /// The GLSL names of the samplers that the vanilla snippet of the program declares.
     ///
     private final @Unmodifiable Set<String> samplers;
     
@@ -63,6 +62,17 @@ public enum Base {
     ///
     @Getter
     private final VertexFormat format;
+    
+    ///
+    /// @param blocks   The uniform blocks that the vanilla program reads.
+    /// @param samplers The samplers that the vanilla snippet of the program declares.
+    /// @param format   The vertex format whose elements come first in the format of every program on this base.
+    ///
+    Base(Set<VanillaBlock> blocks, Set<VanillaSampler> samplers, VertexFormat format) {
+        this.blocks = blocks.stream().map(VanillaBlock::getGlslName).collect(Collectors.toUnmodifiableSet());
+        this.samplers = samplers.stream().map(VanillaSampler::getGlslName).collect(Collectors.toUnmodifiableSet());
+        this.format = format;
+    }
     
     ///
     /// Gets the base of the given name.

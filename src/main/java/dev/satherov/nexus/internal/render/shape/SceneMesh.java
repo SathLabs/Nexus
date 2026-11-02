@@ -4,6 +4,7 @@ import dev.satherov.nexus.api.render.shape.Drawing;
 import dev.satherov.nexus.internal.render.client.RenderDispatch;
 import dev.satherov.nexus.internal.render.client.ShapePipelines;
 import dev.satherov.nexus.internal.render.shader.Programs;
+import dev.satherov.nexus.internal.render.shader.VanillaBlock;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.rendertype.LayeringTransform;
@@ -196,7 +197,7 @@ public final class SceneMesh implements AutoCloseable {
                 .createRenderPass(() -> "Nexus scene", target.getColorTextureView(), OptionalInt.empty(), target.getDepthTextureView(), OptionalDouble.empty())) {
             RenderSystem.bindDefaultUniforms(pass);
             for (int i = 0; i < this.groups.size(); i++) {
-                pass.setUniform("DynamicTransforms", transforms.get(i));
+                pass.setUniform(VanillaBlock.DYNAMIC_TRANSFORMS.getGlslName(), transforms.get(i));
                 for (Buffer buffer : drawn.get(i)) {
                     RenderSystem.AutoStorageIndexBuffer indices = RenderSystem.getSequentialBuffer(buffer.type().mode());
                     pass.setPipeline(buffer.type().pipeline());
