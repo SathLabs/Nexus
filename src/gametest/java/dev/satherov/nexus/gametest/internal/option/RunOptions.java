@@ -24,7 +24,16 @@ import java.util.Objects;
 /// @param shaderpack The folder name of the shader pack the run selects in iris, or `null` if it runs without one.
 ///
 @ApiStatus.Internal
-public record RunOptions(@Nullable String tests, boolean realtime, boolean show, @Nullable Path compare, boolean record, @Nullable Path goldens, Path report, @Nullable String shaderpack) {
+public record RunOptions(
+        @Nullable String tests,
+        boolean realtime,
+        boolean show,
+        @Nullable Path compare,
+        boolean record,
+        @Nullable Path goldens,
+        Path report,
+        @Nullable String shaderpack
+) {
     
     ///
     /// The identifiers of the tests to run.
