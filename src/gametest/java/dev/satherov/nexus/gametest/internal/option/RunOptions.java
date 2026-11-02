@@ -14,16 +14,17 @@ import java.util.Objects;
 ///
 /// The system properties that configure a run.
 ///
-/// @param tests    All selected test identifiers to run, or `null` to run all tests.
-/// @param realtime If the ticks / frames should run as fast as the computer can or at minecraft's regular rates.
-/// @param show     If the client window is visible.
-/// @param compare  The directory of an earlier run's measurement files, or `null` if we don't want to compare anything.
-/// @param record   If golden images should be recorded instead of compared against.
-/// @param goldens  The directory that the goldens are recorded into or `null` if none was given.
-/// @param report   The path to place the report file of the run at.
+/// @param tests      All selected test identifiers to run, or `null` to run all tests.
+/// @param realtime   If the ticks / frames should run as fast as the computer can or at minecraft's regular rates.
+/// @param show       If the client window is visible.
+/// @param compare    The directory of an earlier run's measurement files, or `null` if we don't want to compare anything.
+/// @param record     If golden images should be recorded instead of compared against.
+/// @param goldens    The directory the goldens are read from and recorded into, or `null` if none was given.
+/// @param report     The path to place the report file of the run at.
+/// @param shaderpack The folder name of the shader pack the run selects in iris, or `null` if it runs without one.
 ///
 @ApiStatus.Internal
-public record RunOptions(@Nullable String tests, boolean realtime, boolean show, @Nullable Path compare, boolean record, @Nullable Path goldens, Path report) {
+public record RunOptions(@Nullable String tests, boolean realtime, boolean show, @Nullable Path compare, boolean record, @Nullable Path goldens, Path report, @Nullable String shaderpack) {
     
     ///
     /// The identifiers of the tests to run.
@@ -63,6 +64,11 @@ public record RunOptions(@Nullable String tests, boolean realtime, boolean show,
     public static final String REPORT = "nexus.gametest.report";
     
     ///
+    /// The name of the shader pack folder under `shaderpacks/` in the test resources, which is copied into the run and selected in iris.
+    ///
+    public static final String SHADERPACK = "nexus.gametest.shaderpack";
+    
+    ///
     /// The report file if [#REPORT] is not set.
     ///
     public static final Path DEFAULT_REPORT = Path.of("gametest-report.xml");
@@ -80,7 +86,8 @@ public record RunOptions(@Nullable String tests, boolean realtime, boolean show,
                 RunOptions.path(RunOptions.COMPARE),
                 Boolean.getBoolean(RunOptions.RECORD),
                 RunOptions.path(RunOptions.GOLDENS),
-                Objects.requireNonNullElse(RunOptions.path(RunOptions.REPORT), RunOptions.DEFAULT_REPORT)
+                Objects.requireNonNullElse(RunOptions.path(RunOptions.REPORT), RunOptions.DEFAULT_REPORT),
+                System.getProperty(RunOptions.SHADERPACK)
         );
     }
     

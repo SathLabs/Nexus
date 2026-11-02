@@ -9,6 +9,7 @@ import dev.satherov.nexus.gametest.mixin.ClientCommonPacketListenerImplMixin;
 
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
@@ -35,6 +36,9 @@ import net.minecraft.world.clock.WorldClocks;
 import net.minecraft.world.level.gamerules.GameRules;
 import net.minecraft.world.level.storage.LevelStorageSource;
 import net.minecraft.world.phys.Vec3;
+
+import net.caffeinemc.mods.sodium.client.render.SodiumWorldRenderer;
+import net.caffeinemc.mods.sodium.client.util.FlawlessFrames;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
@@ -94,6 +98,11 @@ public final class TestWorld {
     private static int handledPing;
     
     ///
+    /// If sodium has been switched to flawless frames.
+    ///
+    private static boolean flawless;
+    
+    ///
     /// The client that joined the level.
     ///
     private final Client client;
@@ -108,11 +117,18 @@ public final class TestWorld {
     ///
     /// The player will only be in the world after [#awaitSpawn()] finishes.
     ///
+    /// If sodium is loaded, the first call will switch sodium to flawless frames.
+    ///
     /// @param client The client that joined the level.
     ///
     /// @return The level the client joined.
     ///
     public static TestWorld create(Client client) {
+        if (!TestWorld.flawless && ModList.get().isLoaded("sodium")) {
+            TestWorld.makeFramesFlawless();
+            TestWorld.flawless = true;
+        }
+        
         Minecraft minecraft = client.minecraft();
         String name = TestWorld.freeName(minecraft.getLevelSource());
         
@@ -156,6 +172,29 @@ public final class TestWorld {
     private static boolean isFloating(Minecraft minecraft) {
         LocalPlayer player = minecraft.player;
         return player != null && player.getAbilities().flying && player.level().isLoaded(player.blockPosition());
+    }
+    
+    ///
+    /// Switches sodium to flawless frames, in which every frame builds and uploads every section that is waiting for a rebuild.
+    ///
+    /// Should only ever be called if sodium is loaded.
+    ///
+    private static void makeFramesFlawless() {
+        FlawlessFrames.getProvider().apply("nexus_gametest").accept(true);
+    }
+    
+    ///
+    /// Marks the section of the given position and its 26 neighbors as changed by the player, which sodium rebuilds in the next frame.
+    ///
+    /// Should only ever be called if sodium is loaded.
+    ///
+    /// @param camera The block position of the camera.
+    ///
+    private static void rebuildNearSections(BlockPos camera) {
+        int x = SectionPos.blockToSectionCoord(camera.getX());
+        int y = SectionPos.blockToSectionCoord(camera.getY());
+        int z = SectionPos.blockToSectionCoord(camera.getZ());
+        SodiumWorldRenderer.instance().scheduleRebuildForChunks(x - 1, y - 1, z - 1, x + 1, y + 1, z + 1, true);
     }
     
     ///
@@ -278,11 +317,17 @@ public final class TestWorld {
     ///
     /// The client handles packets in the order the server sent them, so every packet sent before the ping is handled once the ping is.
     ///
+    /// If sodium is loaded, one more frame will run, in which sodium rebuilds the section of the camera and its 26 neighbors.
+    ///
     public void settle() {
         int id = ++TestWorld.pings;
         TestWorld.PENDING_PING.set(new Ping(id, this.overworld().getServer().getTickCount()));
         this.client.until("the client to handle the ping '" + id + "'", () -> TestWorld.handledPing == id);
         this.client.until("the sections near the camera to be rebuilt", this::areNearbySectionsRebuilt);
+        if (ModList.get().isLoaded("sodium")) {
+            TestWorld.rebuildNearSections(this.client.minecraft().gameRenderer.getMainCamera().blockPosition());
+            this.client.tick();
+        }
     }
     
     ///

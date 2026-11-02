@@ -55,6 +55,8 @@ public class PipelineSamples {
     
     private static @Nullable Pipeline entity;
     
+    private static @Nullable Pipeline shaded;
+    
     private static @Nullable Pipeline broken;
     
     private static @Nullable Pipeline unbound;
@@ -142,6 +144,21 @@ public class PipelineSamples {
     @ClientTest
     public static void entityProgramRunsEveryHook(Client client) {
         PipelineSamples.assertProgramShowsTint(client, PipelineSamples.entity, PipelineSamples.YELLOW, PipelineSamples.FOG_TOLERANCE);
+    }
+    
+    @ClientTest
+    public static void shadedProgramIsDrawnByThePack(Client client) {
+        PipelineSamples.assertProgramDraws(
+                client,
+                PipelineSamples.shaded,
+                client.hasShaderPack() ? PipelineSamples.WHITE : PipelineSamples.BLUE,
+                "shaded_program_is_drawn_by_the_pack"
+        );
+    }
+    
+    @ClientTest
+    public static void ownProgramKeepsItsHooksUnderThePack(Client client) {
+        PipelineSamples.assertProgramDraws(client, PipelineSamples.color, PipelineSamples.BLUE, "own_program_keeps_its_hooks_under_the_pack");
     }
     
     @ClientTest
@@ -238,6 +255,22 @@ public class PipelineSamples {
         }
     }
     
+    private static void assertProgramDraws(Client client, @Nullable Pipeline program, int expected, String golden) {
+        Vec3 center = PipelineSamples.enter(client);
+        SampleQuads.setTint(PipelineSamples.BLUE);
+        SampleQuads.showProgram(Objects.requireNonNull(program, "the program pipeline"), center);
+        try {
+            client.tick();
+            
+            Assertions.assertThat(SampleQuads.failure()).as("the failure of drawing the program").isNull();
+            Capture capture = client.capture();
+            PipelineSamples.assertColor(client, capture, center, expected);
+            capture.assertGolden(golden);
+        } finally {
+            SampleQuads.hide();
+        }
+    }
+    
     private static void assertColor(Client client, Capture capture, Vec3 point, int argb) {
         Vector2i pixel = PipelineSamples.pixelOf(client, point);
         capture.assertPixel(pixel.x, pixel.y, argb);
@@ -273,6 +306,9 @@ public class PipelineSamples {
             Pipeline entity = render.pipeline("pipeline_samples_entity", () -> SampleQuads::entityState, Shading.ENTITIES);
             entity.bind(SampleQuads.TINT_BLOCK, () -> SampleQuads::tintBlock);
             PipelineSamples.entity = entity;
+            Pipeline shaded = render.pipeline("pipeline_samples_shaded", Shading.BASIC);
+            shaded.bind(SampleQuads.TINT_BLOCK, () -> SampleQuads::tintBlock);
+            PipelineSamples.shaded = shaded;
             
             PipelineSamples.broken = render.pipeline("pipeline_samples_broken", Shading.OWN);
             PipelineSamples.unbound = render.pipeline("pipeline_samples_unbound", Shading.OWN);

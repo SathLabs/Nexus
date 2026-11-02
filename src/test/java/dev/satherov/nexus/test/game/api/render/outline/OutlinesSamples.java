@@ -64,7 +64,7 @@ public class OutlinesSamples {
         int[] bare = OutlinesSamples.bareEdge(client, pos);
         
         Capture capture = client.capture();
-        OutlinesSamples.assertColor(client, capture, pos, OutlinesSamples.MARK_FRONT, OutlinesSamples.RED);
+        OutlinesSamples.assertColor(client, capture, pos, OutlinesSamples.MARK_FRONT, client.hasShaderPack() ? OutlinesSamples.BLUE : OutlinesSamples.RED);
         Assertions.assertThat(OutlinesSamples.edge(client, capture, pos)).as("the top edge under the replacement").isEqualTo(bare);
         OutlinesSamples.face(client, capture, pos).assertGolden("replacing_rule_hides_vanilla_outline");
     }
@@ -76,8 +76,11 @@ public class OutlinesSamples {
         int[] bare = OutlinesSamples.bareEdge(client, pos);
         
         Capture capture = client.capture();
-        OutlinesSamples.assertColor(client, capture, pos, OutlinesSamples.MARK_FRONT, OutlinesSamples.RED);
-        Assertions.assertThat(OutlinesSamples.edge(client, capture, pos)).as("the top edge beside the addition").isNotEqualTo(bare);
+        OutlinesSamples.assertColor(client, capture, pos, OutlinesSamples.MARK_FRONT, client.hasShaderPack() ? OutlinesSamples.BLUE : OutlinesSamples.RED);
+        if (!client.hasShaderPack()) {
+            Assertions.assertThat(OutlinesSamples.edge(client, capture, pos)).as("the top edge beside the addition").isNotEqualTo(bare);
+        }
+        
         OutlinesSamples.face(client, capture, pos).assertGolden("adding_rule_keeps_vanilla_outline");
     }
     

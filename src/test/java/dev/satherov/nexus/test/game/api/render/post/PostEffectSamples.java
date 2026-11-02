@@ -20,9 +20,15 @@ public class PostEffectSamples {
     
     private static final int RED = 0xFFFF0000;
     
+    private static final int BLUE = 0xFF0000FF;
+    
     private static final int CYAN = 0xFF00FFFF;
     
     private static final int BLACK = 0xFF000000;
+    
+    private static final int YELLOW = 0xFFFFFF00;
+    
+    private static final int WHITE = 0xFFFFFFFF;
     
     private static final int STILL_FRAMES = 10;
     
@@ -38,7 +44,7 @@ public class PostEffectSamples {
             
             Capture capture = client.capture();
             Assertions.assertThat(invert.isActive()).as("the activated effect").isTrue();
-            PostEffectSamples.assertCenter(capture, PostEffectSamples.CYAN);
+            PostEffectSamples.assertCenter(capture, client.hasShaderPack() ? PostEffectSamples.YELLOW : PostEffectSamples.CYAN);
             capture.assertGolden("inverted");
         } finally {
             invert.deactivate();
@@ -57,7 +63,7 @@ public class PostEffectSamples {
             client.tick();
             
             Capture redFirst = client.capture();
-            PostEffectSamples.assertCenter(redFirst, PostEffectSamples.CYAN);
+            PostEffectSamples.assertCenter(redFirst, client.hasShaderPack() ? PostEffectSamples.WHITE : PostEffectSamples.CYAN);
             redFirst.assertGolden("red_then_inverted");
             
             red.deactivate();
@@ -65,7 +71,7 @@ public class PostEffectSamples {
             client.tick();
             
             Capture invertFirst = client.capture();
-            PostEffectSamples.assertCenter(invertFirst, PostEffectSamples.BLACK);
+            PostEffectSamples.assertCenter(invertFirst, client.hasShaderPack() ? PostEffectSamples.RED : PostEffectSamples.BLACK);
             invertFirst.assertGolden("inverted_then_red");
         } finally {
             red.deactivate();
@@ -80,14 +86,14 @@ public class PostEffectSamples {
         try {
             invert.activate();
             client.tick();
-            PostEffectSamples.assertCenter(client.capture(), PostEffectSamples.CYAN);
+            PostEffectSamples.assertCenter(client.capture(), client.hasShaderPack() ? PostEffectSamples.YELLOW : PostEffectSamples.CYAN);
             
             invert.deactivate();
             client.tick();
             
             Capture capture = client.capture();
             Assertions.assertThat(invert.isActive()).as("the deactivated effect").isFalse();
-            PostEffectSamples.assertCenter(capture, PostEffectSamples.RED);
+            PostEffectSamples.assertCenter(capture, client.hasShaderPack() ? PostEffectSamples.BLUE : PostEffectSamples.RED);
             capture.assertGolden("restored");
         } finally {
             invert.deactivate();
@@ -104,7 +110,7 @@ public class PostEffectSamples {
             
             Assertions.assertThat(client.minecraft().level).as("the level of the client").isNotNull();
             Assertions.assertThat(missing.isActive()).as("the effect without a file").isTrue();
-            PostEffectSamples.assertCenter(client.capture(), PostEffectSamples.RED);
+            PostEffectSamples.assertCenter(client.capture(), client.hasShaderPack() ? PostEffectSamples.BLUE : PostEffectSamples.RED);
         } finally {
             missing.deactivate();
         }
@@ -123,7 +129,7 @@ public class PostEffectSamples {
         Vec3 eye = client.minecraft().gameRenderer.getMainCamera().position();
         Nexus.getMod().getRender().getScene().draw(Shape.box(AABB.ofSize(eye.add(0.0D, 0.0D, 6.0D), 2.0D, 2.0D, 1.0D)), Paint.fill(PostEffectSamples.RED));
         client.tick();
-        PostEffectSamples.assertCenter(client.capture(), PostEffectSamples.RED);
+        PostEffectSamples.assertCenter(client.capture(), client.hasShaderPack() ? PostEffectSamples.BLUE : PostEffectSamples.RED);
     }
     
     private static void assertCenter(Capture capture, int argb) {

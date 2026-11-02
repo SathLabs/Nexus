@@ -17,7 +17,7 @@ import java.util.List;
 ///
 public class RunOptionsTest {
     
-    private static final List<String> PROPERTIES = List.of(RunOptions.TESTS, RunOptions.REALTIME, RunOptions.SHOW, RunOptions.COMPARE, RunOptions.RECORD, RunOptions.GOLDENS, RunOptions.REPORT);
+    private static final List<String> PROPERTIES = List.of(RunOptions.TESTS, RunOptions.REALTIME, RunOptions.SHOW, RunOptions.COMPARE, RunOptions.RECORD, RunOptions.GOLDENS, RunOptions.REPORT, RunOptions.SHADERPACK);
     
     @AfterEach
     public void clearProperties() {
@@ -33,13 +33,14 @@ public class RunOptionsTest {
         System.setProperty(RunOptions.RECORD, "true");
         System.setProperty(RunOptions.GOLDENS, "goldens");
         System.setProperty(RunOptions.REPORT, "report.xml");
+        System.setProperty(RunOptions.SHADERPACK, "sample");
         
-        Assertions.assertThat(RunOptions.fromProperties()).isEqualTo(new RunOptions("nexus:*", true, true, Path.of("earlier"), true, Path.of("goldens"), Path.of("report.xml")));
+        Assertions.assertThat(RunOptions.fromProperties()).isEqualTo(new RunOptions("nexus:*", true, true, Path.of("earlier"), true, Path.of("goldens"), Path.of("report.xml"), "sample"));
     }
     
     @Test
     public void defaultsEveryPropertyThatIsNotSet() {
-        Assertions.assertThat(RunOptions.fromProperties()).isEqualTo(new RunOptions(null, false, false, null, false, null, RunOptions.DEFAULT_REPORT));
+        Assertions.assertThat(RunOptions.fromProperties()).isEqualTo(new RunOptions(null, false, false, null, false, null, RunOptions.DEFAULT_REPORT, null));
     }
     
     @Test
@@ -69,6 +70,6 @@ public class RunOptionsTest {
     }
     
     private static RunOptions selecting(@Nullable String tests) {
-        return new RunOptions(tests, false, false, null, false, null, RunOptions.DEFAULT_REPORT);
+        return new RunOptions(tests, false, false, null, false, null, RunOptions.DEFAULT_REPORT, null);
     }
 }

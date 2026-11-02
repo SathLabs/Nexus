@@ -30,6 +30,12 @@ dependencyResolutionManagement {
                 includeGroup 'maven.modrinth'
             }
         }
+        maven {
+            url = 'https://maven.caffeinemc.net/releases'
+            content {
+                includeGroup 'net.caffeinemc'
+            }
+        }
     }
 }
 

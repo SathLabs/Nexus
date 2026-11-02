@@ -115,8 +115,12 @@ public final class SampleQuads {
     }
     
     private static RenderType programType(RenderPipeline pipeline) {
-        RenderSetup setup = RenderSetup.builder(pipeline).withTexture("Sampler0", SampleQuads.TEXTURE).createRenderSetup();
-        return RenderType.create("nexus_" + pipeline.getLocation().getPath().replace('/', '_'), setup);
+        RenderSetup.RenderSetupBuilder setup = RenderSetup.builder(pipeline).withTexture("Sampler0", SampleQuads.TEXTURE);
+        if (pipeline.getVertexFormat().contains(VertexFormatElement.UV2)) {
+            setup.useLightmap().useOverlay();
+        }
+        
+        return RenderType.create("nexus_" + pipeline.getLocation().getPath().replace('/', '_'), setup.createRenderSetup());
     }
     
     private static void vertex(VertexConsumer buffer, RenderType type, Matrix4f matrix, float x, float y, float z) {

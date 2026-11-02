@@ -6,11 +6,15 @@ import lombok.experimental.Accessors;
 import dev.satherov.nexus.gametest.internal.client.Pump;
 import dev.satherov.nexus.gametest.internal.client.TestWorld;
 
+import net.neoforged.fml.ModList;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.Vec3;
+
+import net.irisshaders.iris.api.v0.IrisApi;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Range;
@@ -250,6 +254,13 @@ public final class Client {
     }
     
     ///
+    /// @return `true` if iris is loaded and a shader pack is in use through it.
+    ///
+    public boolean hasShaderPack() {
+        return ModList.get().isLoaded("iris") && IrisApi.getInstance().isShaderPackInUse();
+    }
+    
+    ///
     /// Puts the player at the given position looking along the given yaw and pitch, on the server and the client,
     /// and then runs the game until the camera of the client is there.
     ///
@@ -272,6 +283,9 @@ public final class Client {
     ///
     /// Every change made on the server before this call will be visible on the client.
     /// A change to a block within 10 blocks of the camera will also be visible in the next capture.
+    ///
+    /// If sodium is loaded, one more frame will run,
+    /// in which sodium rebuilds every section whose center is within 16 blocks of the camera.
     ///
     /// Fails the test if we are not allowed to run any more frames.
     ///
