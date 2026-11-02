@@ -192,10 +192,9 @@ public final class Render {
     }
     
     ///
-    /// Creates the pipeline of the program file `assets/<modid>/nexus/shaders/<name>.glsl` and
-    /// registers it with the shading a shader pack gives it.
-    /// The pipeline takes the blend, depth, cull, defines, and uniform blocks of the given state, and its vertex mode,
-    /// or quads if the state doesn't set one.
+    /// Creates the pipeline of the program file `assets/<modid>/nexus/shaders/<name>.glsl` and registers it with the shading a shader pack gives it.
+    /// The pipeline takes the blend, depth, cull, defines, and uniform blocks of the given state,
+    /// and its vertex mode, or quads if the state doesn't set one.
     ///
     /// A program is one GLSL file that builds on the vanilla program `core/<name>` its directive `#nexus base <name>` picks,
     /// one of `position_color`, `position_tex_color`, and `entity`. Everything else in the file is plain GLSL:
