@@ -7,7 +7,9 @@ import dev.satherov.nexus.api.render.outline.Outline;
 import dev.satherov.nexus.api.render.outline.OutlineRule;
 import dev.satherov.nexus.api.render.outline.Outlines;
 import dev.satherov.nexus.api.render.outline.TargetedBlock;
+import dev.satherov.nexus.internal.render.client.RenderDispatch;
 import dev.satherov.nexus.internal.render.client.ShapePipelines;
+import dev.satherov.nexus.internal.render.shader.Programs;
 import dev.satherov.nexus.internal.render.shape.MeshBrush;
 import dev.satherov.nexus.internal.render.shape.Primitives;
 
@@ -27,6 +29,8 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexFormat;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.joml.Matrix4fStack;
+import org.joml.Matrix4fc;
 import org.jspecify.annotations.Nullable;
 
 import java.util.Comparator;
@@ -69,6 +73,11 @@ public final class OutlineRules implements CustomBlockOutlineRenderer {
     /// The byte buffer builders by render type, kept across frames.
     ///
     private final Map<RenderType, ByteBufferBuilder> memoryByType = new HashMap<>();
+    
+    ///
+    /// The meshes held back for [#drawAfterLevel(Matrix4fc)], by render type.
+    ///
+    private final Map<RenderType, MeshData> heldByType = new LinkedHashMap<>();
     
     ///
     /// The targeted block the kept primitives are for, or `null` if there is none.
@@ -188,6 +197,9 @@ public final class OutlineRules implements CustomBlockOutlineRenderer {
     ///
     /// Writes the kept primitives into one buffer per render type, relative to the given origin, and then draws every buffer, lines last.
     ///
+    /// If the program of a render type could not be compiled, its buffer will be dropped.
+    /// If a shader pack is in use, the buffers of the own-shaded render types will be held back for [#drawAfterLevel(Matrix4fc)].
+    ///
     /// @param origin The position of the camera, in the coordinates of the outlines.
     ///
     private void draw(Vec3 origin) {
@@ -207,12 +219,46 @@ public final class OutlineRules implements CustomBlockOutlineRenderer {
                 return;
             }
             
+            if (Programs.isBroken(type.pipeline())) {
+                mesh.close();
+                return;
+            }
+            
             if (type.sortOnUpload()) {
                 mesh.sortQuads(this.memory(type), RenderSystem.getProjectionType().vertexSorting());
             }
             
+            if (RenderDispatch.isDrawnAfterLevel(type.pipeline())) {
+                this.heldByType.put(type, mesh);
+                return;
+            }
+            
             type.draw(mesh);
         });
+    }
+    
+    ///
+    /// Applies the given model-view matrix and then draws every held back mesh.
+    ///
+    /// If a draw throws, every held back mesh will be dropped.
+    ///
+    /// @param modelView The model-view matrix of the frame.
+    ///
+    public void drawAfterLevel(Matrix4fc modelView) {
+        if (this.heldByType.isEmpty()) {
+            return;
+        }
+        
+        Matrix4fStack stack = RenderSystem.getModelViewStack();
+        stack.pushMatrix();
+        stack.mul(modelView);
+        try {
+            this.heldByType.forEach(RenderType::draw);
+        } finally {
+            stack.popMatrix();
+            this.heldByType.values().forEach(MeshData::close);
+            this.heldByType.clear();
+        }
     }
     
     ///

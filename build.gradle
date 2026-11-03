@@ -104,6 +104,14 @@ nexus {
         modId = mod_id
         sourceSet = sourceSets.test
         harness = dependencies.create(sourceSets.gametest.output)
+
+        clients {
+            shaders {
+                mods libs.iris
+                mods libs.sodium
+                systemProperties.put('nexus.gametest.shaderpack', 'sample')
+            }
+        }
     }
 }
 
@@ -121,6 +129,7 @@ dependencies {
     compileOnly(libs.iris) {
         transitive = false
     }
+    gametestCompileOnly libs.sodium.mod
 
     gametestApi project(':')
     gametestApi libs.assertj.core
@@ -146,7 +155,7 @@ tasks.named('test', Test) {
 }
 
 tasks.register('verifyGameTestRuns', Test) {
-    description = 'Runs the gametests of both sides and then checks their reports.'
+    description = 'Runs every gametest run and then checks their reports.'
     group = 'verification'
     testClassesDirs = sourceSets.test.output.classesDirs
 
@@ -157,7 +166,7 @@ tasks.register('verifyGameTestRuns', Test) {
         includeTestsMatching 'dev.satherov.nexus.test.unit.gametest.RunReportTest'
     }
 
-    dependsOn 'runGameTestServer', 'runGameTestClient'
+    dependsOn 'runGameTestServer', 'runGameTestClient', 'runGameTestClientShaders'
     doNotTrackState 'The runs rewrite the reports it checks'
 
     systemProperty 'nexus.gametest.reports', layout.buildDirectory.dir('reports/gametest').get().asFile.absolutePath
@@ -169,6 +178,10 @@ tasks.register('verifyGameTestRuns', Test) {
 
 tasks.named('runGameTestClient') {
     mustRunAfter 'runGameTestServer'
+}
+
+tasks.named('runGameTestClientShaders') {
+    mustRunAfter 'runGameTestClient'
 }
 
 tasks.withType(JavaCompile).configureEach {

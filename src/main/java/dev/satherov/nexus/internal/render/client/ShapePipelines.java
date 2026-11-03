@@ -3,10 +3,14 @@ package dev.satherov.nexus.internal.render.client;
 import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.Nexus;
+import dev.satherov.nexus.api.render.pipeline.Pipeline;
 import dev.satherov.nexus.api.render.pipeline.Shading;
 import dev.satherov.nexus.api.render.shape.Paint;
 import dev.satherov.nexus.internal.render.iris.IrisBridge;
+import dev.satherov.nexus.internal.render.shader.Programs;
+import dev.satherov.nexus.internal.render.shader.VanillaSampler;
 
+import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModList;
 
 import net.minecraft.client.renderer.RenderPipelines;
@@ -16,6 +20,8 @@ import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Util;
 
+import com.mojang.blaze3d.pipeline.BlendFunction;
+import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.DepthStencilState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.platform.CompareOp;
@@ -33,7 +39,9 @@ import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
 ///
-/// The pipelines and render types of lines, untextured quads, and sprite quads, one of each per depth mode.
+/// The pipelines and render types of lines, untextured quads, sprite quads, and shapes, one of each per depth mode.
+///
+/// The shapes are the discs, rings, and spheres of the shape program.
 ///
 @UtilityClass
 @ApiStatus.Internal
@@ -64,6 +72,11 @@ public class ShapePipelines {
     );
     
     ///
+    /// The pipelines of the shape program by depth mode, which never go through the registration event.
+    ///
+    private static final Map<Paint.Depth, RenderPipeline> SHAPE_PIPELINES = Util.makeEnumMap(Paint.Depth.class, ShapePipelines::program);
+    
+    ///
     /// The render setup of every render type created so far.
     ///
     private static final Map<RenderType, RenderSetup> SETUPS = new LinkedHashMap<>();
@@ -85,12 +98,20 @@ public class ShapePipelines {
     );
     
     ///
+    /// The shape render types by depth mode.
+    ///
+    private static final Map<Paint.Depth, RenderType> SHAPE_TYPES = Util.makeEnumMap(
+            Paint.Depth.class,
+            depth -> ShapePipelines.type("nexus_shape", ShapePipelines.setup(ShapePipelines.SHAPE_PIPELINES.get(depth)).sortOnUpload().createRenderSetup())
+    );
+    
+    ///
     /// The sprite quad render types by atlas and depth mode, created on first use.
     ///
     private static final BiFunction<Identifier, Paint.Depth, RenderType> SPRITE_TYPES = Util.memoize(
             (atlas, depth) -> ShapePipelines.type(
                     "nexus_sprite",
-                    ShapePipelines.setup(ShapePipelines.SPRITE_PIPELINES.get(depth)).sortOnUpload().withTexture("Sampler0", atlas).createRenderSetup()
+                    ShapePipelines.setup(ShapePipelines.SPRITE_PIPELINES.get(depth)).sortOnUpload().withTexture(VanillaSampler.TEXTURE.getGlslName(), atlas).createRenderSetup()
             )
     );
     
@@ -104,17 +125,48 @@ public class ShapePipelines {
     /// @return The pipeline.
     ///
     private static RenderPipeline pipeline(RenderPipeline.Snippet snippet, String kind, Paint.Depth depth) {
+        return RenderPipeline.builder(snippet)
+                .withLocation(Identifier.fromNamespaceAndPath(Nexus.MOD_ID, "pipeline/" + kind + "_" + depth.name().toLowerCase(Locale.ROOT)))
+                .withCull(false)
+                .withDepthStencilState(ShapePipelines.depthTest(depth))
+                .build();
+    }
+    
+    ///
+    /// Creates the pipeline of the shape program of Nexus with translucent blending, no culling, and the depth test of the given depth mode.
+    ///
+    /// The pipeline takes vanilla's Globals block from its state and is stored through [RenderDispatch#program(Pipeline)] with [Shading#OWN].
+    ///
+    /// @param depth The depth mode.
+    ///
+    /// @return The pipeline.
+    ///
+    private static RenderPipeline program(Paint.Depth depth) {
+        RenderPipeline.Snippet state = RenderPipeline.builder(RenderPipelines.GLOBALS_SNIPPET)
+                .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+                .withCull(false)
+                .withDepthStencilState(ShapePipelines.depthTest(depth))
+                .buildSnippet();
+        RenderPipeline pipeline = Programs.create(Nexus.getMod(), "shape", state);
+        RenderDispatch.program(new Pipeline(() -> () -> pipeline, Shading.OWN));
+        return pipeline;
+    }
+    
+    ///
+    /// Creates the depth test of the given depth mode, without depth write.
+    ///
+    /// @param depth The depth mode.
+    ///
+    /// @return The depth test.
+    ///
+    private static DepthStencilState depthTest(Paint.Depth depth) {
         CompareOp test = switch (depth) {
             case VISIBLE -> CompareOp.LESS_THAN_OR_EQUAL;
             case HIDDEN -> CompareOp.GREATER_THAN;
             case ALWAYS -> CompareOp.ALWAYS_PASS;
         };
         
-        return RenderPipeline.builder(snippet)
-                .withLocation(Identifier.fromNamespaceAndPath(Nexus.MOD_ID, "pipeline/" + kind + "_" + depth.name().toLowerCase(Locale.ROOT)))
-                .withCull(false)
-                .withDepthStencilState(new DepthStencilState(test, false))
-                .build();
+        return new DepthStencilState(test, false);
     }
     
     ///
@@ -182,6 +234,17 @@ public class ShapePipelines {
     }
     
     ///
+    /// Gets the shape render type of the given depth mode.
+    ///
+    /// @param depth The depth mode.
+    ///
+    /// @return The render type.
+    ///
+    public static RenderType shape(Paint.Depth depth) {
+        return ShapePipelines.SHAPE_TYPES.get(depth);
+    }
+    
+    ///
     /// Gets the sprite quad render type of the given atlas in the given depth mode.
     ///
     /// @param atlas The identifier of the atlas texture.
@@ -216,7 +279,14 @@ public class ShapePipelines {
     }
     
     ///
-    /// Registers every pipeline with the given registrar.
+    /// Loads this class, which creates the shape pipelines.
+    ///
+    /// Should only ever be called from [RenderDispatch#listen(IEventBus)], before the pipeline registration event.
+    ///
+    public static void init() { }
+    
+    ///
+    /// Registers every pipeline but the shape pipelines with the given registrar.
     ///
     /// If iris is present, each pipeline will also be assigned its shading.
     ///

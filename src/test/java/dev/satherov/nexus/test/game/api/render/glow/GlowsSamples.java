@@ -86,16 +86,23 @@ public class GlowsSamples {
     @ClientTest
     public static void blockGlowStopsWhenBroken(Client client) {
         Vec3 eye = GlowsSamples.enter(client);
+        Capture empty = client.capture();
         BlockPos pos = GlowsSamples.place(client, eye, Blocks.STONE);
         AABB box = new AABB(pos);
-        Assertions.assertThat(GlowsSamples.redPixels(client, client.capture(), box)).as("the red pixels before the glow").isZero();
+        Capture unlit = client.capture();
+        Assertions.assertThat(GlowsSamples.redPixels(client, unlit, box)).as("the red pixels before the glow").isZero();
         
         Glow glow = GlowsSamples.glows().block(GlowsSamples.KEY, pos, GlowsSamples.RED);
         client.tick();
         client.awaitStill(GlowsSamples.STILL_FRAMES);
         
         Capture capture = client.capture();
-        Assertions.assertThat(GlowsSamples.redPixels(client, capture, box)).as("the red pixels around the block").isPositive();
+        if (client.hasShaderPack()) {
+            Assertions.assertThat(GlowsSamples.around(client, capture, box)).as("the pixels around the block").isNotEqualTo(GlowsSamples.around(client, unlit, box));
+        } else {
+            Assertions.assertThat(GlowsSamples.redPixels(client, capture, box)).as("the red pixels around the block").isPositive();
+        }
+        
         capture.assertGolden("block_glow_stops_when_broken");
         
         client.serverLevel().setBlockAndUpdate(pos, Blocks.AIR.defaultBlockState());
@@ -103,7 +110,25 @@ public class GlowsSamples {
         client.awaitStill(GlowsSamples.STILL_FRAMES);
         
         Assertions.assertThat(glow.isActive()).as("the glow of the broken block").isTrue();
-        Assertions.assertThat(GlowsSamples.redPixels(client, client.capture(), box)).as("the red pixels around the broken block").isZero();
+        if (client.hasShaderPack()) {
+            Assertions.assertThat(GlowsSamples.around(client, client.capture(), box)).as("the pixels around the broken block").isEqualTo(GlowsSamples.around(client, empty, box));
+        } else {
+            Assertions.assertThat(GlowsSamples.redPixels(client, client.capture(), box)).as("the red pixels around the broken block").isZero();
+        }
+    }
+    
+    ///
+    /// Iris has no program for vanilla's outline pipelines, so a block glow loses its color under a shader pack.
+    ///
+    @ClientTest(required = false)
+    public static void blockGlowKeepsItsColorUnderThePack(Client client) {
+        Vec3 eye = GlowsSamples.enter(client);
+        BlockPos pos = GlowsSamples.place(client, eye, Blocks.STONE);
+        GlowsSamples.glows().block(GlowsSamples.KEY, pos, GlowsSamples.RED);
+        client.tick();
+        client.awaitStill(GlowsSamples.STILL_FRAMES);
+        
+        Assertions.assertThat(GlowsSamples.redPixels(client, client.capture(), new AABB(pos))).as("the red pixels around the block").isPositive();
     }
     
     @ClientTest
@@ -142,15 +167,24 @@ public class GlowsSamples {
         Vec3 eye = GlowsSamples.enter(client);
         BlockPos pos = GlowsSamples.place(client, eye, Blocks.STONE);
         AABB box = new AABB(pos);
+        Capture unlit = client.capture();
         Glow glow = GlowsSamples.glows().block(GlowsSamples.KEY, pos, GlowsSamples.RED).expire(GlowsSamples.EXPIRY);
         
         client.ticks(GlowsSamples.EXPIRY - 1);
         Assertions.assertThat(glow.isActive()).as("the glow a tick before it expires").isTrue();
-        Assertions.assertThat(GlowsSamples.redPixels(client, client.capture(), box)).as("the red pixels a tick before the expiry").isPositive();
+        if (client.hasShaderPack()) {
+            Assertions.assertThat(GlowsSamples.around(client, client.capture(), box)).as("the pixels a tick before the expiry").isNotEqualTo(GlowsSamples.around(client, unlit, box));
+        } else {
+            Assertions.assertThat(GlowsSamples.redPixels(client, client.capture(), box)).as("the red pixels a tick before the expiry").isPositive();
+        }
         
         client.tick();
         Assertions.assertThat(glow.isActive()).as("the glow once it expired").isFalse();
-        Assertions.assertThat(GlowsSamples.redPixels(client, client.capture(), box)).as("the red pixels after the expiry").isZero();
+        if (client.hasShaderPack()) {
+            Assertions.assertThat(GlowsSamples.around(client, client.capture(), box)).as("the pixels after the expiry").isEqualTo(GlowsSamples.around(client, unlit, box));
+        } else {
+            Assertions.assertThat(GlowsSamples.redPixels(client, client.capture(), box)).as("the red pixels after the expiry").isZero();
+        }
     }
     
     private static Glows glows() {
@@ -178,6 +212,17 @@ public class GlowsSamples {
     }
     
     private static int redPixels(Client client, Capture capture, AABB box) {
+        int count = 0;
+        for (int pixel : GlowsSamples.around(client, capture, box)) {
+            if (ARGB.red(pixel) >= GlowsSamples.RED_MINIMUM && ARGB.green(pixel) <= GlowsSamples.OTHER_MAXIMUM && ARGB.blue(pixel) <= GlowsSamples.OTHER_MAXIMUM) {
+                count++;
+            }
+        }
+        
+        return count;
+    }
+    
+    private static int[] around(Client client, Capture capture, AABB box) {
         int scale = client.minecraft().getWindow().getGuiScale();
         float left = Float.MAX_VALUE;
         float top = Float.MAX_VALUE;
@@ -201,16 +246,11 @@ public class GlowsSamples {
         int width = Math.min(capture.width(), (int) right + GlowsSamples.MARGIN) - x;
         int height = Math.min(capture.height(), (int) bottom + GlowsSamples.MARGIN) - y;
         Capture region = capture.region(x, y, width, height);
-        int count = 0;
-        for (int row = 0; row < region.height(); row++) {
-            for (int column = 0; column < region.width(); column++) {
-                int pixel = region.pixel(column, row);
-                if (ARGB.red(pixel) >= GlowsSamples.RED_MINIMUM && ARGB.green(pixel) <= GlowsSamples.OTHER_MAXIMUM && ARGB.blue(pixel) <= GlowsSamples.OTHER_MAXIMUM) {
-                    count++;
-                }
-            }
+        int[] pixels = new int[width * height];
+        for (int i = 0; i < pixels.length; i++) {
+            pixels[i] = region.pixel(i % width, i / width);
         }
         
-        return count;
+        return pixels;
     }
 }

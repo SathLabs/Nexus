@@ -3,6 +3,8 @@ package dev.satherov.nexus.internal.render.client;
 import dev.satherov.nexus.api.render.pipeline.Pipeline;
 import dev.satherov.nexus.api.render.pipeline.Shading;
 import dev.satherov.nexus.internal.render.iris.IrisBridge;
+import dev.satherov.nexus.internal.render.shader.Programs;
+import dev.satherov.nexus.internal.render.shader.VanillaBlock;
 
 import net.neoforged.fml.ModList;
 
@@ -36,12 +38,14 @@ import org.jspecify.annotations.Nullable;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
+import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -72,6 +76,11 @@ public final class DrawHooks {
     private final Map<RenderType, BufferBuilder> builderByType = new LinkedHashMap<>();
     
     ///
+    /// The uniform blocks that each mod pipeline had bound when [#checkBindings(RenderType)] last passed for it.
+    ///
+    private final Map<Pipeline, Set<String>> checkedBindings = new HashMap<>();
+    
+    ///
     /// The byte buffer builder by render type, kept across frames.
     ///
     private final Map<RenderType, ByteBufferBuilder> memoryByType = new HashMap<>();
@@ -95,15 +104,37 @@ public final class DrawHooks {
     ///
     /// Runs every draw hook and then draws or holds back the batch of every render type they drew into.
     ///
+    /// If a hook or a batch throws, every open buffer builder and every held back batch will be dropped and every byte buffer builder freed.
+    ///
     /// @param pose The pose stack of the frame.
     ///
     public void drawInLevel(PoseStack pose) {
-        for (BiConsumer<PoseStack, MultiBufferSource> hook : this.hooks) {
-            hook.accept(pose, this.buffers);
+        boolean drawn = false;
+        try {
+            for (BiConsumer<PoseStack, MultiBufferSource> hook : this.hooks) {
+                hook.accept(pose, this.buffers);
+            }
+            
+            this.builderByType.forEach(this::end);
+            drawn = true;
+        } finally {
+            this.builderByType.clear();
+            if (!drawn) {
+                this.drop();
+            }
         }
-        
-        this.builderByType.forEach(this::end);
-        this.builderByType.clear();
+    }
+    
+    ///
+    /// Drops every held back batch and frees every byte buffer builder.
+    ///
+    /// A byte buffer builder may still hold the vertices of a buffer builder that never built its mesh, which would end up in the next mesh built from it.
+    ///
+    private void drop() {
+        this.held.forEach(batch -> batch.mesh().close());
+        this.held.clear();
+        this.memoryByType.values().forEach(ByteBufferBuilder::close);
+        this.memoryByType.clear();
     }
     
     ///
@@ -113,6 +144,8 @@ public final class DrawHooks {
     /// @param type The render type a hook draws with.
     ///
     /// @return The buffer builder to draw into.
+    ///
+    /// @throws IllegalStateException If a new buffer builder is started and the mod pipeline of the render type fails [#checkBindings(RenderType)].
     ///
     private VertexConsumer begin(RenderType type) {
         BufferBuilder builder = this.builderByType.get(type);
@@ -124,15 +157,56 @@ public final class DrawHooks {
             this.end(type, builder);
         }
         
+        this.checkBindings(type);
         BufferBuilder started = new BufferBuilder(this.memory(type), type.mode(), type.format());
         this.builderByType.put(type, started);
         return started;
     }
     
     ///
+    /// Checks the bindings of the mod pipeline of the given render type, if it has one.
+    ///
+    /// Checks again only once the bound blocks differ from the last check that passed.
+    ///
+    /// @param type The render type a hook draws with.
+    ///
+    /// @throws IllegalStateException If the mod pipeline binds a uniform block that the render pipeline does not declare,
+    /// or if its program file declares a uniform block other than a [VanillaBlock] that is never bound.
+    ///
+    private void checkBindings(RenderType type) {
+        RenderPipeline renderPipeline = type.pipeline();
+        Pipeline pipeline = this.pipelines.get(renderPipeline);
+        if (pipeline == null) {
+            return;
+        }
+        
+        Set<String> bound = pipeline.getBindings().keySet();
+        if (bound.equals(this.checkedBindings.get(pipeline))) {
+            return;
+        }
+        
+        Set<String> declared = new HashSet<>();
+        renderPipeline.getUniforms().forEach(uniform -> declared.add(uniform.name()));
+        for (String block : bound) {
+            if (!declared.contains(block)) {
+                throw new IllegalStateException("The pipeline '" + renderPipeline.getLocation() + "' does not declare the uniform '" + block + "'");
+            }
+        }
+        
+        for (String block : Programs.blocks(renderPipeline)) {
+            if (!bound.contains(block) && VanillaBlock.byName(block) == null) {
+                throw new IllegalStateException("The pipeline '" + renderPipeline.getLocation() + "' does not bind the uniform '" + block + "' that its program declares");
+            }
+        }
+        
+        this.checkedBindings.put(pipeline, Set.copyOf(bound));
+    }
+    
+    ///
     /// Builds the mesh of the given buffer builder and then draws it as a batch.
     ///
     /// If the shading of its pipeline is [Shading#OWN] and a shader pack is in use, the batch will be held back for [#drawAfterLevel(Matrix4fc)].
+    /// If the program of its pipeline could not be compiled, the batch will be dropped.
     ///
     /// @param type    The render type of the buffer builder.
     /// @param builder The buffer builder to build the mesh of.
@@ -140,6 +214,11 @@ public final class DrawHooks {
     private void end(RenderType type, BufferBuilder builder) {
         MeshData mesh = builder.build();
         if (mesh == null) {
+            return;
+        }
+        
+        if (Programs.isBroken(type.pipeline())) {
+            mesh.close();
             return;
         }
         
@@ -171,6 +250,8 @@ public final class DrawHooks {
     ///
     /// Applies the given model-view matrix and then draws every held back batch.
     ///
+    /// If a batch throws, every held back batch will be dropped.
+    ///
     /// @param modelView The model-view matrix of the frame.
     ///
     public void drawAfterLevel(Matrix4fc modelView) {
@@ -181,9 +262,13 @@ public final class DrawHooks {
         Matrix4fStack stack = RenderSystem.getModelViewStack();
         stack.pushMatrix();
         stack.mul(modelView);
-        this.held.forEach(Batch::draw);
-        stack.popMatrix();
-        this.held.clear();
+        try {
+            this.held.forEach(Batch::draw);
+        } finally {
+            stack.popMatrix();
+            this.held.forEach(batch -> batch.mesh().close());
+            this.held.clear();
+        }
     }
     
     ///
@@ -198,14 +283,16 @@ public final class DrawHooks {
         ///
         /// Draws the mesh through the render type, or through a render pass of our own if the pipeline binds any uniform block.
         ///
+        /// The mesh will be closed even if the draw throws.
+        ///
         private void draw() {
-            Map<String, GpuBufferSlice> uniforms = this.readUniforms();
-            if (uniforms.isEmpty()) {
-                this.type.draw(this.mesh);
-                return;
-            }
-            
             try (this.mesh) {
+                Map<String, GpuBufferSlice> uniforms = this.readUniforms();
+                if (uniforms.isEmpty()) {
+                    this.type.draw(this.mesh); // Legal because closing the mesh a second time does nothing
+                    return;
+                }
+                
                 this.drawThroughPass(uniforms);
             }
         }
@@ -215,22 +302,13 @@ public final class DrawHooks {
         ///
         /// @return The buffer slices by the name of their uniform block, or an empty map if the batch has no mod pipeline.
         ///
-        /// @throws IllegalStateException If the render pipeline does not declare one of the bound uniform blocks.
-        ///
         private Map<String, GpuBufferSlice> readUniforms() {
             if (this.pipeline == null) {
                 return Map.of();
             }
             
-            RenderPipeline renderPipeline = this.type.pipeline();
             Map<String, GpuBufferSlice> uniforms = new HashMap<>();
-            this.pipeline.getBindings().forEach((block, value) -> {
-                if (renderPipeline.getUniforms().stream().noneMatch(uniform -> uniform.name().equals(block))) {
-                    throw new IllegalStateException("The pipeline '" + renderPipeline.getLocation() + "' does not declare the uniform '" + block + "'");
-                }
-                
-                uniforms.put(block, value.get().get());
-            });
+            this.pipeline.getBindings().forEach((block, value) -> uniforms.put(block, value.get().get()));
             return uniforms;
         }
         
@@ -251,6 +329,9 @@ public final class DrawHooks {
             Matrix4f textureMatrix = setup.textureTransform.getMatrix();
             GpuBufferSlice transforms = RenderSystem.getDynamicUniforms().writeTransform(modelView, new Vector4f(1.0F, 1.0F, 1.0F, 1.0F), new Vector3f(), textureMatrix);
             modelView.popMatrix();
+            
+            // Read the textures before the pass opens, because looking one up uploads it if it isn't loaded yet, and an upload inside an open render pass fails.
+            Map<String, RenderSetup.TextureAndSampler> textures = setup.getTextures();
             
             VertexFormat format = this.type.pipeline().getVertexFormat();
             GpuBuffer vertices = format.uploadImmediateVertexBuffer(this.mesh.vertexBuffer());
@@ -276,10 +357,10 @@ public final class DrawHooks {
                 }
                 
                 RenderSystem.bindDefaultUniforms(pass);
-                pass.setUniform("DynamicTransforms", transforms);
+                pass.setUniform(VanillaBlock.DYNAMIC_TRANSFORMS.getGlslName(), transforms);
                 uniforms.forEach(pass::setUniform);
                 pass.setVertexBuffer(0, vertices);
-                setup.getTextures().forEach((sampler, texture) -> pass.bindTexture(sampler, texture.textureView(), texture.sampler()));
+                textures.forEach((sampler, texture) -> pass.bindTexture(sampler, texture.textureView(), texture.sampler()));
                 pass.setIndexBuffer(indices, indexType);
                 pass.drawIndexed(0, 0, this.mesh.drawState().indexCount(), 1);
             }

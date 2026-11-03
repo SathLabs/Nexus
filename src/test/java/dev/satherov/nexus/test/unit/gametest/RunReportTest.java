@@ -18,8 +18,8 @@ import org.xml.sax.SAXException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.IntStream;
@@ -27,9 +27,9 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 
 ///
-/// Checks the reports and measurement files both gametest runs left under `build/reports/gametest` against every
+/// Checks the reports and measurement files the gametest runs left under `build/reports/gametest` against every
 /// sample's expected outcome. Under a `nexus.gametest.tests` selector only the reported cases are checked and the
-/// measurement files are not. Run by `verifyGameTestRuns` after both runs, never by `test`.
+/// measurement files are not. Run by `verifyGameTestRuns` after the runs, never by `test`.
 ///
 public class RunReportTest {
 
@@ -125,6 +125,7 @@ public class RunReportTest {
     @RequiredArgsConstructor
     public enum Run {
         SERVER(
+                "server",
                 Map.ofEntries(
                         Map.entry("nexus:discovery_samples/meets_constraints", Expected.passed()),
                         Map.entry("nexus:discovery_samples/optional", Expected.passed()),
@@ -291,6 +292,7 @@ public class RunReportTest {
                 )
         ),
         CLIENT(
+                "client",
                 Map.ofEntries(
                         Map.entry("nexus:discovery_samples/client", Expected.passed()),
                         Map.entry("nexus:discovery_samples/client_with_helper", Expected.skipped("Parameter is not a 'Client', found 'GameTestHelper' instead")),
@@ -356,18 +358,35 @@ public class RunReportTest {
                         Map.entry("nexus:scene_samples/repaint_changes_color", Expected.passed()),
                         Map.entry("nexus:scene_samples/leaving_level_drops_everything", Expected.passed()),
                         Map.entry("nexus:scene_samples/debug_renderer_refills_while_on", Expected.passed()),
+                        Map.entry("nexus:scene_samples/visible_circle_and_sphere_are_cut_by_wall", Expected.passed()),
+                        Map.entry("nexus:scene_samples/hidden_circle_and_sphere_show_only_behind_wall", Expected.passed()),
+                        Map.entry("nexus:scene_samples/always_circle_and_sphere_show_everywhere", Expected.passed()),
+                        Map.entry("nexus:scene_samples/near_sphere_fills_its_silhouette", Expected.passed()),
+                        Map.entry("nexus:scene_samples/edge_on_ring_keeps_its_band", Expected.passed()),
                         Map.entry("nexus:scene_samples/debug_renderer_after_the_event_throws", Expected.passed()),
                         Map.entry("nexus:outlines_samples/replacing_rule_hides_vanilla_outline", Expected.passed()),
                         Map.entry("nexus:outlines_samples/adding_rule_keeps_vanilla_outline", Expected.passed()),
+                        Map.entry("nexus:outlines_samples/rule_draws_circles_and_spheres", Expected.passed()),
                         Map.entry("nexus:outlines_samples/rule_is_asked_once_per_target", Expected.passed()),
                         Map.entry("nexus:glows_samples/entity_glows_in_color", Expected.passed()),
                         Map.entry("nexus:glows_samples/block_glow_stops_when_broken", Expected.passed()),
                         Map.entry("nexus:glows_samples/chest_glows", Expected.passed()),
                         Map.entry("nexus:glows_samples/expiry_removes_after_ticks_and_not_before", Expected.passed()),
+                        Map.entry("nexus:glows_samples/block_glow_keeps_its_color_under_the_pack", Expected.passed()),
                         Map.entry("nexus:pipeline_samples/own_shader_draws_through_draw_hook", Expected.passed()),
                         Map.entry("nexus:pipeline_samples/bound_uniform_reaches_shader", Expected.passed()),
                         Map.entry("nexus:pipeline_samples/later_binding_replaces_earlier", Expected.passed()),
                         Map.entry("nexus:pipeline_samples/registration_after_the_event_throws", Expected.passed()),
+                        Map.entry("nexus:pipeline_samples/color_program_runs_every_hook", Expected.passed()),
+                        Map.entry("nexus:pipeline_samples/textured_program_runs_every_hook", Expected.passed()),
+                        Map.entry("nexus:pipeline_samples/entity_program_runs_every_hook", Expected.passed()),
+                        Map.entry("nexus:pipeline_samples/shaded_program_is_drawn_by_the_pack", Expected.passed()),
+                        Map.entry("nexus:pipeline_samples/own_program_keeps_its_hooks_under_the_pack", Expected.passed()),
+                        Map.entry("nexus:pipeline_samples/broken_program_is_skipped_and_logged_once", Expected.passed()),
+                        Map.entry("nexus:pipeline_samples/missing_program_file_throws", Expected.passed()),
+                        Map.entry("nexus:pipeline_samples/vanilla_block_of_program_needs_no_binding", Expected.passed()),
+                        Map.entry("nexus:pipeline_samples/hook_throwing_mid_vertex_leaves_next_frame_clean", Expected.passed()),
+                        Map.entry("nexus:pipeline_samples/unbound_program_block_throws_at_first_draw", Expected.passed()),
                         Map.entry("nexus:post_effect_samples/activated_effect_changes_pixel", Expected.passed()),
                         Map.entry("nexus:post_effect_samples/effects_run_in_activation_order", Expected.passed()),
                         Map.entry("nexus:post_effect_samples/deactivation_restores", Expected.passed()),
@@ -383,7 +402,16 @@ public class RunReportTest {
                         Measurement.of("nexus_gametest/baseline", 40)
                 ),
                 List.of()
+        ),
+        CLIENT_SHADERS(
+                "client-shaders",
+                Run.replaced(Run.CLIENT.cases, "nexus:glows_samples/block_glow_keeps_its_color_under_the_pack", Expected.skipped("the red pixels around the block")),
+                Run.CLIENT.measurements,
+                Run.CLIENT.unmeasured
         );
+
+        // The name of the report directory and file of the run.
+        private final String side;
 
         // Every case the run should report, by its identifier.
         private final Map<String, Expected> cases;
@@ -394,7 +422,11 @@ public class RunReportTest {
         // The measured cases that should leave no measurement files, by their path without the extension.
         private final List<String> unmeasured;
 
-        private final String side = this.name().toLowerCase(Locale.ROOT);
+        private static Map<String, Expected> replaced(Map<String, Expected> cases, String id, Expected expected) {
+            Map<String, Expected> copy = new HashMap<>(cases);
+            copy.put(id, expected);
+            return Map.copyOf(copy);
+        }
 
         private Path directory() {
             return RunReportTest.REPORTS.resolve(this.side);

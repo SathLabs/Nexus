@@ -21,6 +21,7 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.ARGB;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.level.block.Blocks;
@@ -61,6 +62,16 @@ public class SceneSamples {
     
     private static final double HEIGHT = 4.0D;
     
+    private static final float RING_WIDTH = 6.0F;
+    
+    private static final Vec3 CIRCLE = new Vec3(-1.6D, 0.0D, 7.0D);
+    
+    private static final Vec3 SPHERE = new Vec3(1.6D, 0.0D, 7.0D);
+    
+    private static final double NEAR_DISTANCE = 3.0D;
+    
+    private static final double NEAR_RADIUS = 2.0D;
+    
     private static @Nullable Vec3 debugCenter;
     
     private static int debugCalls;
@@ -73,8 +84,8 @@ public class SceneSamples {
         client.tick();
         
         Capture capture = client.capture();
-        Assertions.assertThat(SceneSamples.color(client, capture, eye.add(0.0D, 0.0D, 7.0D))).as("the box behind the wall").isNotEqualTo(SceneSamples.RED);
-        SceneSamples.assertColor(client, capture, eye.add(2.0D, 0.0D, 7.0D), SceneSamples.RED);
+        Assertions.assertThat(SceneSamples.color(client, capture, eye.add(0.0D, 0.0D, 7.0D))).as("the box behind the wall").isNotEqualTo(SceneSamples.shaded(client, SceneSamples.RED));
+        SceneSamples.assertColor(client, capture, eye.add(2.0D, 0.0D, 7.0D), SceneSamples.shaded(client, SceneSamples.RED));
         capture.assertGolden("visible_box_is_cut_by_wall");
     }
     
@@ -86,8 +97,8 @@ public class SceneSamples {
         client.tick();
         
         Capture capture = client.capture();
-        SceneSamples.assertColor(client, capture, eye.add(0.0D, 0.0D, 7.0D), SceneSamples.RED);
-        Assertions.assertThat(SceneSamples.color(client, capture, eye.add(2.0D, 0.0D, 7.0D))).as("the box beside the wall").isNotEqualTo(SceneSamples.RED);
+        SceneSamples.assertColor(client, capture, eye.add(0.0D, 0.0D, 7.0D), SceneSamples.shaded(client, SceneSamples.RED));
+        Assertions.assertThat(SceneSamples.color(client, capture, eye.add(2.0D, 0.0D, 7.0D))).as("the box beside the wall").isNotEqualTo(SceneSamples.shaded(client, SceneSamples.RED));
         capture.assertGolden("hidden_box_shows_only_behind_wall");
     }
     
@@ -111,8 +122,8 @@ public class SceneSamples {
         client.tick();
         
         Capture capture = client.capture();
-        SceneSamples.assertColor(client, capture, eye.add(0.0D, -1.12D, 4.0D), SceneSamples.RED);
-        Assertions.assertThat(SceneSamples.color(client, capture, eye.add(0.0D, -2.2D, 4.0D))).as("the box below the water surface").isNotEqualTo(SceneSamples.RED);
+        SceneSamples.assertColor(client, capture, eye.add(0.0D, -1.12D, 4.0D), SceneSamples.shaded(client, SceneSamples.RED));
+        Assertions.assertThat(SceneSamples.color(client, capture, eye.add(0.0D, -2.2D, 4.0D))).as("the box below the water surface").isNotEqualTo(SceneSamples.shaded(client, SceneSamples.RED));
     }
     
     @ClientTest
@@ -128,8 +139,8 @@ public class SceneSamples {
         Capture capture = client.capture();
         Assertions.assertThat(replaced.isActive()).as("the replaced drawing").isFalse();
         Assertions.assertThat(scene.get(SceneSamples.KEY)).as("the drawing under the key").isSameAs(drawing);
-        Assertions.assertThat(SceneSamples.color(client, capture, first)).as("the replaced box").isNotEqualTo(SceneSamples.RED);
-        SceneSamples.assertColor(client, capture, second, SceneSamples.BLUE);
+        Assertions.assertThat(SceneSamples.color(client, capture, first)).as("the replaced box").isNotEqualTo(SceneSamples.shaded(client, SceneSamples.RED));
+        SceneSamples.assertColor(client, capture, second, SceneSamples.shaded(client, SceneSamples.BLUE));
         capture.assertGolden("keyed_draw_replaces");
     }
     
@@ -145,11 +156,11 @@ public class SceneSamples {
         
         client.ticks(SceneSamples.EXPIRY - 1);
         Assertions.assertThat(drawing.isActive()).as("the drawing a tick before it expires").isTrue();
-        SceneSamples.assertColor(client, client.capture(), center, SceneSamples.RED);
+        SceneSamples.assertColor(client, client.capture(), center, SceneSamples.shaded(client, SceneSamples.RED));
         
         client.tick();
         Assertions.assertThat(drawing.isActive()).as("the drawing once it expired").isFalse();
-        Assertions.assertThat(SceneSamples.color(client, client.capture(), center)).as("the expired box").isNotEqualTo(SceneSamples.RED);
+        Assertions.assertThat(SceneSamples.color(client, client.capture(), center)).as("the expired box").isNotEqualTo(SceneSamples.shaded(client, SceneSamples.RED));
     }
     
     @ClientTest
@@ -173,7 +184,7 @@ public class SceneSamples {
         client.until("the armor stand to stand at its start", () -> SceneSamples.isAt(entity, start));
         Drawing drawing = SceneSamples.scene().draw(Shape.box(new AABB(-0.5D, 0.0D, -0.5D, 0.5D, 1.0D, 0.5D)), Paint.fill(SceneSamples.RED)).follow(entity);
         client.tick();
-        SceneSamples.assertColor(client, client.capture(), start.add(0.0D, 0.5D, 0.0D), SceneSamples.RED);
+        SceneSamples.assertColor(client, client.capture(), start.add(0.0D, 0.5D, 0.0D), SceneSamples.shaded(client, SceneSamples.RED));
         
         stand.teleportTo(moved.x, moved.y, moved.z);
         client.until("the armor stand to arrive", () -> SceneSamples.isAt(entity, moved));
@@ -181,8 +192,8 @@ public class SceneSamples {
         
         Capture capture = client.capture();
         Assertions.assertThat(drawing.isActive()).as("the drawing of the moved armor stand").isTrue();
-        Assertions.assertThat(SceneSamples.color(client, capture, start.add(0.0D, 0.5D, 0.0D))).as("the start of the armor stand").isNotEqualTo(SceneSamples.RED);
-        SceneSamples.assertColor(client, capture, moved.add(0.0D, 0.5D, 0.0D), SceneSamples.RED);
+        Assertions.assertThat(SceneSamples.color(client, capture, start.add(0.0D, 0.5D, 0.0D))).as("the start of the armor stand").isNotEqualTo(SceneSamples.shaded(client, SceneSamples.RED));
+        SceneSamples.assertColor(client, capture, moved.add(0.0D, 0.5D, 0.0D), SceneSamples.shaded(client, SceneSamples.RED));
     }
     
     @ClientTest
@@ -191,14 +202,14 @@ public class SceneSamples {
         Vec3 center = eye.add(0.0D, 0.0D, 6.0D);
         Drawing drawing = SceneSamples.scene().draw(Shape.box(AABB.ofSize(center, 1.0D, 1.0D, 1.0D)), Paint.fill(SceneSamples.RED));
         client.tick();
-        SceneSamples.assertColor(client, client.capture(), center, SceneSamples.RED);
+        SceneSamples.assertColor(client, client.capture(), center, SceneSamples.shaded(client, SceneSamples.RED));
         
         drawing.repaint(Paint.fill(SceneSamples.BLUE));
         client.tick();
         
         Capture capture = client.capture();
         Assertions.assertThat(drawing.getPaint()).as("the paint after the repaint").isEqualTo(Paint.fill(SceneSamples.BLUE));
-        SceneSamples.assertColor(client, capture, center, SceneSamples.BLUE);
+        SceneSamples.assertColor(client, capture, center, SceneSamples.shaded(client, SceneSamples.BLUE));
         capture.assertGolden("repaint_changes_color");
     }
     
@@ -218,8 +229,8 @@ public class SceneSamples {
         Vec3 rejoined = SceneSamples.enter(client, 0.0F);
         Capture capture = client.capture();
         Assertions.assertThat(scene.get(SceneSamples.KEY)).as("the drawing under the key after the rejoin").isNull();
-        Assertions.assertThat(SceneSamples.color(client, capture, rejoined.add(0.0D, 0.0D, 6.0D))).as("the keyed box after the rejoin").isNotEqualTo(SceneSamples.RED);
-        Assertions.assertThat(SceneSamples.color(client, capture, rejoined.add(2.0D, 0.0D, 6.0D))).as("the box under no key after the rejoin").isNotEqualTo(SceneSamples.BLUE);
+        Assertions.assertThat(SceneSamples.color(client, capture, rejoined.add(0.0D, 0.0D, 6.0D))).as("the keyed box after the rejoin").isNotEqualTo(SceneSamples.shaded(client, SceneSamples.RED));
+        Assertions.assertThat(SceneSamples.color(client, capture, rejoined.add(2.0D, 0.0D, 6.0D))).as("the box under no key after the rejoin").isNotEqualTo(SceneSamples.shaded(client, SceneSamples.BLUE));
     }
     
     @ClientTest
@@ -237,7 +248,7 @@ public class SceneSamples {
         entries.setStatus(id, DebugScreenEntryStatus.ALWAYS_ON);
         try {
             client.tick();
-            SceneSamples.assertColor(client, client.capture(), first, SceneSamples.RED);
+            SceneSamples.assertColor(client, client.capture(), first, SceneSamples.shaded(client, SceneSamples.RED));
             
             SceneSamples.debugCenter = second;
             SceneSamples.debugCalls = 0;
@@ -245,19 +256,96 @@ public class SceneSamples {
             
             Capture moved = client.capture();
             Assertions.assertThat(SceneSamples.debugCalls).as("the calls of the renderer while it is on").isEqualTo(SceneSamples.DEBUG_TICKS);
-            Assertions.assertThat(SceneSamples.color(client, moved, first)).as("the box of an earlier tick").isNotEqualTo(SceneSamples.RED);
-            SceneSamples.assertColor(client, moved, second, SceneSamples.RED);
+            Assertions.assertThat(SceneSamples.color(client, moved, first)).as("the box of an earlier tick").isNotEqualTo(SceneSamples.shaded(client, SceneSamples.RED));
+            SceneSamples.assertColor(client, moved, second, SceneSamples.shaded(client, SceneSamples.RED));
             moved.assertGolden("debug_renderer_refills_while_on");
             
             entries.setStatus(id, DebugScreenEntryStatus.NEVER);
             SceneSamples.debugCalls = 0;
             client.tick();
             Assertions.assertThat(SceneSamples.debugCalls).as("the calls of the renderer once it is off").isZero();
-            Assertions.assertThat(SceneSamples.color(client, client.capture(), second)).as("the box once the renderer is off").isNotEqualTo(SceneSamples.RED);
+            Assertions.assertThat(SceneSamples.color(client, client.capture(), second)).as("the box once the renderer is off").isNotEqualTo(SceneSamples.shaded(client, SceneSamples.RED));
         } finally {
             entries.setStatus(id, DebugScreenEntryStatus.NEVER);
             SceneSamples.debugCenter = null;
         }
+    }
+    
+    @ClientTest
+    public static void visibleCircleAndSphereAreCutByWall(Client client) {
+        Vec3 eye = SceneSamples.drawCircleAndSphere(client, Paint.Depth.VISIBLE);
+        Capture capture = client.capture();
+        SceneSamples.assertColor(client, capture, eye.add(SceneSamples.CIRCLE).add(-0.6D, 0.0D, 0.0D), SceneSamples.RED);
+        SceneSamples.assertColor(client, capture, eye.add(SceneSamples.CIRCLE).add(-1.0D, 0.0D, 0.0D), SceneSamples.BLUE);
+        Assertions.assertThat(SceneSamples.color(client, capture, eye.add(SceneSamples.CIRCLE).add(0.6D, 0.0D, 0.0D))).as("the disc behind the wall").isNotEqualTo(SceneSamples.RED);
+        Assertions.assertThat(SceneSamples.isShadedRed(SceneSamples.color(client, capture, eye.add(SceneSamples.SPHERE).add(0.5D, 0.4D, 0.0D)))).as("the sphere beside the wall").isTrue();
+        Assertions.assertThat(SceneSamples.isShadedRed(SceneSamples.color(client, capture, eye.add(SceneSamples.SPHERE).add(-0.5D, 0.4D, 0.0D)))).as("the sphere behind the wall").isFalse();
+        capture.assertGolden("visible_circle_and_sphere_are_cut_by_wall");
+    }
+    
+    @ClientTest
+    public static void hiddenCircleAndSphereShowOnlyBehindWall(Client client) {
+        Vec3 eye = SceneSamples.drawCircleAndSphere(client, Paint.Depth.HIDDEN);
+        Capture capture = client.capture();
+        SceneSamples.assertColor(client, capture, eye.add(SceneSamples.CIRCLE).add(0.6D, 0.0D, 0.0D), SceneSamples.RED);
+        SceneSamples.assertColor(client, capture, eye.add(SceneSamples.CIRCLE).add(1.0D, 0.0D, 0.0D), SceneSamples.BLUE);
+        Assertions.assertThat(SceneSamples.color(client, capture, eye.add(SceneSamples.CIRCLE).add(-0.6D, 0.0D, 0.0D))).as("the disc beside the wall").isNotEqualTo(SceneSamples.RED);
+        Assertions.assertThat(SceneSamples.isShadedRed(SceneSamples.color(client, capture, eye.add(SceneSamples.SPHERE).add(-0.5D, 0.4D, 0.0D)))).as("the sphere behind the wall").isTrue();
+        Assertions.assertThat(SceneSamples.isShadedRed(SceneSamples.color(client, capture, eye.add(SceneSamples.SPHERE).add(0.5D, 0.4D, 0.0D)))).as("the sphere beside the wall").isFalse();
+        capture.assertGolden("hidden_circle_and_sphere_show_only_behind_wall");
+    }
+    
+    @ClientTest
+    public static void alwaysCircleAndSphereShowEverywhere(Client client) {
+        Vec3 eye = SceneSamples.drawCircleAndSphere(client, Paint.Depth.ALWAYS);
+        Capture capture = client.capture();
+        SceneSamples.assertColor(client, capture, eye.add(SceneSamples.CIRCLE).add(-0.6D, 0.0D, 0.0D), SceneSamples.RED);
+        SceneSamples.assertColor(client, capture, eye.add(SceneSamples.CIRCLE).add(0.6D, 0.0D, 0.0D), SceneSamples.RED);
+        SceneSamples.assertColor(client, capture, eye.add(SceneSamples.CIRCLE).add(-1.0D, 0.0D, 0.0D), SceneSamples.BLUE);
+        SceneSamples.assertColor(client, capture, eye.add(SceneSamples.CIRCLE).add(1.0D, 0.0D, 0.0D), SceneSamples.BLUE);
+        Assertions.assertThat(SceneSamples.isShadedRed(SceneSamples.color(client, capture, eye.add(SceneSamples.SPHERE).add(0.5D, 0.4D, 0.0D)))).as("the sphere beside the wall").isTrue();
+        Assertions.assertThat(SceneSamples.isShadedRed(SceneSamples.color(client, capture, eye.add(SceneSamples.SPHERE).add(-0.5D, 0.4D, 0.0D)))).as("the sphere behind the wall").isTrue();
+        capture.assertGolden("always_circle_and_sphere_show_everywhere");
+    }
+    
+    @ClientTest
+    public static void nearSphereFillsItsSilhouette(Client client) {
+        Vec3 eye = SceneSamples.enter(client, 0.0F);
+        SceneSamples.scene().draw(Shape.sphere(eye.add(0.0D, 0.0D, SceneSamples.NEAR_DISTANCE), SceneSamples.NEAR_RADIUS), Paint.fill(SceneSamples.RED));
+        client.tick();
+        
+        Capture capture = client.capture();
+        double silhouette = Math.asin(SceneSamples.NEAR_RADIUS / SceneSamples.NEAR_DISTANCE);
+        double centerPlane = Math.atan(SceneSamples.NEAR_RADIUS / SceneSamples.NEAR_DISTANCE);
+        double inside = (silhouette + centerPlane) / 2.0D;
+        double outside = silhouette + Math.toRadians(4.0D);
+        for (double side : new double[]{ -1.0D, 1.0D }) {
+            Vec3 grown = eye.add(side * Math.sin(inside), 0.0D, Math.cos(inside));
+            Vec3 past = eye.add(side * Math.sin(outside), 0.0D, Math.cos(outside));
+            Assertions.assertThat(SceneSamples.isShadedRed(SceneSamples.color(client, capture, grown))).as("the sphere past the extent of its center plane").isTrue();
+            Assertions.assertThat(SceneSamples.isShadedRed(SceneSamples.color(client, capture, past))).as("the sky past the silhouette").isFalse();
+        }
+        
+        capture.assertGolden("near_sphere_fills_its_silhouette");
+    }
+    
+    @ClientTest
+    public static void edgeOnRingKeepsItsBand(Client client) {
+        Vec3 eye = SceneSamples.enter(client, 0.0F);
+        Vec3 center = eye.add(0.0D, 0.0D, 5.0D);
+        SceneSamples.scene().draw(Shape.circle(center, Vec3.Y_AXIS, 1.5D), Paint.stroke(SceneSamples.BLUE).withLineWidth(SceneSamples.RING_WIDTH));
+        client.tick();
+        
+        Capture capture = client.capture();
+        Pixel front = SceneSamples.pixel(client, center.add(0.0D, 0.0D, -1.5D));
+        capture.assertPixel(front.x(), front.y(), SceneSamples.BLUE);
+        capture.assertPixel(front.x(), front.y() - 2, SceneSamples.BLUE);
+        capture.assertPixel(front.x(), front.y() + 2, SceneSamples.BLUE);
+        SceneSamples.assertColor(client, capture, center.add(1.5D, 0.0D, 0.0D), SceneSamples.BLUE);
+        SceneSamples.assertColor(client, capture, center.add(-1.5D, 0.0D, 0.0D), SceneSamples.BLUE);
+        Assertions.assertThat(SceneSamples.color(client, capture, center.add(2.0D, 0.0D, 0.0D))).as("the line past the end of the ring").isNotEqualTo(SceneSamples.BLUE);
+        Assertions.assertThat(capture.pixel(front.x(), front.y() - 8)).as("the sky above the band").isNotEqualTo(SceneSamples.BLUE);
+        capture.assertGolden("edge_on_ring_keeps_its_band");
     }
     
     @ClientTest
@@ -286,6 +374,17 @@ public class SceneSamples {
         client.awaitStill(SceneSamples.STILL_FRAMES);
     }
     
+    private static Vec3 drawCircleAndSphere(Client client, Paint.Depth depth) {
+        Vec3 eye = SceneSamples.enter(client, 0.0F);
+        SceneSamples.wall(client, eye);
+        Paint paint = new Paint(SceneSamples.BLUE, SceneSamples.RING_WIDTH, SceneSamples.RED, depth);
+        Scene scene = SceneSamples.scene();
+        scene.draw(Shape.circle(eye.add(SceneSamples.CIRCLE), new Vec3(0.0D, 0.0D, 1.0D), 1.0D), paint);
+        scene.draw(Shape.sphere(eye.add(SceneSamples.SPHERE), 1.0D), paint);
+        client.tick();
+        return eye;
+    }
+    
     private static AABB slab(Vec3 eye) {
         return new AABB(eye.x - 3.0D, eye.y - 2.0D, eye.z + 7.0D, eye.x + 3.0D, eye.y + 2.0D, eye.z + 7.5D);
     }
@@ -302,6 +401,14 @@ public class SceneSamples {
     private static int color(Client client, Capture capture, Vec3 point) {
         Pixel pixel = SceneSamples.pixel(client, point);
         return capture.pixel(pixel.x(), pixel.y());
+    }
+    
+    private static int shaded(Client client, int argb) {
+        return client.hasShaderPack() ? ARGB.color(ARGB.alpha(argb), ARGB.blue(argb), ARGB.green(argb), ARGB.red(argb)) : argb;
+    }
+    
+    private static boolean isShadedRed(int argb) {
+        return (argb & 0x0000FFFF) == 0 && (argb >> 16 & 0xFF) > 0x40;
     }
     
     private static Pixel pixel(Client client, Vec3 point) {

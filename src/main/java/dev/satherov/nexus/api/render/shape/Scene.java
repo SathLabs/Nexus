@@ -12,6 +12,7 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.mojang.blaze3d.vertex.PoseStack;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.joml.Matrix4fc;
 import org.jspecify.annotations.Nullable;
 
 import java.util.HashMap;
@@ -198,6 +199,7 @@ public final class Scene {
     /// Draws every drawing and its labels.
     ///
     /// If a drawing was added, changed, or removed since the last frame, the GPU buffers will be rebuilt first.
+    /// If a shader pack is in use, the buffers of the discs, rings, and spheres will be held back for [#drawAfterLevel(Matrix4fc, float)].
     ///
     /// Should only ever be called by Nexus itself.
     ///
@@ -218,6 +220,20 @@ public final class Scene {
         for (Drawing drawing : this.drawings) {
             drawing.drawLabels(pose, camera, partialTick, buffers);
         }
+    }
+    
+    ///
+    /// Draws the buffers of the discs, rings, and spheres after the level while a shader pack is in use.
+    ///
+    /// Should only ever be called by Nexus itself.
+    ///
+    /// @param modelView   The model-view matrix of the frame.
+    /// @param partialTick The partial tick of the frame.
+    ///
+    @ApiStatus.Internal
+    public void drawAfterLevel(Matrix4fc modelView, float partialTick) {
+        this.checkUsable();
+        this.mesh.drawAfterLevel(modelView, partialTick);
     }
     
     ///

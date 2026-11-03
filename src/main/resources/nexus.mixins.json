@@ -7,6 +7,7 @@
     "tick.LevelMixin"
   ],
   "client": [
+    "render.BufferBuilderMixin",
     "render.GameRendererMixin"
   ],
   "injectors": {

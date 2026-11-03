@@ -35,6 +35,7 @@ runs/
 repo/
 !**/src/**/repo/
 src/test/resources/nexus/goldens/
+src/test/resources/shaders/
 
 CLAUDE.md
 .claude/

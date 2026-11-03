@@ -23,7 +23,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -37,7 +36,11 @@ public class ShapeTest {
     private static final int STROKE = 0xFFFF0000;
     private static final int FILL = 0x8000FF00;
     private static final Paint BOTH = Paint.stroke(ShapeTest.STROKE).withFill(ShapeTest.FILL);
+    private static final Paint NEITHER = new Paint(0, Paint.DEFAULT_LINE_WIDTH, 0, Paint.Depth.VISIBLE);
     private static final AABB BOX = new AABB(1.0D, 2.0D, 3.0D, 2.0D, 4.0D, 6.0D);
+    private static final Vec3 CENTER = new Vec3(1.0D, 2.0D, 3.0D);
+    private static final Vec3 NORMAL = new Vec3(1.0D, 1.0D, 0.0D);
+    private static final List<Vec3> AXES = List.of(Vec3.X_AXIS, Vec3.Y_AXIS, Vec3.Z_AXIS);
     private static final Quad QUAD = new Quad(new Vec3(1.0D, 0.0D, 0.0D), new Vec3(0.0D, 2.0D, 0.0D), new Vec3(0.0D, 0.0D, 3.0D));
     private static final Offset<Double> CLOSE = Offset.offset(1.0E-9D);
     private static final Percentage NEAR = Percentage.withPercentage(3.0D);
@@ -114,8 +117,16 @@ public class ShapeTest {
         return lines.stream().flatMap(line -> Stream.of(line.from(), line.to())).toList();
     }
     
-    private static double length(List<Line> lines) {
-        return lines.stream().mapToDouble(Line::length).sum();
+    private static boolean isParallel(Vec3 direction, Vec3 axis) {
+        return direction.lengthSqr() > 0.0D && direction.normalize().cross(axis.normalize()).length() < 1.0E-9D;
+    }
+    
+    private static Predicate<Object> isRing(Vec3 center, Vec3 normal, double radius, int argb) {
+        return call -> call instanceof Ring ring && ring.center().equals(center) && ShapeTest.isParallel(ring.normal(), normal) && ring.radius() == radius && ring.argb() == argb;
+    }
+    
+    private static Predicate<Object> isDisc(Vec3 center, Vec3 normal, double radius, int argb) {
+        return call -> call instanceof Disc disc && disc.center().equals(center) && ShapeTest.isParallel(disc.normal(), normal) && disc.radius() == radius && disc.argb() == argb;
     }
     
     private static boolean isOnRim(Vec3 point, Vec3 center, Vec3 axis, double radius) {
@@ -189,48 +200,50 @@ public class ShapeTest {
     }
     
     @Test
-    public void drawsAClosedRingAroundTheCenterOfACircle() {
-        Vec3 center = new Vec3(1.0D, 2.0D, 3.0D);
-        Vec3 normal = new Vec3(1.0D, 1.0D, 0.0D);
-        List<Line> lines = ShapeTest.draw(Shape.circle(center, normal, 2.0D), ShapeTest.BOTH).getAll(Line.class);
-        Assertions.assertThat(lines).isNotEmpty().allMatch(line -> line.argb() == ShapeTest.STROKE);
-        Assertions.assertThat(ShapeTest.ends(lines)).allSatisfy(point -> Assertions.assertThat(ShapeTest.isOnRim(point, center, normal, 2.0D)).isTrue());
-        Assertions.assertThat(ShapeTest.length(lines)).isCloseTo(2.0D * Math.PI * 2.0D, ShapeTest.NEAR);
-        
-        Map<Vec3, Long> uses = ShapeTest.ends(lines).stream().collect(Collectors.groupingBy(ShapeTest::key, Collectors.counting()));
-        Assertions.assertThat(uses.values()).containsOnly(2L);
+    public void strokesTheRingAndFillsTheDiscOfACircle() {
+        Assertions.assertThat(ShapeTest.draw(Shape.circle(ShapeTest.CENTER, ShapeTest.NORMAL, 2.0D), ShapeTest.BOTH).calls)
+                .hasSize(2)
+                .anyMatch(ShapeTest.isRing(ShapeTest.CENTER, ShapeTest.NORMAL, 2.0D, ShapeTest.STROKE))
+                .anyMatch(ShapeTest.isDisc(ShapeTest.CENTER, ShapeTest.NORMAL, 2.0D, ShapeTest.FILL));
     }
     
     @Test
-    public void fillsTheDiscOfACircle() {
-        Vec3 center = new Vec3(1.0D, 2.0D, 3.0D);
-        Vec3 normal = new Vec3(1.0D, 1.0D, 0.0D);
-        List<Triangle> triangles = ShapeTest.draw(Shape.circle(center, normal, 2.0D), ShapeTest.BOTH).getAll(Triangle.class);
-        Assertions.assertThat(triangles).isNotEmpty().allMatch(triangle -> triangle.argb() == ShapeTest.FILL);
-        Assertions.assertThat(triangles.stream().flatMap(triangle -> triangle.corners().stream())).allSatisfy(point -> {
-            Assertions.assertThat(point.distanceTo(center)).isLessThan(2.0D + 1.0E-9D);
-            Assertions.assertThat(point.subtract(center).dot(normal.normalize())).isCloseTo(0.0D, ShapeTest.CLOSE);
-        });
-        Assertions.assertThat(triangles.stream().mapToDouble(Triangle::area).sum()).isCloseTo(Math.PI * 4.0D, ShapeTest.NEAR);
+    public void leavesOutTheDiscOfACircleWithoutAFill() {
+        Assertions.assertThat(ShapeTest.draw(Shape.circle(ShapeTest.CENTER, ShapeTest.NORMAL, 2.0D), Paint.stroke(ShapeTest.STROKE)).calls)
+                .singleElement()
+                .matches(ShapeTest.isRing(ShapeTest.CENTER, ShapeTest.NORMAL, 2.0D, ShapeTest.STROKE));
     }
     
     @Test
-    public void drawsThreeGreatCirclesOfASphere() {
-        Vec3 center = new Vec3(0.0D, 64.0D, 0.0D);
-        List<Line> lines = ShapeTest.draw(Shape.sphere(center, 1.5D), ShapeTest.BOTH).getAll(Line.class);
-        Assertions.assertThat(lines).isNotEmpty().allMatch(line -> line.argb() == ShapeTest.STROKE);
-        Assertions.assertThat(ShapeTest.ends(lines)).allSatisfy(point -> Assertions.assertThat(point.distanceTo(center)).isCloseTo(1.5D, ShapeTest.CLOSE));
-        Assertions.assertThat(ShapeTest.length(lines)).isCloseTo(3.0D * 2.0D * Math.PI * 1.5D, ShapeTest.NEAR);
+    public void leavesOutTheRingOfACircleWithoutAStroke() {
+        Assertions.assertThat(ShapeTest.draw(Shape.circle(ShapeTest.CENTER, ShapeTest.NORMAL, 2.0D), Paint.fill(ShapeTest.FILL)).calls)
+                .singleElement()
+                .matches(ShapeTest.isDisc(ShapeTest.CENTER, ShapeTest.NORMAL, 2.0D, ShapeTest.FILL));
     }
     
     @Test
-    public void fillsTheSurfaceOfASphere() {
-        Vec3 center = new Vec3(0.0D, 64.0D, 0.0D);
-        List<Triangle> triangles = ShapeTest.draw(Shape.sphere(center, 1.5D), ShapeTest.BOTH).getAll(Triangle.class);
-        Assertions.assertThat(triangles).isNotEmpty().allMatch(triangle -> triangle.argb() == ShapeTest.FILL);
-        Assertions.assertThat(triangles.stream().flatMap(triangle -> triangle.corners().stream()))
-                .allSatisfy(point -> Assertions.assertThat(point.distanceTo(center)).isCloseTo(1.5D, ShapeTest.CLOSE));
-        Assertions.assertThat(triangles.stream().mapToDouble(Triangle::area).sum()).isCloseTo(4.0D * Math.PI * 1.5D * 1.5D, ShapeTest.NEAR);
+    public void strokesThreeAxisRingsAndFillsASphere() {
+        List<Object> calls = ShapeTest.draw(Shape.sphere(ShapeTest.CENTER, 1.5D), ShapeTest.BOTH).calls;
+        Assertions.assertThat(calls).hasSize(4).contains(new Sphere(ShapeTest.CENTER, 1.5D, ShapeTest.FILL));
+        Assertions.assertThat(ShapeTest.AXES).allSatisfy(axis -> Assertions.assertThat(calls).filteredOn(ShapeTest.isRing(ShapeTest.CENTER, axis, 1.5D, ShapeTest.STROKE)).hasSize(1));
+    }
+    
+    @Test
+    public void leavesOutTheSurfaceOfASphereWithoutAFill() {
+        List<Object> calls = ShapeTest.draw(Shape.sphere(ShapeTest.CENTER, 1.5D), Paint.stroke(ShapeTest.STROKE)).calls;
+        Assertions.assertThat(calls).hasSize(3);
+        Assertions.assertThat(ShapeTest.AXES).allSatisfy(axis -> Assertions.assertThat(calls).filteredOn(ShapeTest.isRing(ShapeTest.CENTER, axis, 1.5D, ShapeTest.STROKE)).hasSize(1));
+    }
+    
+    @Test
+    public void leavesOutTheRingsOfASphereWithoutAStroke() {
+        Assertions.assertThat(ShapeTest.draw(Shape.sphere(ShapeTest.CENTER, 1.5D), Paint.fill(ShapeTest.FILL)).calls).containsExactly(new Sphere(ShapeTest.CENTER, 1.5D, ShapeTest.FILL));
+    }
+    
+    @Test
+    public void drawsNothingOfACircleOrASphereWithoutStrokeAndFill() {
+        Assertions.assertThat(ShapeTest.draw(Shape.circle(Vec3.ZERO, Vec3.Y_AXIS, 1.0D), ShapeTest.NEITHER).calls).isEmpty();
+        Assertions.assertThat(ShapeTest.draw(Shape.sphere(Vec3.ZERO, 1.0D), ShapeTest.NEITHER).calls).isEmpty();
     }
     
     @Test
@@ -245,7 +258,11 @@ public class ShapeTest {
         
         Predicate<Line> isLongEdge = line -> ShapeTest.isOnRim(line.from(), base, axis, 0.5D) != ShapeTest.isOnRim(line.to(), base, axis, 0.5D);
         Assertions.assertThat(lines.stream().filter(isLongEdge).toList()).hasSize(4).allSatisfy(line -> Assertions.assertThat(line.length()).isCloseTo(7.0D, ShapeTest.CLOSE));
-        Assertions.assertThat(ShapeTest.length(lines.stream().filter(isLongEdge.negate()).toList())).isCloseTo(2.0D * 2.0D * Math.PI * 0.5D, ShapeTest.NEAR);
+        
+        List<Line> rims = lines.stream().filter(isLongEdge.negate()).toList();
+        Assertions.assertThat(rims).hasSize(64).allSatisfy(line -> Assertions.assertThat(line.length()).isCloseTo(Math.sin(Math.PI / 32.0D), ShapeTest.CLOSE));
+        Assertions.assertThat(ShapeTest.keys(ShapeTest.ends(rims).stream().filter(point -> ShapeTest.isOnRim(point, base, axis, 0.5D)).toList())).hasSize(32);
+        Assertions.assertThat(ShapeTest.keys(ShapeTest.ends(rims).stream().filter(point -> ShapeTest.isOnRim(point, top, axis, 0.5D)).toList())).hasSize(32);
     }
     
     @Test
@@ -255,7 +272,7 @@ public class ShapeTest {
         RecordingBrush brush = ShapeTest.draw(Shape.cylinder(base, top, 0.5D), ShapeTest.BOTH);
         List<Face> faces = brush.getAll(Face.class);
         List<Triangle> triangles = brush.getAll(Triangle.class);
-        Assertions.assertThat(faces).allMatch(face -> face.argb() == ShapeTest.FILL && face.sprite() == null);
+        Assertions.assertThat(faces).hasSize(32).allMatch(face -> face.argb() == ShapeTest.FILL && face.sprite() == null);
         Assertions.assertThat(triangles).allMatch(triangle -> triangle.argb() == ShapeTest.FILL);
         List<Vec3> corners = Stream.concat(faces.stream().map(Face::corners), triangles.stream().map(Triangle::corners)).flatMap(List::stream).toList();
         Assertions.assertThat(corners).isNotEmpty().allSatisfy(point -> Assertions.assertThat(ShapeTest.isInCylinder(point, base, top, 0.5D)).isTrue());
@@ -350,6 +367,21 @@ public class ShapeTest {
         }
         
         @Override
+        public void disc(Vec3 center, Vec3 normal, double radius, int argb) {
+            this.calls.add(new Disc(center, normal, radius, argb));
+        }
+        
+        @Override
+        public void ring(Vec3 center, Vec3 normal, double radius, int argb) {
+            this.calls.add(new Ring(center, normal, radius, argb));
+        }
+        
+        @Override
+        public void sphere(Vec3 center, double radius, int argb) {
+            this.calls.add(new Sphere(center, radius, argb));
+        }
+        
+        @Override
         public void text(Vec3 at, Component text, float scale, int argb, int backdrop) {
             this.calls.add(new Text(at, text, scale, argb, backdrop));
         }
@@ -395,6 +427,12 @@ public class ShapeTest {
             return this.quad.edgeU().cross(this.quad.edgeV()).length();
         }
     }
+    
+    private record Disc(Vec3 center, Vec3 normal, double radius, int argb) { }
+    
+    private record Ring(Vec3 center, Vec3 normal, double radius, int argb) { }
+    
+    private record Sphere(Vec3 center, double radius, int argb) { }
     
     private record Text(Vec3 at, Component text, float scale, int argb, int backdrop) { }
 }

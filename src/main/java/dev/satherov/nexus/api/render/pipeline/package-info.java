@@ -3,9 +3,13 @@
 /// - [Pipeline]: A registered pipeline with its bound uniform blocks.
 /// - [Shading]: The program of the pack a pipeline is drawn with, or its own shaders.
 ///
+/// A pipeline can also be created from a program file `assets/<modid>/nexus/shaders/<name>.glsl` through [Render#pipeline(String, ClientOnly, Shading)].
+///
 @NullMarked
 @CheckReturnValue
 package dev.satherov.nexus.api.render.pipeline;
+
+import dev.satherov.nexus.api.render.Render;
 
 import com.google.errorprone.annotations.CheckReturnValue;
 

@@ -13,6 +13,7 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import com.mojang.blaze3d.vertex.PoseStack;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.joml.Matrix4fc;
 import org.jspecify.annotations.Nullable;
 
 import java.util.List;
@@ -70,6 +71,18 @@ public enum Scenes {
     public void draw(PoseStack pose, float partialTick, MultiBufferSource.BufferSource buffers) {
         for (Scene scene : this.scenes) {
             scene.draw(pose, partialTick, buffers);
+        }
+    }
+    
+    ///
+    /// Draws the own-shaded buffers of every scene while a shader pack is in use.
+    ///
+    /// @param modelView   The model-view matrix of the frame.
+    /// @param partialTick The partial tick of the frame.
+    ///
+    public void drawAfterLevel(Matrix4fc modelView, float partialTick) {
+        for (Scene scene : this.scenes) {
+            scene.drawAfterLevel(modelView, partialTick);
         }
     }
     

@@ -115,15 +115,14 @@ public interface Shape {
     /// @return The circle.
     ///
     static Shape circle(Vec3 center, Vec3 normal, double radius) {
-        Vec3[] points = Shape.ring(center, normal, radius);
         return brush -> {
             Paint paint = brush.getPaint();
             if (paint.stroke() != 0) {
-                Shape.loop(brush, points, paint.stroke());
+                brush.ring(center, normal, radius, paint.stroke());
             }
             
             if (paint.fill() != 0) {
-                Shape.disc(brush, center, points, paint.fill());
+                brush.disc(center, normal, radius, paint.fill());
             }
         };
     }
@@ -141,12 +140,12 @@ public interface Shape {
             Paint paint = brush.getPaint();
             if (paint.stroke() != 0) {
                 for (Vec3 normal : List.of(Vec3.X_AXIS, Vec3.Y_AXIS, Vec3.Z_AXIS)) {
-                    Shape.loop(brush, Shape.ring(center, normal, radius), paint.stroke());
+                    brush.ring(center, normal, radius, paint.stroke());
                 }
             }
             
             if (paint.fill() != 0) {
-                Shape.surface(brush, center, radius, paint.fill());
+                brush.sphere(center, radius, paint.fill());
             }
         };
     }
@@ -164,8 +163,8 @@ public interface Shape {
     ///
     static Shape cylinder(Vec3 base, Vec3 top, double radius) {
         Vec3 axis = top.subtract(base);
-        Vec3[] bottomRim = Shape.ring(base, axis, radius);
-        Vec3[] topRim = Shape.ring(top, axis, radius);
+        Vec3[] bottomRim = Shape.rim(base, axis, radius);
+        Vec3[] topRim = Shape.rim(top, axis, radius);
         return brush -> {
             Paint paint = brush.getPaint();
             if (paint.stroke() != 0) {
@@ -182,8 +181,8 @@ public interface Shape {
                     brush.quad(new Quad(bottomRim[i], next.subtract(bottomRim[i]), axis), paint.fill());
                 }
                 
-                Shape.disc(brush, base, bottomRim, paint.fill());
-                Shape.disc(brush, top, topRim, paint.fill());
+                Shape.cap(brush, base, bottomRim, paint.fill());
+                Shape.cap(brush, top, topRim, paint.fill());
             }
         };
     }
@@ -272,56 +271,21 @@ public interface Shape {
     }
     
     ///
-    /// Computes the number of segments a ring of the given radius takes to sag at most a 64th of a block below its arc.
+    /// Computes 32 evenly spaced points of a rim of the given radius around the given center, in the plane with the given normal.
     ///
-    /// The number is a multiple of `4`, at least `16` and at most `256`.
+    /// Two rims with the same normal start at the same angle.
     ///
-    /// @param radius The radius of the ring.
+    /// @param center The center of the rim.
+    /// @param normal The normal of the plane the rim lies in.
+    /// @param radius The radius of the rim.
     ///
-    /// @return The number of segments.
+    /// @return The points of the rim, in order around it.
     ///
-    private static int segments(double radius) {
-        if (radius <= 1.0D / 64.0D) {
-            return 16;
-        }
-        
-        int exact = (int) Math.ceil(Math.PI / Math.acos(1.0D - 1.0D / (64.0D * radius)));
-        return Math.clamp((exact + 3) / 4 * 4, 16, 256);
-    }
-    
-    ///
-    /// Computes evenly spaced points of a ring of the given radius around the given center, in the plane with the given normal.
-    ///
-    /// The number of points comes from [#segments(double)].
-    ///
-    /// @param center The center of the ring.
-    /// @param normal The normal of the plane the ring lies in.
-    /// @param radius The radius of the ring.
-    ///
-    /// @return The points of the ring, in order around it.
-    ///
-    private static Vec3[] ring(Vec3 center, Vec3 normal, double radius) {
-        return Shape.ring(center, normal, radius, Shape.segments(radius));
-    }
-    
-    ///
-    /// Computes the given number of evenly spaced points of a ring of the given radius around the given center,
-    /// in the plane with the given normal.
-    ///
-    /// Two rings with the same normal start at the same angle.
-    ///
-    /// @param center   The center of the ring.
-    /// @param normal   The normal of the plane the ring lies in.
-    /// @param radius   The radius of the ring.
-    /// @param segments The number of points.
-    ///
-    /// @return The points of the ring, in order around it.
-    ///
-    private static Vec3[] ring(Vec3 center, Vec3 normal, double radius, int segments) {
+    private static Vec3[] rim(Vec3 center, Vec3 normal, double radius) {
         Vec3 axis = normal.normalize();
         Vec3 start = axis.cross(Math.abs(axis.y) < 0.5D ? Vec3.Y_AXIS : Vec3.X_AXIS).normalize().scale(radius);
         Vec3 quarter = axis.cross(start);
-        Vec3[] points = new Vec3[segments];
+        Vec3[] points = new Vec3[32];
         for (int i = 0; i < points.length; i++) {
             double angle = 2.0D * Math.PI * i / points.length;
             points[i] = center.add(start.scale(Math.cos(angle))).add(quarter.scale(Math.sin(angle)));
@@ -344,50 +308,16 @@ public interface Shape {
     }
     
     ///
-    /// Draws the disc inside the given ring as triangles around the given center.
+    /// Draws the cap inside the given rim as triangles around the given center.
     ///
     /// @param brush  The brush to draw with.
-    /// @param center The center of the ring.
-    /// @param points The points of the ring, in order around it.
-    /// @param argb   The ARGB color of the disc.
+    /// @param center The center of the rim.
+    /// @param points The points of the rim, in order around it.
+    /// @param argb   The ARGB color of the cap.
     ///
-    private static void disc(Brush brush, Vec3 center, Vec3[] points, int argb) {
+    private static void cap(Brush brush, Vec3 center, Vec3[] points, int argb) {
         for (int i = 0; i < points.length; i++) {
             brush.triangle(center, points[i], points[(i + 1) % points.length], argb);
-        }
-    }
-    
-    ///
-    /// Draws the surface of a sphere of the given radius around the given center as triangles in bands of latitude.
-    ///
-    /// The bands are half as many as the segments of the equator.
-    ///
-    /// The triangles at both poles have no area and are left out.
-    ///
-    /// @param brush  The brush to draw with.
-    /// @param center The center of the sphere.
-    /// @param radius The radius of the sphere.
-    /// @param argb   The ARGB color of the surface.
-    ///
-    private static void surface(Brush brush, Vec3 center, double radius, int argb) {
-        int segments = Shape.segments(radius);
-        Vec3[] upper = Shape.ring(center.add(0.0D, radius, 0.0D), Vec3.Y_AXIS, 0.0D, segments);
-        int bands = segments / 2;
-        for (int band = 1; band <= bands; band++) {
-            double angle = Math.PI * band / bands;
-            Vec3[] lower = Shape.ring(center.add(0.0D, radius * Math.cos(angle), 0.0D), Vec3.Y_AXIS, radius * Math.sin(angle), segments);
-            for (int i = 0; i < lower.length; i++) {
-                int next = (i + 1) % lower.length;
-                if (band > 1) {
-                    brush.triangle(upper[i], upper[next], lower[next], argb);
-                }
-                
-                if (band < bands) {
-                    brush.triangle(upper[i], lower[next], lower[i], argb);
-                }
-            }
-            
-            upper = lower;
         }
     }
     

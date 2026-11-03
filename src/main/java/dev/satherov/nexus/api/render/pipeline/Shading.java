@@ -43,15 +43,24 @@ public enum Shading {
     ///
     /// The pack's entity program, for the entity format.
     ///
+    /// The program reads the overlay and the lightmap whatever the pipeline's own shaders declare.
+    /// The render type has to bind them as `Sampler1` and `Sampler2`, or the first draw under a pack will throw an `IllegalStateException`.
+    ///
     ENTITIES,
     
     ///
     /// The pack's translucent entity program, for the entity format.
     ///
+    /// The program reads the overlay and the lightmap whatever the pipeline's own shaders declare.
+    /// The render type has to bind them as `Sampler1` and `Sampler2`, or the first draw under a pack will throw an `IllegalStateException`.
+    ///
     ENTITIES_TRANSLUCENT,
     
     ///
     /// The pack's emissive entity program, for the entity format.
+    ///
+    /// The program reads the overlay and the lightmap whatever the pipeline's own shaders declare.
+    /// The render type has to bind them as `Sampler1` and `Sampler2`, or the first draw under a pack will throw an `IllegalStateException`.
     ///
     EMISSIVE_ENTITIES,
     

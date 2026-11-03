@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.Accessors;
 
 import dev.satherov.nexus.gametest.internal.option.RunOptions;
+import dev.satherov.zelqro.mapping.ObjectMapping;
 
 import net.minecraft.client.Screenshot;
 import net.minecraft.resources.Identifier;
@@ -199,7 +200,8 @@ public final class Capture {
     }
     
     ///
-    /// Fails the test if the current frame differs from the golden saved at `<modid>/goldens/<class>/<name>.png` in the mod's resources.
+    /// Fails the test if the current frame differs from the golden saved at `<modid>/goldens/<class>/<name>.png`,
+    /// read from the directory of the `-Pgoldens` property or from the mod's resources if it is not set.
     ///
     /// - `<modid>` is the id of the mod that owns the test.
     /// - `<class>` is the test class written in snake case.
@@ -254,7 +256,7 @@ public final class Capture {
     ///
     /// The golden stored at the given path.
     ///
-    /// @param path The path of the golden in the resources.
+    /// @param path The path of the golden, inside the directory of the `-Pgoldens` property or in the resources if it is not set.
     ///
     /// @return The golden at the path.
     ///
@@ -262,7 +264,8 @@ public final class Capture {
     /// @throws UncheckedIOException If the golden could not be read.
     ///
     private Capture golden(String path) {
-        try (InputStream stream = Capture.class.getClassLoader().getResourceAsStream(path)) {
+        Path file = ObjectMapping.mapNonNull(RunOptions.fromProperties().goldens(), goldens -> goldens.resolve(path));
+        try (InputStream stream = file == null ? Capture.class.getClassLoader().getResourceAsStream(path) : (Files.isRegularFile(file) ? Files.newInputStream(file) : null)) {
             if (stream == null) {
                 throw new AssertionError("There is no golden stored at '" + path + "'");
             }
