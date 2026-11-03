@@ -113,6 +113,20 @@ public class ProgramTest {
         Assertions.assertThatIllegalArgumentException().isThrownBy(() -> ProgramTest.parse(Base.ENTITY, "vec4 nexus_albedos(vec4 albedo) {", "    return albedo;", "}"));
     }
     
+    @Test
+    public void throwsOnHookInsideConditional() {
+        Assertions.assertThatIllegalArgumentException()
+                .isThrownBy(() -> ProgramTest.parse(Base.ENTITY, "#ifdef NEXUS_VERTEX", "void nexus_vertex() {", "}", "#endif"))
+                .withMessageContaining("line '3'");
+    }
+    
+    @Test
+    public void throwsOnInputInsideConditional() {
+        Assertions.assertThatIllegalArgumentException()
+                .isThrownBy(() -> ProgramTest.parse(Base.ENTITY, "#ifdef NEXUS_VERTEX", "#ifndef PROGRAM_TEST_FLAT", "in vec4 ProgramTestHidden;", "#endif", "#endif"))
+                .withMessageContaining("line '4'");
+    }
+    
     @ParameterizedTest
     @EnumSource(Base.class)
     public void throwsOnRedeclaredBaseInput(Base base) {

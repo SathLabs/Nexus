@@ -5,6 +5,8 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Synchronized;
 
+import dev.satherov.nexus.internal.render.shader.syntax.Item;
+import dev.satherov.nexus.internal.render.shader.syntax.Parser;
 import dev.satherov.zelqro.utils.StringUtils;
 
 import net.minecraft.resources.Identifier;
@@ -26,8 +28,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 ///
 /// A parsed program file.
@@ -49,51 +49,6 @@ public final class Program {
     /// The prefix of every hook function.
     ///
     private static final String HOOK_PREFIX = "nexus_";
-    
-    ///
-    /// A line comment or a block comment.
-    ///
-    private static final Pattern COMMENT = Pattern.compile("//[^\\n]*|/\\*.*?\\*/", Pattern.DOTALL);
-    
-    ///
-    /// A run of whitespace.
-    ///
-    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
-    
-    ///
-    /// A preprocessor line, with the name of its directive.
-    ///
-    private static final Pattern PREPROCESSOR = Pattern.compile("# ?(\\w+).*");
-    
-    ///
-    /// The base directive, with the name of the base.
-    ///
-    private static final Pattern BASE = Pattern.compile("# ?nexus base (\\w+) ?");
-    
-    ///
-    /// A function definition or prototype, with the name of the function.
-    ///
-    private static final Pattern FUNCTION = Pattern.compile("(?:\\w+(?: ?\\[\\d*])? )+(\\w+) ?\\(.*");
-    
-    ///
-    /// An input declaration, with its type and its name if it declares exactly one variable.
-    ///
-    private static final Pattern INPUT = Pattern.compile("(?:layout ?\\([^)]*\\) ?)?in (?:(\\w+) (\\w+) ?;)?.*");
-    
-    ///
-    /// An output declaration, with everything before its `out` qualifier and everything after it.
-    ///
-    private static final Pattern OUTPUT = Pattern.compile("((?:layout ?\\([^)]*\\) ?)?(?:\\w+ )*?)out (.*)");
-    
-    ///
-    /// A uniform block declaration, with the name of the block.
-    ///
-    private static final Pattern BLOCK = Pattern.compile("(?:layout ?\\([^)]*\\) ?)?uniform (\\w+) ?\\{.*");
-    
-    ///
-    /// A sampler declaration, with the name of the sampler.
-    ///
-    private static final Pattern SAMPLER = Pattern.compile("uniform [iu]?sampler\\w* (\\w+) ?;");
     
     ///
     /// The vertex format element of every input name that a program declared so far.
@@ -159,101 +114,75 @@ public final class Program {
     ///
     /// @return The parsed program.
     ///
-    /// @throws IllegalArgumentException - If the text has no base directive, more than one, or one of an unknown base.
+    /// @throws IllegalArgumentException - If [Parser#parse(Identifier, String)] could not read the text.
+    /// - If the text has no base directive, more than one, or one of an unknown base.
     /// - If the text has a `#nexus` directive that is not a base directive.
     /// - If the text has a `#version` directive.
     /// - If a function starts with `nexus_` and is not a hook.
     /// - If an input declares more than one variable or has a type other than `float`, `int`, and their vectors.
     /// - If an input has the name of an input of the base.
+    /// - If a conditional holds a `#nexus` or `#version` directive, a function starting with `nexus_`, an input, an output, a uniform block, or a sampler.
     ///
     public static Program parse(Identifier id, String text) {
         Base base = null;
-        List<Input> inputs = new ArrayList<>();
+        List<Item.Input> declared = new ArrayList<>();
         Set<String> blocks = new HashSet<>();
         Set<String> samplers = new HashSet<>();
         Set<Hook> hooks = EnumSet.noneOf(Hook.class);
         StringBuilder defines = new StringBuilder();
         List<String> vertex = new ArrayList<>();
         List<String> fragment = new ArrayList<>();
-        int conditionals = 0;
-        for (String item : Program.split(text)) {
-            String flat = Program.WHITESPACE.matcher(item).replaceAll(" ");
-            Matcher preprocessor = Program.PREPROCESSOR.matcher(flat);
-            if (preprocessor.matches()) {
-                String directive = preprocessor.group(1);
-                if (directive.equals("nexus")) {
-                    base = Program.readBase(id, base, flat);
-                    continue;
+        for (Item item : Parser.parse(id, text)) {
+            switch (item) {
+                case Item.Directive(String name, String directive, int line) when name.equals("nexus") -> base = Program.readBase(id, base, directive, line);
+                case Item.Directive(String name, _, int line) when name.equals("version") -> throw new IllegalArgumentException(StringUtils.format("The program '%s' has a version directive on line '%d'", id, line));
+                case Item.Directive(String name, String directive, _) when name.equals("define") -> defines.append(directive).append('\n');
+                case Item.Conditional(List<Item> items, String conditional, _) -> {
+                    Program.checkConditional(id, items);
+                    vertex.add(conditional);
+                    fragment.add(conditional);
                 }
-                
-                if (directive.equals("version")) {
-                    throw new IllegalArgumentException(StringUtils.format("The program '%s' has a version directive", id));
+                case Item.Function(String name, String function, int line) when name.startsWith(Program.HOOK_PREFIX) -> {
+                    Hook hook = Hook.byFunction(id, name, line);
+                    hooks.add(hook);
+                    (hook.stage == ShaderType.VERTEX ? vertex : fragment).add(function);
                 }
-                
-                if (directive.equals("define") && conditionals == 0) {
-                    defines.append(item).append('\n');
-                    continue;
+                case Item.Input input -> {
+                    declared.add(input);
+                    vertex.add(input.text());
                 }
-                
-                conditionals += switch (directive) {
-                    case "if", "ifdef", "ifndef" -> 1;
-                    case "endif" -> -1;
-                    default -> 0;
-                };
-
-                vertex.add(item);
-                fragment.add(item);
-                continue;
-            }
-            
-            Matcher function = Program.FUNCTION.matcher(flat);
-            if (function.matches() && function.group(1).startsWith(Program.HOOK_PREFIX)) {
-                Hook hook = Hook.byFunction(id, function.group(1));
-                hooks.add(hook);
-                (hook.stage == ShaderType.VERTEX ? vertex : fragment).add(item);
-                continue;
-            }
-            
-            Matcher input = Program.INPUT.matcher(flat);
-            if (input.matches()) {
-                if (input.group(1) == null) {
-                    throw new IllegalArgumentException(StringUtils.format("Could not read the input '%s' of the program '%s'", flat, id));
+                case Item.Output(String output, String fragmentText, _) -> {
+                    vertex.add(output);
+                    fragment.add(fragmentText);
                 }
-                
-                inputs.add(Input.of(id, input.group(1), input.group(2)));
-                vertex.add(item);
-                continue;
+                case Item.Block(String name, String block, _) -> {
+                    blocks.add(name);
+                    vertex.add(block);
+                    fragment.add(block);
+                }
+                case Item.Sampler(String name, String sampler, _) -> {
+                    samplers.add(name);
+                    vertex.add(sampler);
+                    fragment.add(sampler);
+                }
+                case Item.Directive _, Item.Function _, Item.Declaration _ -> {
+                    vertex.add(item.text());
+                    fragment.add(item.text());
+                }
             }
-            
-            Matcher output = Program.OUTPUT.matcher(flat);
-            if (output.matches()) {
-                vertex.add(item);
-                fragment.add(output.group(1) + "in " + output.group(2));
-                continue;
-            }
-            
-            Matcher block = Program.BLOCK.matcher(flat);
-            if (block.matches()) {
-                blocks.add(block.group(1));
-            }
-            
-            Matcher sampler = Program.SAMPLER.matcher(flat);
-            if (sampler.matches()) {
-                samplers.add(sampler.group(1));
-            }
-            
-            vertex.add(item);
-            fragment.add(item);
         }
         
         if (base == null) {
             throw new IllegalArgumentException(StringUtils.format("The program '%s' has no base directive", id));
         }
         
-        for (Input input : inputs) {
+        List<Input> inputs = new ArrayList<>();
+        for (Item.Input input : declared) {
             if (base.getFormat().getElementAttributeNames().contains(input.name())) {
-                throw new IllegalArgumentException(StringUtils.format("The input '%s' of the program '%s' is already an input of the base '%s'", input.name(), id, base));
+                throw new IllegalArgumentException(StringUtils.format("The input '%s' on line '%d' of the program '%s' is already an input of the base '%s'", input.name(), input.line(), id, base));
             }
+            
+            inputs.add(Input.of(id, input));
         }
         
         return new Program(
@@ -273,71 +202,59 @@ public final class Program {
     ///
     /// @param program   The identifier of the program file, used in the failure messages.
     /// @param previous  The base of an earlier directive, or `null` if there was none.
-    /// @param directive The directive, with every run of whitespace collapsed into one space.
+    /// @param directive The text of the directive.
+    /// @param line      The line of the directive, used in the failure messages.
     ///
     /// @return The base.
     ///
     /// @throws IllegalArgumentException If the directive is not a base directive, if the program already has a base, or if the base is unknown.
     ///
-    private static Base readBase(Identifier program, @Nullable Base previous, String directive) {
-        Matcher matcher = Program.BASE.matcher(directive);
-        if (!matcher.matches()) {
-            throw new IllegalArgumentException(StringUtils.format("The program '%s' has the unknown directive '%s'", program, directive));
+    private static Base readBase(Identifier program, @Nullable Base previous, String directive, int line) {
+        String[] words = directive.substring(1).strip().split("\\s+");
+        if (words.length != 3 || !words[0].equals("nexus") || !words[1].equals("base")) {
+            throw new IllegalArgumentException(StringUtils.format("The program '%s' has the unknown directive '%s' on line '%d'", program, directive, line));
         }
         
         if (previous != null) {
-            throw new IllegalArgumentException(StringUtils.format("The program '%s' has more than one base directive", program));
+            throw new IllegalArgumentException(StringUtils.format("The program '%s' has another base directive on line '%d'", program, line));
         }
         
-        Base base = Base.byName(matcher.group(1));
+        Base base = Base.byName(words[2]);
         if (base == null) {
-            throw new IllegalArgumentException(StringUtils.format("The program '%s' builds on the unknown base '%s'", program, matcher.group(1)));
+            throw new IllegalArgumentException(StringUtils.format("The program '%s' builds on the unknown base '%s' on line '%d'", program, words[2], line));
         }
         
         return base;
     }
     
     ///
-    /// Splits the given text into its file-scope items, with every comment removed.
+    /// Checks the given items of a conditional, nested conditionals included, for items that are not allowed inside a conditional.
     ///
-    /// An item is a preprocessor line, a declaration up to its semicolon, or a function definition up to its closing brace.
+    /// @param program The identifier of the program file, used in the failure messages.
+    /// @param items   The items of the conditional.
     ///
-    /// @param text The text of a program file.
+    /// @throws IllegalArgumentException If an item is a `#nexus` or `#version` directive, a function starting with `nexus_`, an input, an output, a uniform block, or a sampler.
     ///
-    /// @return The items, stripped of their surrounding whitespace.
-    ///
-    private static List<String> split(String text) {
-        String code = Program.COMMENT.matcher(text).replaceAll(" ");
-        List<String> items = new ArrayList<>();
-        int start = 0;
-        int depth = 0;
-        for (int i = 0; i < code.length(); i++) {
-            char c = code.charAt(i);
-            if (c == '#' && depth == 0 && code.substring(start, i).isBlank()) {
-                int end = code.indexOf('\n', i);
-                i = end == -1 ? code.length() : end;
-                items.add(code.substring(start, i).strip());
-                start = i;
-            } else if (c == '{') {
-                depth++;
-            } else if (c == '}') {
-                depth--;
-                // A function ends at its closing brace, and a uniform block or a struct only at the semicolon after it.
-                if (depth == 0 && code.substring(start, code.indexOf('{', start)).strip().endsWith(")")) {
-                    items.add(code.substring(start, i + 1).strip());
-                    start = i + 1;
+    private static void checkConditional(Identifier program, List<Item> items) {
+        for (Item item : items) {
+            String held = switch (item) {
+                case Item.Conditional(List<Item> nested, _, _) -> {
+                    Program.checkConditional(program, nested);
+                    yield null;
                 }
-            } else if (c == ';' && depth == 0) {
-                items.add(code.substring(start, i + 1).strip());
-                start = i + 1;
+                case Item.Directive(String name, _, _) when name.equals("nexus") || name.equals("version") -> "the directive '#" + name + "'";
+                case Item.Function(String name, _, _) when name.startsWith(Program.HOOK_PREFIX) -> "the function '" + name + "'";
+                case Item.Input(_, String name, _, _) -> "the input '" + name + "'";
+                case Item.Output _ -> "an output";
+                case Item.Block(String name, _, _) -> "the uniform block '" + name + "'";
+                case Item.Sampler(String name, _, _) -> "the sampler '" + name + "'";
+                case Item.Directive _, Item.Function _, Item.Declaration _ -> null;
+            };
+            
+            if (held != null) {
+                throw new IllegalArgumentException(StringUtils.format("The program '%s' has %s inside a conditional on line '%d'", program, held, item.line()));
             }
         }
-        
-        if (!code.substring(start).isBlank()) {
-            items.add(code.substring(start).strip());
-        }
-        
-        return items;
     }
     
     ///
@@ -464,18 +381,18 @@ public final class Program {
     private record Input(String name, VertexFormatElement.Type type, @Range(from = 1, to = 4) int count) {
         
         ///
-        /// Creates a new input of the given GLSL type.
+        /// Creates a new input from the given input declaration.
         ///
-        /// @param program The identifier of the program file, used in the failure message.
-        /// @param type    The GLSL type of the input.
-        /// @param name    The name of the input.
+        /// @param program     The identifier of the program file, used in the failure message.
+        /// @param declaration The input declaration.
         ///
         /// @return The input.
         ///
-        /// @throws IllegalArgumentException If the type is not `float`, `int`, or one of their vectors.
+        /// @throws IllegalArgumentException If the type of the declaration is not `float`, `int`, or one of their vectors.
         ///
-        private static Input of(Identifier program, String type, String name) {
-            return switch (type) {
+        private static Input of(Identifier program, Item.Input declaration) {
+            String name = declaration.name();
+            return switch (declaration.type()) {
                 case "float" -> new Input(name, VertexFormatElement.Type.FLOAT, 1);
                 case "vec2" -> new Input(name, VertexFormatElement.Type.FLOAT, 2);
                 case "vec3" -> new Input(name, VertexFormatElement.Type.FLOAT, 3);
@@ -484,7 +401,7 @@ public final class Program {
                 case "ivec2" -> new Input(name, VertexFormatElement.Type.INT, 2);
                 case "ivec3" -> new Input(name, VertexFormatElement.Type.INT, 3);
                 case "ivec4" -> new Input(name, VertexFormatElement.Type.INT, 4);
-                default -> throw new IllegalArgumentException(StringUtils.format("The input '%s' of the program '%s' has the unsupported type '%s'", name, program, type));
+                default -> throw new IllegalArgumentException(StringUtils.format("The input '%s' on line '%d' of the program '%s' has the unsupported type '%s'", name, declaration.line(), program, declaration.type()));
             };
         }
     }
@@ -530,16 +447,17 @@ public final class Program {
         ///
         /// @param program  The identifier of the program file, used in the failure message.
         /// @param function The name of the function.
+        /// @param line     The line of the function, used in the failure message.
         ///
         /// @return The hook.
         ///
         /// @throws IllegalArgumentException If no hook has the name of the given function.
         ///
-        private static Hook byFunction(Identifier program, String function) {
+        private static Hook byFunction(Identifier program, String function, int line) {
             return Arrays.stream(Hook.values())
                     .filter(hook -> hook.function.equals(function))
                     .findFirst()
-                    .orElseThrow(() -> new IllegalArgumentException(StringUtils.format("The function '%s' of the program '%s' is not a hook", function, program)));
+                    .orElseThrow(() -> new IllegalArgumentException(StringUtils.format("The function '%s' on line '%d' of the program '%s' is not a hook", function, line, program)));
         }
     }
 }
