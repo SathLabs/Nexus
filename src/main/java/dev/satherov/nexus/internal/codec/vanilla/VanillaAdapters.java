@@ -13,6 +13,7 @@ import dev.satherov.nexus.internal.codec.format.JsonOperations;
 import dev.satherov.nexus.internal.codec.format.NbtOperations;
 import dev.satherov.nexus.internal.codec.format.Operations;
 import dev.satherov.nexus.internal.codec.struct.Structs;
+import dev.satherov.nexus.internal.component.ComponentCodecs;
 
 import net.minecraft.core.Registry;
 import net.minecraft.core.component.DataComponentType;
@@ -401,10 +402,13 @@ public class VanillaAdapters {
     /// @return The data component type, saved with the DFU view and synced with the stream view of the codec.
     ///
     public static <T> DataComponentType<T> asDataComponentType(NexusCodec<T, ?> codec) {
-        return DataComponentType.<T>builder()
+        DataComponentType<T> type = DataComponentType.<T>builder()
                 .persistent(codec.asDfu())
                 .networkSynchronized(codec.asStream())
                 .build();
+        
+        ComponentCodecs.record(type, codec);
+        return type;
     }
     
     ///

@@ -3,6 +3,7 @@ package dev.satherov.nexus.api.registry.component;
 import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.registry.EntryBuilder;
 import dev.satherov.nexus.api.registry.Registrations;
+import dev.satherov.nexus.internal.component.ComponentCodecs;
 
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.registries.Registries;
@@ -35,6 +36,11 @@ public final class DataComponentBuilder<VALUE, PARENT>
     private final DataComponentType.Builder<VALUE> builder;
     
     ///
+    /// The codec of the values of the component, recorded in [ComponentCodecs] once the type is created.
+    ///
+    private final NexusCodec<VALUE, ?> codec;
+    
+    ///
     /// Starts the data component type `<modid>:<name>` saved and synced with the given codec.
     /// - `<modid>` is the id of the mod of the given registrations.
     /// - `<name>` is the given name.
@@ -46,6 +52,7 @@ public final class DataComponentBuilder<VALUE, PARENT>
     ///
     public DataComponentBuilder(Registrations registrations, String name, PARENT parent, NexusCodec<VALUE, ?> codec) {
         super(registrations, Registries.DATA_COMPONENT_TYPE, name, parent);
+        this.codec = codec;
         
         this.builder = DataComponentType.<VALUE>builder()
                 .persistent(codec.asDfu())
@@ -89,7 +96,9 @@ public final class DataComponentBuilder<VALUE, PARENT>
     ///
     @Override
     protected DataComponentType<VALUE> create() {
-        return this.builder.build();
+        DataComponentType<VALUE> type = this.builder.build();
+        ComponentCodecs.record(type, this.codec);
+        return type;
     }
     
     ///

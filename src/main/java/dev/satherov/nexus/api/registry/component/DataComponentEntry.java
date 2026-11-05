@@ -1,5 +1,7 @@
 package dev.satherov.nexus.api.registry.component;
 
+import dev.satherov.nexus.api.component.ComponentFilter;
+import dev.satherov.nexus.api.component.ComponentPath;
 import dev.satherov.nexus.api.registry.RegistryEntry;
 
 import net.neoforged.neoforge.attachment.IAttachmentHolder;
@@ -115,5 +117,56 @@ public final class DataComponentEntry<VALUE> extends RegistryEntry<DataComponent
     ///
     public boolean has(DataComponentGetter holder) {
         return holder.has(this.value());
+    }
+    
+    ///
+    /// Creates a filter that passes every holder with this component, an item's default included.
+    ///
+    /// @return The filter.
+    ///
+    /// @see ComponentFilter#has(DataComponentType)
+    ///
+    public ComponentFilter.Has present() {
+        return ComponentFilter.has(this.value());
+    }
+
+    ///
+    /// Creates a filter that passes every holder whose value of this component equals the given value.
+    ///
+    /// A holder without the component fails.
+    ///
+    /// @param value The value the component of the holder must equal.
+    ///
+    /// @return The filter.
+    ///
+    /// @see ComponentFilter#exact(DataComponentType, Object)
+    ///
+    public ComponentFilter.Exact<VALUE> exactly(VALUE value) {
+        return ComponentFilter.exact(this.value(), value);
+    }
+    
+    ///
+    /// Creates the path of the whole value of this component.
+    ///
+    /// @return The path of the whole value.
+    ///
+    /// @see ComponentPath#of(DataComponentType)
+    ///
+    public ComponentPath path() {
+        return ComponentPath.of(this.value());
+    }
+    
+    ///
+    /// Creates the path of the value below this component at the given path.
+    ///
+    /// @param path The keys and indices down to the value, in the form of [ComponentPath#of(DataComponentType, String)].
+    ///
+    /// @return The path of the value.
+    ///
+    /// @throws IllegalArgumentException If the path is malformed, the struct of this component doesn't have one of its keys or indices,
+    /// or the path continues below a number, a string, or a boolean.
+    ///
+    public ComponentPath path(String path) {
+        return ComponentPath.of(this.value(), path);
     }
 }

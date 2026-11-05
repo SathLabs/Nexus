@@ -32,6 +32,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Unmodifiable;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -630,6 +631,15 @@ public class Structs {
         @Override
         public Set<String> keys() {
             return this.keys;
+        }
+        
+        ///
+        /// The bound fields of this struct, in the order they are written.
+        ///
+        /// @return The bound fields.
+        ///
+        public @Unmodifiable List<BoundField<T, ?, ?>> fields() {
+            return this.fields;
         }
         
         ///
