@@ -12,11 +12,10 @@ import net.minecraft.core.component.DataComponentType;
 
 import org.jetbrains.annotations.ApiStatus;
 
-import java.util.List;
 import java.util.function.Function;
 
 ///
-/// A path reader that follows the getters of the bound fields of a Nexus struct and encodes nothing.
+/// A path reader that reads a Nexus struct through the getters of its bound fields.
 ///
 @ApiStatus.Internal
 @RequiredArgsConstructor
@@ -29,9 +28,11 @@ public final class StructReader implements PathReader {
     private final DataComponentType<?> type;
     
     ///
-    /// The getters of the fields on the path, from the value of the component down.
+    /// The getters of the bound fields along the path composed into one, from the value of the component down.
     ///
-    private final List<Function<Object, Object>> getters;
+    /// A primitive field is boxed.
+    ///
+    private final Function<Object, Object> getter;
     
     ///
     /// The kind of the field at the end of the path.
@@ -40,23 +41,20 @@ public final class StructReader implements PathReader {
     private final Kind kind;
     
     ///
-    /// Applies the getters to the value of the component and compares the result by its kind.
+    /// Applies the getter to the component and compares the field by its kind.
     ///
     @Override
     public boolean compare(DataComponentGetter holder, Operator operator, Literal literal) {
-        Object value = holder.get(this.type);
-        if (value == null) {
+        Object component = holder.get(this.type);
+        if (component == null) {
             return false;
         }
         
-        for (int i = 0; i < this.getters.size(); i++) {
-            value = this.getters.get(i).apply(value);
-        }
-        
+        Object value = this.getter.apply(component);
         return switch (this.kind) {
-            case NUMBER -> literal instanceof Literal.Numeric(double expected) && PathReader.passes(operator, Double.compare(((Number) value).doubleValue(), expected));
-            case TEXT -> literal instanceof Literal.Text(String expected) && PathReader.passes(operator, ((String) value).compareTo(expected));
-            case FLAG -> literal instanceof Literal.Flag(boolean expected) && PathReader.passes(operator, (Boolean) value == expected ? 0 : 1);
+            case NUMBER -> literal instanceof Literal.Numeric(double expected) && PathReader.passes(operator, ((Number) value).doubleValue(), expected);
+            case TEXT -> literal instanceof Literal.Text(String expected) && PathReader.passes(operator, ((String) value).compareTo(expected), 0);
+            case FLAG -> literal instanceof Literal.Flag(boolean expected) && PathReader.passes(operator, (Boolean) value == expected ? 0 : 1, 0);
             case OTHER, UNKNOWN -> false;
         };
     }

@@ -29,6 +29,8 @@ public sealed interface PathReader permits StructReader, TreeReader {
     ///
     /// Resolves the given steps below the given component into a struct reader for a Nexus struct or a tree reader for any other codec.
     ///
+    /// The struct reader gets the getters of the bound fields along the path composed into one.
+    ///
     /// If a field on the path is neither a struct nor a scalar, the whole path will be read as a tree.
     ///
     /// @param type  The component the path starts at.
@@ -36,7 +38,7 @@ public sealed interface PathReader permits StructReader, TreeReader {
     ///
     /// @return The reader of the value at the path.
     ///
-    /// @throws IllegalArgumentException If a struct on the path doesn't have the key or index of a step, or if the path continues below a scalar field.
+    /// @throws IllegalArgumentException If a step into a struct is an index or a key the struct doesn't have, or if the path continues below a scalar field.
     ///
     static PathReader resolve(DataComponentType<?> type, List<Step> steps) {
         if (!(ComponentCodecs.of(type) instanceof Structs.Struct<?, ?> root)) {
@@ -64,7 +66,7 @@ public sealed interface PathReader permits StructReader, TreeReader {
                     throw new IllegalArgumentException("The component '" + type + "' has no key '" + name + "'");
                 }
                 
-                // The key belongs to a dispatch inlined into the struct, whose fields depend on the value.
+                // The key belongs to a dispatch inlined into the struct, so which fields exist depends on the value.
                 return new TreeReader(type, steps);
             }
             
@@ -72,7 +74,7 @@ public sealed interface PathReader permits StructReader, TreeReader {
         }
         
         Kind kind = PathReader.kindOf(codec);
-        return kind == Kind.UNKNOWN ? new TreeReader(type, steps) : new StructReader(type, List.copyOf(getters), kind);
+        return kind == Kind.UNKNOWN ? new TreeReader(type, steps) : new StructReader(type, getters.stream().reduce(Function::andThen).orElse(Function.identity()), kind);
     }
     
     ///
@@ -133,21 +135,26 @@ public sealed interface PathReader permits StructReader, TreeReader {
     }
     
     ///
-    /// If a value with the given order against a literal passes the given operator.
+    /// If the given value passes the given operator against the given literal.
+    ///
+    /// Negative zero equals zero, and if either is NaN, only [Operator#NOT_EQUAL] passes.
+    ///
+    /// A text passes the result of its `compareTo` against `0`, and a flag passes `0` for equal or `1` for different against `0`.
     ///
     /// @param operator The comparison of the value against the literal.
-    /// @param order    The order of the value against the literal, in the sign convention of [Comparable#compareTo(Object)].
+    /// @param value    The number, or the order of a text or a flag.
+    /// @param literal  The number to compare the value against, or `0` for an order.
     ///
     /// @return `true` if the value passes the operator.
     ///
-    static boolean passes(Operator operator, int order) {
+    static boolean passes(Operator operator, double value, double literal) {
         return switch (operator) {
-            case EQUAL -> order == 0;
-            case NOT_EQUAL -> order != 0;
-            case LESS -> order < 0;
-            case AT_MOST -> order <= 0;
-            case GREATER -> order > 0;
-            case AT_LEAST -> order >= 0;
+            case EQUAL -> value == literal;
+            case NOT_EQUAL -> value != literal;
+            case LESS -> value < literal;
+            case AT_MOST -> value <= literal;
+            case GREATER -> value > literal;
+            case AT_LEAST -> value >= literal;
         };
     }
     
