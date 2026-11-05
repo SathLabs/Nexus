@@ -157,6 +157,15 @@ public class ServerTests {
     }
     
     ///
+    /// The measurements of the server run.
+    ///
+    /// @return The measurements of the server run.
+    ///
+    public static Measurements getMeasurements() {
+        return ServerTests.MEASUREMENTS.get();
+    }
+    
+    ///
     /// If a given test needs to run in a separate time window of its own.
     ///
     /// @param test A discovered test.
