@@ -8,13 +8,23 @@ import dev.satherov.nexus.internal.codec.CodecErrors;
 import dev.satherov.nexus.internal.codec.Traversal;
 import dev.satherov.nexus.internal.codec.format.Operations;
 import dev.satherov.nexus.internal.component.ComponentCodecs;
+import dev.satherov.nexus.internal.component.FilterFluidIngredient;
+import dev.satherov.nexus.internal.component.FilterIngredient;
+import dev.satherov.nexus.internal.component.FilterPredicate;
 import dev.satherov.nexus.internal.component.PathReader;
 
+import net.neoforged.neoforge.fluids.crafting.FluidIngredient;
+
+import net.minecraft.advancements.criterion.DataComponentMatchers;
+import net.minecraft.core.HolderSet;
 import net.minecraft.core.Registry;
 import net.minecraft.core.component.DataComponentGetter;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.component.predicates.DataComponentPredicate;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.world.level.material.Fluid;
 
 import org.jetbrains.annotations.Unmodifiable;
 
@@ -501,6 +511,47 @@ public sealed interface ComponentFilter extends Predicate<DataComponentGetter> p
     @Override
     default ComponentFilter negate() {
         return new ComponentFilter.Not(this);
+    }
+    
+    ///
+    /// Creates vanilla matchers with this filter as their one partial entry, `nexus:filter`.
+    ///
+    /// Meant to be used for loot tables, advancements, and item predicates.
+    ///
+    /// In a file, the filter is written under `"predicates": {"nexus:filter": ...}` in the form of [#CODEC].
+    ///
+    /// @return The matchers.
+    ///
+    default DataComponentMatchers asMatchers() {
+        return DataComponentMatchers.Builder.components()
+                .partial(FilterPredicate.TYPE, new FilterPredicate(this))
+                .build();
+    }
+    
+    ///
+    /// Creates a recipe ingredient that accepts a stack whose item is in the given set and which passes this filter.
+    ///
+    /// If the set is empty, the ingredient will be empty.
+    ///
+    /// @param items The items a stack must be one of.
+    ///
+    /// @return The ingredient.
+    ///
+    default Ingredient asIngredient(HolderSet<Item> items) {
+        return new FilterIngredient(items, this).toVanilla();
+    }
+    
+    ///
+    /// Creates a fluid ingredient that accepts a stack whose fluid is in the given set and which passes this filter.
+    ///
+    /// If the set is empty, the ingredient will be empty.
+    ///
+    /// @param fluids The fluids a stack must be one of.
+    ///
+    /// @return The ingredient.
+    ///
+    default FluidIngredient asFluidIngredient(HolderSet<Fluid> fluids) {
+        return new FilterFluidIngredient(fluids, this);
     }
     
     ///

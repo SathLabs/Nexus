@@ -8,7 +8,11 @@ import dev.satherov.nexus.api.component.ComponentFilter;
 import dev.satherov.nexus.api.component.ComponentPath;
 import dev.satherov.nexus.api.component.Operator;
 
+import net.neoforged.neoforge.fluids.crafting.FluidIngredient;
+
+import net.minecraft.advancements.criterion.DataComponentMatchers;
 import net.minecraft.advancements.criterion.MinMaxBounds;
+import net.minecraft.core.HolderSet;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.core.component.DataComponentType;
@@ -18,9 +22,14 @@ import net.minecraft.core.component.predicates.DataComponentPredicates;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.resources.RegistryOps;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.world.level.material.Fluids;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
+import com.mojang.serialization.JsonOps;
 import io.netty.buffer.Unpooled;
 
 import org.assertj.core.api.Assertions;
@@ -29,14 +38,16 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 ///
-/// Checks each case of a component filter, how all-ofs and any-ofs flatten, and the codec round trip with its errors.
+/// Checks each case of a component filter, how all-ofs and any-ofs flatten, the codec round trip with its errors, and the vanilla forms of a filter.
 ///
 public class ComponentFilterTest {
     
     private static final RegistryAccess.Frozen REGISTRIES = RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY);
     private static final CodecFormat<JsonElement, Access.Registries> JSON = CodecFormat.JSON.withRegistries(ComponentFilterTest.REGISTRIES);
     private static final CodecFormat<Tag, Access.Registries> NBT = CodecFormat.NBT.withRegistries(ComponentFilterTest.REGISTRIES);
+    private static final RegistryOps<JsonElement> OPS = RegistryOps.create(JsonOps.INSTANCE, ComponentFilterTest.REGISTRIES);
     private static final DamagePredicate DAMAGED = new DamagePredicate(MinMaxBounds.Ints.ANY, MinMaxBounds.Ints.atLeast(2));
+    private static final ComponentFilter WORN = ComponentFilter.exact(DataComponents.DAMAGE, 3).and(ComponentFilter.has(DataComponents.MAX_DAMAGE));
     
     @Test
     public void hasPassesAHolderWithTheComponent() {
@@ -183,6 +194,33 @@ public class ComponentFilterTest {
     public void decodingFailsAtTheKeyOfALiteralOfAnUnknownKind() {
         Assertions.assertThat(ComponentFilterTest.errors("{\"path\": \"nexus:test_tier.level\", \"is\": \"==\", \"value\": [3]}")).extracting(CodecError::path).containsExactly("value");
         Assertions.assertThat(ComponentFilterTest.errors("{\"path\": \"nexus:test_tier.level\", \"is\": \"==\", \"value\": {}}")).extracting(CodecError::path).containsExactly("value");
+    }
+    
+    @Test
+    public void matchersRoundTripWithTheFilterUnderNexusFilter() {
+        DataComponentMatchers matchers = ComponentFilterTest.WORN.asMatchers();
+        JsonElement json = JsonParser.parseString("""
+                {"predicates": {"nexus:filter": {"all": [
+                    {"exact": "minecraft:damage", "value": 3},
+                    {"has": "minecraft:max_damage"}
+                ]}}}
+                """);
+        Assertions.assertThat(DataComponentMatchers.CODEC.codec().encodeStart(ComponentFilterTest.OPS, matchers).getOrThrow()).hasToString(json.toString());
+        Assertions.assertThat(DataComponentMatchers.CODEC.codec().parse(ComponentFilterTest.OPS, json).getOrThrow()).isEqualTo(matchers);
+    }
+    
+    @Test
+    public void ingredientRoundTripsWithTheFilter() {
+        Ingredient ingredient = ComponentFilterTest.WORN.asIngredient(HolderSet.direct(BuiltInRegistries.ITEM.wrapAsHolder(Items.DIAMOND_PICKAXE)));
+        JsonElement json = Ingredient.CODEC.encodeStart(ComponentFilterTest.OPS, ingredient).getOrThrow();
+        Assertions.assertThat(Ingredient.CODEC.parse(ComponentFilterTest.OPS, json).getOrThrow()).isEqualTo(ingredient);
+    }
+    
+    @Test
+    public void fluidIngredientRoundTripsWithTheFilter() {
+        FluidIngredient ingredient = ComponentFilterTest.WORN.asFluidIngredient(HolderSet.direct(BuiltInRegistries.FLUID.wrapAsHolder(Fluids.WATER)));
+        JsonElement json = FluidIngredient.CODEC.encodeStart(ComponentFilterTest.OPS, ingredient).getOrThrow();
+        Assertions.assertThat(FluidIngredient.CODEC.parse(ComponentFilterTest.OPS, json).getOrThrow()).isEqualTo(ingredient);
     }
     
     private static <VALUE> DataComponentMap holder(DataComponentType<VALUE> type, VALUE value) {
