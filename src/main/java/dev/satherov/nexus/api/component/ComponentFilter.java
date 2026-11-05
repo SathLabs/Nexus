@@ -325,7 +325,7 @@ public sealed interface ComponentFilter extends Predicate<DataComponentGetter> p
     private static <ENTRY> Traversal<ENTRY, Access.Plain> registered(Registry<ENTRY> registry, String kind) {
         return (Traversal<ENTRY, Access.Plain>) NexusCodec.IDENTIFIER.flatXmap(
                 id -> registry.getOptional(id).orElseThrow(() -> CodecErrors.mismatch("a registered " + kind, id.toString())),
-                entry -> registry.getResourceKey(entry).orElseThrow(() -> new NexusCodecException("Expected a registered " + kind + ", found an unregistered one")).identifier()
+                entry -> registry.getResourceKey(entry).orElseThrow(() -> CodecErrors.unregistered(registry, kind)).identifier()
         );
     }
     

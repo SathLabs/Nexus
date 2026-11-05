@@ -5,10 +5,12 @@ import lombok.experimental.UtilityClass;
 import dev.satherov.nexus.api.codec.result.CodecError;
 import dev.satherov.nexus.api.codec.result.NexusCodecException;
 
+import net.minecraft.core.Registry;
 import net.minecraft.nbt.CollectionTag;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NumericTag;
 import net.minecraft.nbt.StringTag;
+import net.minecraft.resources.ResourceKey;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -27,6 +29,29 @@ import java.util.Locale;
 @UtilityClass
 @ApiStatus.Internal
 public class CodecErrors {
+    
+    ///
+    /// Creates a failure when the given resource key is not actually registered in its registry.
+    ///
+    /// @param key The resource key that was not registered.
+    ///
+    /// @return The failure, with one error at an empty path.
+    ///
+    public static NexusCodecException unregistered(ResourceKey<?> key) {
+        return new NexusCodecException("'" + key.identifier() + "' is not registered in '" + key.registry() + "'");
+    }
+    
+    ///
+    /// Creates a failure when an object does not have a registered resource key in the given registry.
+    ///
+    /// @param registry The registry that the key was not registered in.
+    /// @param type     The key that was not registered.
+    ///
+    /// @return The failure, with one error at an empty path.
+    ///
+    public static NexusCodecException unregistered(Registry<?> registry, String type) {
+        return new NexusCodecException("Expected to find a registered '" + type + "' but it does not exist in '" + registry + "'");
+    }
     
     ///
     /// Creates a failure for a value that is not of the expected kind.
