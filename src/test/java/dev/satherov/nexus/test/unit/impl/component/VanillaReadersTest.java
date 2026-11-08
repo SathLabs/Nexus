@@ -10,6 +10,7 @@ import dev.satherov.nexus.impl.component.VanillaReaders;
 import dev.satherov.nexus.internal.codec.path.Encoding;
 import dev.satherov.nexus.internal.codec.path.TagReader;
 import dev.satherov.nexus.internal.codec.vanilla.VanillaAdapters;
+import dev.satherov.nexus.internal.component.PathReaders;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.Holder;
@@ -184,6 +185,8 @@ public class VanillaReadersTest {
             new Comparison.Literal.Numeric(0.0D),
             new Comparison.Literal.Flag(true)
     );
+    private static final DataComponentType<ItemContainerContents> MOD_CONTAINER = DataComponentType.<ItemContainerContents>builder().persistent(ItemContainerContents.CODEC).build();
+    private static final DataComponentType<BundleContents> MOD_BUNDLE = DataComponentType.<BundleContents>builder().persistent(BundleContents.CODEC).build();
     
     @Test
     public void damageMatchesTheEncoding() {
@@ -349,9 +352,11 @@ public class VanillaReadersTest {
     @Test
     public void containerItemsMatchTheEncoding() {
         ItemContainerContents contents = VanillaReadersTest.container(null, VanillaReadersTest.STONE, null, null, VanillaReadersTest.SWORD, VanillaReadersTest.DIAMONDS, VanillaReadersTest.STRIPPED);
-        for (String slot : List.of("[0]", "[1]", "[2]", "[3]", "[4]", "[*]")) {
-            for (String part : VanillaReadersTest.ITEM_PATHS) {
-                VanillaReadersTest.assertMatchesTheEncoding(DataComponents.CONTAINER, slot + ".item." + part, VanillaReadersTest.ITEM_LITERALS, List.of(contents, ItemContainerContents.EMPTY));
+        for (DataComponentType<ItemContainerContents> type : List.of(DataComponents.CONTAINER, VanillaReadersTest.MOD_CONTAINER)) {
+            for (String slot : List.of("[0]", "[1]", "[2]", "[3]", "[4]", "[*]")) {
+                for (String part : VanillaReadersTest.ITEM_PATHS) {
+                    VanillaReadersTest.assertMatchesTheEncoding(type, slot + ".item." + part, VanillaReadersTest.ITEM_LITERALS, List.of(contents, ItemContainerContents.EMPTY));
+                }
             }
         }
         
@@ -363,15 +368,32 @@ public class VanillaReadersTest {
     @Test
     public void bundleItemsMatchTheEncoding() {
         BundleContents bundle = new BundleContents(List.of(VanillaReadersTest.STONE, VanillaReadersTest.SWORD, VanillaReadersTest.DIAMONDS, VanillaReadersTest.STRIPPED));
-        for (String index : List.of("[0]", "[1]", "[2]", "[3]", "[4]", "[*]")) {
-            for (String part : VanillaReadersTest.ITEM_PATHS) {
-                VanillaReadersTest.assertMatchesTheEncoding(DataComponents.BUNDLE_CONTENTS, index + "." + part, VanillaReadersTest.ITEM_LITERALS, List.of(bundle, BundleContents.EMPTY));
+        for (DataComponentType<BundleContents> type : List.of(DataComponents.BUNDLE_CONTENTS, VanillaReadersTest.MOD_BUNDLE)) {
+            for (String index : List.of("[0]", "[1]", "[2]", "[3]", "[4]", "[*]")) {
+                for (String part : VanillaReadersTest.ITEM_PATHS) {
+                    VanillaReadersTest.assertMatchesTheEncoding(type, index + "." + part, VanillaReadersTest.ITEM_LITERALS, List.of(bundle, BundleContents.EMPTY));
+                }
             }
         }
         
         Assertions.assertThat(VanillaReadersTest.test(DataComponents.BUNDLE_CONTENTS, "[1].components['minecraft:custom_name']", Comparison.Operator.EQUAL, new Comparison.Literal.Text("Sword"), bundle)).isTrue();
         Assertions.assertThat(VanillaReadersTest.test(DataComponents.BUNDLE_CONTENTS, "[3].count", Comparison.Operator.EQUAL, new Comparison.Literal.Numeric(2.0D), bundle)).isTrue();
         Assertions.assertThat(VanillaReadersTest.test(DataComponents.BUNDLE_CONTENTS, "[*].components['minecraft:custom_data'].level", Comparison.Operator.EQUAL, new Comparison.Literal.Numeric(3.0D), bundle)).isTrue();
+    }
+    
+    @Test
+    public void resolvesTheContainerAndBundleReadersByCodec() {
+        for (DataComponentType<ItemContainerContents> type : List.of(DataComponents.CONTAINER, VanillaReadersTest.MOD_CONTAINER)) {
+            for (String path : List.of("[0].item.id", "[*].item.count", "[1].item.components['minecraft:damage']")) {
+                Assertions.assertThat(PathReaders.resolve(type, VanillaReadersTest.steps(path))).as("%s on %s", path, type).isEqualTo(VanillaReadersTest.reader(type, path));
+            }
+        }
+        
+        for (DataComponentType<BundleContents> type : List.of(DataComponents.BUNDLE_CONTENTS, VanillaReadersTest.MOD_BUNDLE)) {
+            for (String path : List.of("[0].id", "[*].count", "[1].components['minecraft:damage']")) {
+                Assertions.assertThat(PathReaders.resolve(type, VanillaReadersTest.steps(path))).as("%s on %s", path, type).isEqualTo(VanillaReadersTest.reader(type, path));
+            }
+        }
     }
     
     @Test

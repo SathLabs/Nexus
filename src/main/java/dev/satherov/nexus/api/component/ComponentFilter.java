@@ -1,9 +1,7 @@
 package dev.satherov.nexus.api.component;
 
-import lombok.AccessLevel;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 import lombok.ToString;
 
 import dev.satherov.nexus.api.codec.Access;
@@ -52,7 +50,6 @@ import java.util.stream.Stream;
 /// - [Not] costs what its inner filter costs.
 /// - [AllOf] and [AnyOf] cost what their most expensive filter costs.
 ///
-@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public abstract sealed class ComponentFilter permits ComponentFilter.Has, ComponentFilter.Exact, ComponentFilter.Compare, ComponentFilter.Matching, ComponentFilter.AllOf, ComponentFilter.AnyOf, ComponentFilter.Not {
     
     ///
@@ -86,6 +83,28 @@ public abstract sealed class ComponentFilter permits ComponentFilter.Has, Compon
     /// The cost of the most expensive read of this filter.
     ///
     private final PathReader.Cost cost;
+    
+    ///
+    /// The number of reads in this filter, which is the number of [Has], [Exact], [Compare], and [Matching] filters in it.
+    ///
+    private final int reads;
+    
+    ///
+    /// If a patched data component map should store the result of this filter.
+    ///
+    private final boolean memoized;
+    
+    ///
+    /// Creates a filter with the given cost and number of reads.
+    ///
+    /// @param cost  The cost of the most expensive read of the filter.
+    /// @param reads The number of reads in the filter.
+    ///
+    private ComponentFilter(PathReader.Cost cost, int reads) {
+        this.cost = cost;
+        this.reads = reads;
+        this.memoized = cost != PathReader.Cost.DIRECT || reads > 1;
+    }
     
     ///
     /// Creates a filter that passes a holder that has the given component, with any value.
@@ -218,6 +237,19 @@ public abstract sealed class ComponentFilter permits ComponentFilter.Has, Compon
     }
     
     ///
+    /// Gets the total number of reads in the given filters.
+    ///
+    /// @param filters The filters to count the reads of.
+    ///
+    /// @return The number of reads.
+    ///
+    private static int totalReads(List<ComponentFilter> filters) {
+        return filters.stream()
+                .mapToInt(filter -> filter.reads)
+                .sum();
+    }
+    
+    ///
     /// Creates the all-of filter of this filter and the given filter.
     ///
     /// @param other The filter that a holder has to pass as well.
@@ -260,7 +292,9 @@ public abstract sealed class ComponentFilter permits ComponentFilter.Has, Compon
     /// Reads only the components that this filter needs, and allocates nothing if every read costs [PathReader.Cost#DIRECT].
     /// An item resource or a fluid resource is read through its stack.
     ///
-    /// If this filter costs [PathReader.Cost#ENCODE] and tests the same unchanged item stack or fluid stack twice in a row, the second test will return the result of the first.
+    /// If this filter tests the same unchanged item stack or fluid stack more than twice in a row,
+    /// every test after the second will return the result of the second.
+    /// The result is never stored for a [Has], [Exact], or [Compare] whose read costs [PathReader.Cost#DIRECT], on its own or under a [Not].
     ///
     /// @param holder The holder of the components.
     ///
@@ -273,7 +307,7 @@ public abstract sealed class ComponentFilter permits ComponentFilter.Has, Compon
             default -> holder;
         };
         
-        if (this.cost != PathReader.Cost.ENCODE) {
+        if (!this.memoized) {
             return this.evaluate(source);
         }
         
@@ -384,7 +418,7 @@ public abstract sealed class ComponentFilter permits ComponentFilter.Has, Compon
         /// @param component The data component type that a holder has to have.
         ///
         private Has(DataComponentType<?> component) {
-            super(PathReader.Cost.DIRECT);
+            super(PathReader.Cost.DIRECT, 1);
             this.component = component;
         }
     }
@@ -408,7 +442,7 @@ public abstract sealed class ComponentFilter permits ComponentFilter.Has, Compon
         /// @param value The component and the value that the value of a holder has to equal.
         ///
         private Exact(TypedDataComponent<?> value) {
-            super(PathReader.Cost.DIRECT);
+            super(PathReader.Cost.DIRECT, 1);
             this.value = value;
         }
     }
@@ -446,7 +480,7 @@ public abstract sealed class ComponentFilter permits ComponentFilter.Has, Compon
         /// @param comparison The comparison that the part has to pass.
         ///
         private Compare(ComponentPath path, Comparison comparison) {
-            super(path.reader().getCost());
+            super(path.reader().getCost(), 1);
             this.path = path;
             this.comparison = comparison;
             
@@ -481,7 +515,7 @@ public abstract sealed class ComponentFilter permits ComponentFilter.Has, Compon
         /// @param predicate The predicate that a holder has to match.
         ///
         private Matching(DataComponentPredicate.Type<?> type, DataComponentPredicate predicate) {
-            super(PathReader.Cost.ENCODE);
+            super(PathReader.Cost.ENCODE, 1);
             this.type = type;
             this.predicate = predicate;
         }
@@ -514,7 +548,7 @@ public abstract sealed class ComponentFilter permits ComponentFilter.Has, Compon
         /// @param filters The filters that a holder has to pass, in the order they were given.
         ///
         private AllOf(@Unmodifiable List<ComponentFilter> filters) {
-            super(ComponentFilter.highestCost(filters));
+            super(ComponentFilter.highestCost(filters), ComponentFilter.totalReads(filters));
             this.filters = filters;
             
             this.ordered = ComponentFilter.cheapestFirst(filters);
@@ -557,7 +591,7 @@ public abstract sealed class ComponentFilter permits ComponentFilter.Has, Compon
         /// @param filters The filters that a holder has to pass one of, in the order they were given.
         ///
         private AnyOf(@Unmodifiable List<ComponentFilter> filters) {
-            super(ComponentFilter.highestCost(filters));
+            super(ComponentFilter.highestCost(filters), ComponentFilter.totalReads(filters));
             this.filters = filters;
             
             this.ordered = ComponentFilter.cheapestFirst(filters);
@@ -592,7 +626,7 @@ public abstract sealed class ComponentFilter permits ComponentFilter.Has, Compon
         /// @param filter The inner filter that a holder has to fail.
         ///
         private Not(ComponentFilter filter) {
-            super(filter.cost);
+            super(filter.cost, filter.reads);
             this.filter = filter;
         }
     }

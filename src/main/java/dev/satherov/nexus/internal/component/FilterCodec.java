@@ -549,6 +549,7 @@ public final class FilterCodec extends Traversal<ComponentFilter, Access.Registr
                 .findFirst()
                 .orElseThrow(() -> CodecErrors.mismatch("an object with one of the keys " + FilterCodec.CASE_KEYS, input));
         
+        //noinspection SlowListContainsAll A case has at most three keys, and only a decoded filter reaches this.
         if (!operations.isStrict() || kind.keys.containsAll(keys)) {
             return this.readCase(operations, input, kind);
         }

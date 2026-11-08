@@ -2,6 +2,8 @@ package dev.satherov.nexus.api.component;
 
 import dev.satherov.nexus.api.event.component.RegisterPathReadersEvent;
 
+import net.minecraft.core.component.DataComponentGetter;
+
 import java.util.function.Predicate;
 
 ///
@@ -19,10 +21,14 @@ public interface PathReader<VALUE> {
     ///
     /// The cost of one read.
     ///
-    /// The tests of sibling paths run from the cheapest reader up, and the result of an [Cost#ENCODE] read is reused.
+    /// Sibling paths are tested from the cheapest reader up.
     /// A reader made of parts costs what its most expensive part costs, and a `[*]` step costs at least [Cost#SCAN].
     ///
+    /// The number of reads in a filter and their costs decide if a test of the filter can return a stored result.
+    ///
     /// @return The cost of one read.
+    ///
+    /// @see ComponentFilter#test(DataComponentGetter)
     ///
     Cost getCost();
     

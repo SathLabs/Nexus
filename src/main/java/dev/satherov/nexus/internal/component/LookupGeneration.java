@@ -3,14 +3,14 @@ package dev.satherov.nexus.internal.component;
 import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.Nexus;
+import dev.satherov.nexus.internal.network.client.ClientConnection;
 
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.common.CommonHooks;
+import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.event.TagsUpdatedEvent;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
-import net.minecraft.core.registries.Registries;
 import net.minecraft.server.MinecraftServer;
 
 import org.jetbrains.annotations.ApiStatus;
@@ -74,8 +74,10 @@ public class LookupGeneration {
     ///
     /// Finds the owner of the registries that filters read through right now.
     ///
-    /// The owner is the running server, or the client's lookup of the dimension types if no server is running,
-    /// or [#NO_OWNER] if neither exists.
+    /// The owner is the first of these that exists:
+    /// - The running server.
+    /// - On a client, the registry access of the client's play connection.
+    /// - [#NO_OWNER].
     ///
     /// @return The owner of the registries.
     ///
@@ -85,7 +87,11 @@ public class LookupGeneration {
             return server;
         }
         
-        // The client gets a new registry of dimension types with every connection, while the built-in registries stay the same object.
-        return Objects.requireNonNullElse(CommonHooks.resolveLookup(Registries.DIMENSION_TYPE), LookupGeneration.NO_OWNER);
+        if (!FMLEnvironment.getDist().isClient()) {
+            return LookupGeneration.NO_OWNER;
+        }
+        
+        // The client's registry access is new with every connection, while the built-in registries stay the same object.
+        return Objects.requireNonNullElse(ClientConnection.tryGetRegistryAccess(), LookupGeneration.NO_OWNER);
     }
 }

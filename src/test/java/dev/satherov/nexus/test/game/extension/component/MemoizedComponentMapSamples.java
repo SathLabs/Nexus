@@ -3,11 +3,21 @@ package dev.satherov.nexus.test.game.extension.component;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 
+import dev.satherov.nexus.Nexus;
+import dev.satherov.nexus.api.codec.NexusCodec;
+import dev.satherov.nexus.api.component.Comparison;
 import dev.satherov.nexus.api.component.ComponentFilter;
+import dev.satherov.nexus.api.component.ComponentPath;
+import dev.satherov.nexus.api.component.PathReader;
+import dev.satherov.nexus.api.event.component.RegisterPathReadersEvent;
+import dev.satherov.nexus.api.registry.component.DataComponentEntry;
 import dev.satherov.nexus.extension.component.MemoizedComponentMap;
 import dev.satherov.nexus.gametest.api.server.ServerTest;
 import dev.satherov.nexus.internal.component.LookupGeneration;
 
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.fml.event.lifecycle.FMLConstructModEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.TagsUpdatedEvent;
 
@@ -18,14 +28,21 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.component.PatchedDataComponentMap;
 import net.minecraft.core.component.TypedDataComponent;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+
+import org.jspecify.annotations.Nullable;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 ///
-/// Checks the result of a costly filter that a patched data component map stores.
+/// Checks the result of a filter that a patched data component map stores.
 ///
 public class MemoizedComponentMapSamples {
     
@@ -33,6 +50,15 @@ public class MemoizedComponentMapSamples {
     private static final ComponentFilter NAMED = ComponentFilter.has(DataComponents.CUSTOM_NAME);
     private static final BiPredicate<ComponentFilter, DataComponentGetter> HAS_DAMAGE = (_, holder) -> holder.has(DataComponents.DAMAGE);
     private static final BiPredicate<ComponentFilter, DataComponentGetter> IS_DAMAGED_FILTER = (filter, _) -> filter == MemoizedComponentMapSamples.DAMAGED;
+    private static final Comparison AT_LEAST_ZERO = new Comparison(Comparison.Operator.GREATER_OR_EQUAL, new Comparison.Literal.Numeric(0.0D));
+    private static final Comparison AT_MOST_TEN = new Comparison(Comparison.Operator.LESS_OR_EQUAL, new Comparison.Literal.Numeric(10.0D));
+    private static final Map<String, PathReader<Integer>> READERS = Map.of(
+            "direct", new CountingReader(PathReader.Cost.DIRECT),
+            "scan", new CountingReader(PathReader.Cost.SCAN)
+    );
+    
+    private static @Nullable DataComponentEntry<Integer> level;
+    private static int reads;
     
     @ServerTest
     public static void everyWriteDropsTheStoredResult(GameTestHelper helper) {
@@ -148,6 +174,30 @@ public class MemoizedComponentMapSamples {
         helper.succeed();
     }
     
+    @ServerTest
+    public static void resultOfTwoDirectReadsIsStored(GameTestHelper helper) {
+        ComponentFilter atLeastZero = MemoizedComponentMapSamples.compare("direct", MemoizedComponentMapSamples.AT_LEAST_ZERO);
+        ComponentFilter atMostTen = MemoizedComponentMapSamples.compare("direct", MemoizedComponentMapSamples.AT_MOST_TEN);
+        MemoizedComponentMapSamples.assertReadsOfTheThirdTest(helper, "all-of", atLeastZero.and(atMostTen), 0);
+        MemoizedComponentMapSamples.assertReadsOfTheThirdTest(helper, "any-of", atLeastZero.or(atMostTen), 0);
+        helper.succeed();
+    }
+    
+    @ServerTest
+    public static void resultOfOneDirectReadIsNeverStored(GameTestHelper helper) {
+        ComponentFilter atLeastZero = MemoizedComponentMapSamples.compare("direct", MemoizedComponentMapSamples.AT_LEAST_ZERO);
+        MemoizedComponentMapSamples.assertReadsOfTheThirdTest(helper, "compare", atLeastZero, 1);
+        MemoizedComponentMapSamples.assertReadsOfTheThirdTest(helper, "negated compare", atLeastZero.negate(), 1);
+        helper.succeed();
+    }
+    
+    @ServerTest
+    public static void resultOfAScanReadIsStored(GameTestHelper helper) {
+        ComponentFilter atLeastZero = MemoizedComponentMapSamples.compare("scan", MemoizedComponentMapSamples.AT_LEAST_ZERO);
+        MemoizedComponentMapSamples.assertReadsOfTheThirdTest(helper, "compare", atLeastZero, 0);
+        helper.succeed();
+    }
+    
     private static PatchedDataComponentMap undamaged() {
         return new PatchedDataComponentMap(DataComponentMap.EMPTY);
     }
@@ -175,6 +225,25 @@ public class MemoizedComponentMapSamples {
         helper.assertValueEqual(tester.evaluations, 3, "evaluations after the " + write);
     }
     
+    private static DataComponentEntry<Integer> level() {
+        return Objects.requireNonNull(MemoizedComponentMapSamples.level);
+    }
+    
+    private static ComponentFilter compare(String reader, Comparison comparison) {
+        return ComponentFilter.compare(MemoizedComponentMapSamples.level().path(reader), comparison);
+    }
+    
+    private static void assertReadsOfTheThirdTest(GameTestHelper helper, String kind, ComponentFilter filter, int expected) {
+        ItemStack stack = new ItemStack(Items.STICK);
+        MemoizedComponentMapSamples.level().set(stack, 3);
+        boolean first = filter.test(stack);
+        helper.assertValueEqual(filter.test(stack), first, "result of the second test of the " + kind);
+        
+        int before = MemoizedComponentMapSamples.reads;
+        helper.assertValueEqual(filter.test(stack), first, "result of the third test of the " + kind);
+        helper.assertValueEqual(MemoizedComponentMapSamples.reads - before, expected, "reads of the third test of the " + kind);
+    }
+    
     @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
     private static final class CountingTester {
         
@@ -193,6 +262,44 @@ public class MemoizedComponentMapSamples {
         private boolean evaluate(ComponentFilter filter, DataComponentGetter holder) {
             this.evaluations++;
             return this.evaluation.test(filter, holder);
+        }
+    }
+    
+    private record CountingReader(PathReader.Cost cost) implements PathReader<Integer> {
+        
+        @Override
+        public PathReader.Cost getCost() {
+            return this.cost;
+        }
+        
+        @Override
+        public boolean isOrdered() {
+            return true;
+        }
+        
+        @Override
+        public Predicate<Integer> bind(Comparison comparison) {
+            return value -> {
+                MemoizedComponentMapSamples.reads++;
+                return comparison.test(value.doubleValue());
+            };
+        }
+    }
+    
+    @EventBusSubscriber(modid = Nexus.MOD_ID)
+    public static final class Registered {
+        
+        @SubscribeEvent
+        public static void onConstruct(FMLConstructModEvent event) {
+            MemoizedComponentMapSamples.level = Nexus.getMod().getRegistrations().component("memoized_component_map_samples_level", NexusCodec.INT).register();
+        }
+        
+        @SubscribeEvent
+        public static void onRegisterPathReaders(RegisterPathReadersEvent event) {
+            event.register(
+                    MemoizedComponentMapSamples.level().value(),
+                    steps -> steps.size() == 1 && steps.getFirst() instanceof ComponentPath.Step.Key(String name) ? MemoizedComponentMapSamples.READERS.get(name) : null
+            );
         }
     }
 }

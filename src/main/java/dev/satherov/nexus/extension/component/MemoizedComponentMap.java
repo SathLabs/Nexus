@@ -11,7 +11,7 @@ import org.jetbrains.annotations.ApiStatus;
 import java.util.function.BiPredicate;
 
 ///
-/// Extension interface for [PatchedDataComponentMap] that stores the result of one costly filter.
+/// Extension interface for [PatchedDataComponentMap] that stores the result of one filter at a time.
 ///
 /// The interface isn't declared in `interfaces.json` and can only be reached by casting a patched data component map to it.
 /// A copy of the map starts without a stored result.

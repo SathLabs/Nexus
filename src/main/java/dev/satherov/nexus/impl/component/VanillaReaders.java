@@ -197,7 +197,10 @@ public class VanillaReaders {
     ///
     /// Registers every reader of this class to the given event.
     ///
-    /// The reader of custom data is registered for [CustomData#CODEC], so it reads every component with that codec.
+    /// The following readers are registered for a codec, so each one reads every component built on that codec:
+    /// - [ItemContainerContents#CODEC]: The reader of container contents.
+    /// - [BundleContents#CODEC]: The reader of bundle contents.
+    /// - [CustomData#CODEC]: The reader of custom data.
     ///
     /// Should only ever be called from [PathReaders#collect()].
     ///
@@ -211,8 +214,8 @@ public class VanillaReaders {
         event.register(DataComponents.ITEM_NAME, VanillaReaders::name);
         event.register(DataComponents.POTION_CONTENTS, steps -> steps.equals(List.of(new ComponentPath.Step.Key("potion"))) ? PotionId.INSTANCE : null);
         event.register(DataComponents.ATTRIBUTE_MODIFIERS, VanillaReaders::attributes);
-        event.register(DataComponents.CONTAINER, VanillaReaders::container);
-        event.register(DataComponents.BUNDLE_CONTENTS, VanillaReaders::bundle);
+        event.register(ItemContainerContents.CODEC, VanillaReaders::container);
+        event.register(BundleContents.CODEC, VanillaReaders::bundle);
         event.register(CustomData.CODEC, steps -> new CustomDataTag(new TagReader(steps)));
     }
     

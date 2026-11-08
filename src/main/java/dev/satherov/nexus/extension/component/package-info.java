@@ -1,7 +1,7 @@
 ///
 /// The extension interfaces of data component types and patched data component maps.
 /// - [ComponentTypeCodec]: The codec that a data component type was built with.
-/// - [MemoizedComponentMap]: The stored result of one costly filter on a patched data component map.
+/// - [MemoizedComponentMap]: The stored result of one filter on a patched data component map.
 ///
 @NullMarked
 @CheckReturnValue
