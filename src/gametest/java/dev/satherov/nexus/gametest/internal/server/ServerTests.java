@@ -63,7 +63,7 @@ public class ServerTests {
     }
     
     ///
-    /// Registers the function of every selected test, and the baseline if the run has one.
+    /// Registers the function of every selected test and the baseline if the run has one.
     ///
     /// @param event The registry event that the functions are registered with.
     ///

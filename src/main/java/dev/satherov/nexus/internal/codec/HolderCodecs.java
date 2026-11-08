@@ -282,7 +282,7 @@ public class HolderCodecs {
         private static final int TAG = 0;
         
         ///
-        /// The key of the type of a custom set in JSON and NBT.
+        /// The key of a custom set's type in JSON and NBT.
         ///
         private static final String TYPE_KEY = "type";
         

@@ -189,7 +189,7 @@ public final class ComponentPath {
     }
     
     ///
-    /// A step of a path.
+    /// A step in a path.
     ///
     public sealed interface Step {
         
@@ -205,7 +205,7 @@ public final class ComponentPath {
         ///
         /// An index of a list.
         ///
-        /// @param index The index, starting at `0`.
+        /// @param index The zero-based index in the list.
         ///
         record Index(int index) implements Step {
             

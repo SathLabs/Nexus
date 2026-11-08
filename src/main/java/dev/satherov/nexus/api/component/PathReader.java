@@ -5,7 +5,7 @@ import dev.satherov.nexus.api.event.component.RegisterPathReadersEvent;
 import java.util.function.Predicate;
 
 ///
-/// A reader that tests the part at one path in the values of one component without encoding the value.
+/// A reader that tests the part at one path in a component value without encoding the value.
 ///
 /// A reader should pass exactly the values that pass when the part at the path is encoded to NBT with its codec and the tag is tested with the comparison.
 /// The reader should ignore it if another part of the value fails to encode.

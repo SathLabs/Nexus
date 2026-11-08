@@ -349,7 +349,7 @@ public class VanillaAdapters {
     }
     
     ///
-    /// Creates a stream codec that runs the given codec on the netty format of the buffer, and throws a failure the way vanilla's stream codecs do.
+    /// Creates a stream codec that runs the given codec on the netty format of the buffer and throws a failure the way vanilla's stream codecs do.
     ///
     private static <T, A extends Access.Plain, B extends FriendlyByteBuf> StreamCodec<B, T> streamOf(NexusCodec<T, A> codec, Function<B, BufferFormat<B, ? extends A>> formatOf) {
         return new StreamCodec<>() {
@@ -455,7 +455,7 @@ public class VanillaAdapters {
         }
         
         ///
-        /// Appends the value with the stream codec on the network, and encodes it with the DFU codec otherwise.
+        /// Appends the value with the stream codec on the network and encodes it with the DFU codec otherwise.
         ///
         @Override
         public <V> V write(Operations<V> operations, T value) {
@@ -474,7 +474,7 @@ public class VanillaAdapters {
         }
         
         ///
-        /// Reads a value with the stream codec on the network, and decodes it with the DFU codec otherwise.
+        /// Reads a value with the stream codec on the network and decodes it with the DFU codec otherwise.
         ///
         @Override
         public <V> T read(Operations<V> operations, V input) {
@@ -490,7 +490,7 @@ public class VanillaAdapters {
         }
         
         ///
-        /// Gets the DFU codec, and fails if this codec only runs on the network.
+        /// Gets the DFU codec or fails if this codec only runs on the network.
         ///
         private Codec<T> dfu() {
             Codec<T> dfu = this.codec;
@@ -684,7 +684,7 @@ public class VanillaAdapters {
     private record SyntheticFields(Field ofEncoder, Field comapEncoder, Field comapFunction, Field flatComapEncoder, Field flatComapFunction) {
         
         ///
-        /// Finds the fields on the classes of an `xmap` and a `validate` codec built for it, or returns `null` if DFU doesn't have them or they could not be made accessible.
+        /// Finds the fields on the classes of an `xmap` and a `validate` codec built for it, or returns `null` if the fields are missing from DFU or could not be made accessible.
         ///
         private static @Nullable SyntheticFields find() {
             Codec<Integer> mapped = Codec.INT.xmap(Function.identity(), Function.identity());
@@ -859,7 +859,7 @@ public class VanillaAdapters {
     ///
     /// The reader of a key in the maps of a DFU map codec whose keys are strings or identifiers.
     ///
-    /// @param key     The key that encodes to the name of the step, or `null` if no key does.
+    /// @param key     The key encoded as the name of the step, or `null` if none exists.
     /// @param element The reader of the steps after the key in the value.
     /// @param <K>     The type of the keys.
     /// @param <V>     The type of the values.

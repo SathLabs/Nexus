@@ -70,7 +70,7 @@ public class Combinators {
             }
             
             ///
-            /// Reads the side its boolean picks on the network, and tries the left codec and then the right otherwise.
+            /// Reads the side its boolean picks on the network and tries the left codec and then the right otherwise.
             ///
             @Override
             public <V> Either<L, R> read(Operations<V> operations, V input) {
@@ -545,7 +545,9 @@ public class Combinators {
         }
         
         ///
-        /// Reads the identifier under the key and then the fields of its subtype, and on a strict format refuses the keys that neither has.
+        /// Reads the identifier under the key and then the fields of its subtype.
+        ///
+        /// If the format is strict, the keys that neither has will be refused.
         ///
         @Override
         public <V> T readFields(Operations<V> operations, V object, @Nullable Set<String> present) {

@@ -20,7 +20,7 @@ import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
 ///
-/// An entry of one data component type that a [DataComponentBuilder] registered.
+/// An entry of one [DataComponentType] that a [DataComponentBuilder] registered.
 ///
 /// @param <VALUE> The type of the values of the component.
 ///

@@ -685,7 +685,7 @@ public class VanillaTypes {
         }
         
         ///
-        /// Gets the identifier of the given component type as a string, and fails if the type isn't registered.
+        /// Gets the identifier of the given component type as a string or fails if the type isn't registered.
         ///
         private static String keyOf(DataComponentType<?> type) {
             Identifier id = BuiltInRegistries.DATA_COMPONENT_TYPE.getKey(type);
@@ -746,7 +746,7 @@ public class VanillaTypes {
     private abstract static class StackCodec<S extends TypedInstance<T>, T> extends Structs.Inlinable<S, Access.Registries> {
         
         ///
-        /// The key of the identifier of the type of a stack.
+        /// The key of the identifier of a stack's type.
         ///
         private static final String ID = "id";
         
@@ -761,7 +761,7 @@ public class VanillaTypes {
         private final DefaultedRegistry<T> registry;
         
         ///
-        /// The codec of the type of a stack on the network, which is its id in the synced registry.
+        /// The codec of a stack's type on the network, which is its id in the synced registry.
         ///
         private final Traversal<Holder<T>, Access.Registries> holder;
         

@@ -21,7 +21,7 @@ import java.util.function.Function;
 ///
 /// An event in which mods register the readers of component paths.
 ///
-/// Posted once on the mod bus when the registries freeze, in every launch, data generation included.
+/// Posted once on the mod bus when the registries freeze, in data generation as well.
 ///
 /// The functions registered by component are asked before the functions registered by codec, each in the order they were registered.
 /// Asking stops at the first function that returns a reader.
@@ -42,7 +42,7 @@ public final class RegisterPathReadersEvent extends Event implements IModBusEven
     ///
     /// Should only ever be called by Nexus itself.
     ///
-    /// @param componentReaders The functions registered by component, which this event adds to.
+    /// @param componentReaders The functions registered per component, which this event adds to.
     /// @param codecReaders     The functions registered by codec, which this event adds to.
     ///
     @ApiStatus.Internal
