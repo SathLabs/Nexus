@@ -15,6 +15,7 @@ import net.neoforged.neoforge.network.handling.IPayloadHandler;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 
 import org.jetbrains.annotations.ApiStatus;
@@ -73,6 +74,16 @@ public class ClientConnection {
     ///
     public static @Nullable ICommonPacketListener tryGetListener() {
         return Minecraft.getInstance().getConnection();
+    }
+    
+    ///
+    /// The registries of the client's play connection, or `null` if the client has no play connection open.
+    ///
+    /// @return The registry access of the connection, or `null` if there is none.
+    ///
+    public static @Nullable RegistryAccess tryGetRegistryAccess() {
+        ClientPacketListener connection = Minecraft.getInstance().getConnection();
+        return connection != null ? connection.registryAccess() : null;
     }
     
     ///

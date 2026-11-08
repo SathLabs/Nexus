@@ -17,6 +17,7 @@ import net.neoforged.neoforge.server.ServerLifecycleHooks;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.HolderOwner;
 import net.minecraft.core.Registry;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.RegistryOps;
@@ -88,7 +89,7 @@ public class Encoding {
     /// Gets the registries of the current side and creates new ones only if their source changed.
     ///
     private static SideRegistries current() {
-        Object source = Encoding.sourceOfRegistries();
+        RegistryAccess source = Encoding.sourceOfRegistries();
         if (source == null) {
             return Encoding.UNCONNECTED;
         }
@@ -103,9 +104,10 @@ public class Encoding {
     }
     
     ///
-    /// Gets the registry access of the running server, or the listener of the client's play connection if no server is running, or `null` if neither exists.
+    /// Gets the registry access of the running server, or the registry access of the client's play connection if no server is running,
+    /// or `null` if neither exists.
     ///
-    private static @Nullable Object sourceOfRegistries() {
+    private static @Nullable RegistryAccess sourceOfRegistries() {
         MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
         if (server != null) {
             return server.registryAccess();
@@ -115,7 +117,7 @@ public class Encoding {
             return null;
         }
         
-        return ClientConnection.tryGetListener();
+        return ClientConnection.tryGetRegistryAccess();
     }
     
     ///
@@ -125,11 +127,11 @@ public class Encoding {
     private static final class SideRegistries implements RegistryOps.RegistryInfoLookup {
         
         ///
-        /// The registry access of the running server or the listener of the client's play connection, or `null` if neither exists.
+        /// The registry access of the running server or of the client's play connection, or `null` if neither exists.
         ///
-        /// Both keep the same registries for as long as they exist.
+        /// The registry access keeps the same registries for as long as it exists.
         ///
-        private final @Nullable Object source;
+        private final @Nullable RegistryAccess source;
         
         ///
         /// The registries found so far, by their resource key.
