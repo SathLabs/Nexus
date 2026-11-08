@@ -10,7 +10,7 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import org.jspecify.annotations.Nullable;
 
 ///
-/// Test methods for the discovery tests, where every one that fails in its run is optional.
+/// Test methods for the discovery tests, where each one that fails in its run is optional.
 ///
 public class DiscoverySamples {
     
@@ -25,7 +25,12 @@ public class DiscoverySamples {
     public static void optional(GameTestHelper helper) {
         helper.succeed();
     }
-    
+
+    @ServerTest(explicit = true)
+    public static void explicit(GameTestHelper helper) {
+        helper.succeed();
+    }
+
     @ServerTest
     @Measured(5)
     public static void measured(GameTestHelper helper) { }

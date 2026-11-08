@@ -94,7 +94,7 @@ public class ServerTests {
         return switch (test) {
             case Discovered.Valid valid when ServerTests.isMeasured(valid) -> new TickWindow(valid, ServerTests.MEASUREMENTS.get());
             case Discovered.Valid valid -> valid::invoke;
-            case Discovered.Invalid(_, String reason, _) -> helper -> helper.fail(reason);
+            case Discovered.Invalid(_, String reason, _, _) -> helper -> helper.fail(reason);
         };
     }
     
@@ -196,7 +196,7 @@ public class ServerTests {
         RunOptions options = RunOptions.fromProperties();
         return Discovered.all(ServerTest.class)
                 .stream()
-                .filter(test -> options.selects(test.id()))
+                .filter(test -> options.selects(test.id(), test.explicit()))
                 .toList();
     }
     

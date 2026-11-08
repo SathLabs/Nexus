@@ -65,6 +65,17 @@ public class RunReportTest {
 
     @EnumSource
     @ParameterizedTest
+    @DisabledIfSystemProperty(named = RunReportTest.SELECTOR_PROPERTY, matches = ".*")
+    public void leavesOutEveryExplicitCase(Run run) throws IOException, ParserConfigurationException, SAXException {
+        Assertions.assertThat(run.readCases())
+                .extracting(Case::id)
+                .filteredOn(run.explicit::contains)
+                .as("Explicit cases in a run without a selector")
+                .isEmpty();
+    }
+
+    @EnumSource
+    @ParameterizedTest
     public void endsEveryReportedCaseAsExpected(Run run) throws IOException, ParserConfigurationException, SAXException {
         for (Case reported : run.readCases()) {
             Expected expected = run.cases.get(reported.id());
@@ -311,7 +322,19 @@ public class RunReportTest {
                         Map.entry("nexus:vanilla_readers_samples/container_slots_match_the_encoding", Expected.passed()),
                         Map.entry("nexus:vanilla_readers_samples/bundle_items_match_the_encoding", Expected.passed()),
                         Map.entry("nexus:vanilla_readers_samples/enchantments_of_another_registry_set_read_as_absent", Expected.passed()),
+                        Map.entry("nexus:scenario_samples/farm_rules_agree_with_their_direct_reads", Expected.passed()),
+                        Map.entry("nexus:scenario_samples/storage_rules_agree_with_their_direct_reads", Expected.passed()),
+                        Map.entry("nexus:scenario_samples/modded_loot_rules_agree_with_their_direct_reads", Expected.passed()),
+                        Map.entry("nexus:scenario_samples/apotheosis_rules_agree_with_their_direct_reads", Expected.passed()),
                         Map.entry("nexus_gametest:baseline", Expected.passed())
+                ),
+                List.of(
+                        "nexus:discovery_samples/explicit",
+                        "nexus:component_filter_speed_samples/times_farm_rules",
+                        "nexus:component_filter_speed_samples/times_storage_rules",
+                        "nexus:component_filter_speed_samples/times_modded_loot_rules",
+                        "nexus:component_filter_speed_samples/times_apotheosis_rules",
+                        "nexus:component_filter_speed_samples/times_item_resources"
                 ),
                 List.of(
                         Measurement.of("nexus/discovery_samples/measured", 5),
@@ -436,6 +459,7 @@ public class RunReportTest {
                         Map.entry("nexus:encoding_samples/holder_of_the_client_level_encodes_on_the_client_thread", Expected.passed()),
                         Map.entry("nexus:encoding_samples/owner_outside_a_world_is_the_built_in_registry", Expected.passed())
                 ),
+                List.of(),
                 List.of(
                         Measurement.of("nexus/client_run_samples/window", 40),
                         Measurement.profiled("nexus/client_run_samples/profiled_window", 3),
@@ -446,6 +470,7 @@ public class RunReportTest {
         CLIENT_SHADERS(
                 "client-shaders",
                 Run.replaced(Run.CLIENT.cases, "nexus:glows_samples/block_glow_keeps_its_color_under_the_pack", Expected.skipped("the red pixels around the block")),
+                Run.CLIENT.explicit,
                 Run.CLIENT.measurements,
                 Run.CLIENT.unmeasured
         );
@@ -455,6 +480,9 @@ public class RunReportTest {
 
         // Every case the run should report, by its identifier.
         private final Map<String, Expected> cases;
+
+        // The explicit cases the run should not report, by their identifier.
+        private final List<String> explicit;
 
         // The measurement files the run should write, by their path without the extension.
         private final List<Measurement> measurements;

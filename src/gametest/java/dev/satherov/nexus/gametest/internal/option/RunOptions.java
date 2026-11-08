@@ -14,7 +14,7 @@ import java.util.Objects;
 ///
 /// The system properties that configure a run.
 ///
-/// @param tests      All selected test identifiers to run, or `null` to run all tests.
+/// @param tests      All selected test identifiers to run, or `null` to run every test that isn't explicit.
 /// @param realtime   If the ticks / frames should run as fast as the computer can or at minecraft's regular rates.
 /// @param show       If the client window is visible.
 /// @param compare    The directory of an earlier run's measurement files, or `null` if we don't want to compare anything.
@@ -112,13 +112,17 @@ public record RunOptions(
     }
     
     ///
-    /// If the given identifier matches any of the configured selectors.
+    /// If the run selects the test with the given identifier.
     ///
-    /// @param id The identifier of the test.
+    /// If the run has no selector, it selects every test that isn't explicit.
+    /// If it has one, it selects every test whose identifier matches it.
     ///
-    /// @return `true` if the given identifier matches any of the configured selectors.
+    /// @param id       The identifier of the test.
+    /// @param explicit If the test runs only in a run whose selector matches it.
     ///
-    public boolean selects(Identifier id) {
-        return this.tests == null || FilenameUtils.wildcardMatch(id.toString(), this.tests);
+    /// @return `true` if the run selects the test.
+    ///
+    public boolean selects(Identifier id, boolean explicit) {
+        return ObjectMapping.mapToBooleanOrElse(this.tests, selector -> FilenameUtils.wildcardMatch(id.toString(), selector), !explicit);
     }
 }

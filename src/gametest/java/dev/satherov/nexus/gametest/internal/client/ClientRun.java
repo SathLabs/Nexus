@@ -247,7 +247,7 @@ public class ClientRun {
         try {
             switch (test) {
                 case Discovered.Valid valid -> ClientRun.invoke(valid, minecraft, pump);
-                case Discovered.Invalid(_, String reason, _) -> throw new AssertionError(reason);
+                case Discovered.Invalid(_, String reason, _, _) -> throw new AssertionError(reason);
             }
         } catch (Throwable failure) {
             report.failed(test.id(), ClientRun.millis(started), failure, test.required());
@@ -380,7 +380,7 @@ public class ClientRun {
         RunOptions options = RunOptions.fromProperties();
         return Discovered.all(ClientTest.class)
                 .stream()
-                .filter(test -> options.selects(test.id()))
+                .filter(test -> options.selects(test.id(), test.explicit()))
                 .toList();
     }
     

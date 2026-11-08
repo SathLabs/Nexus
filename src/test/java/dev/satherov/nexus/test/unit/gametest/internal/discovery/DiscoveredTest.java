@@ -64,7 +64,7 @@ public class DiscoveredTest {
     @ParameterizedTest
     @MethodSource("serverViolations")
     public void reportsTheViolationOfAServerTest(Identifier id, String violation) {
-        Assertions.assertThat(DiscoveredTest.SERVER.get(id)).isEqualTo(new Discovered.Invalid(id, violation, false));
+        Assertions.assertThat(DiscoveredTest.SERVER.get(id)).isEqualTo(new Discovered.Invalid(id, violation, false, false));
     }
     
     private static Stream<Arguments> serverViolations() {
@@ -88,7 +88,7 @@ public class DiscoveredTest {
     @ParameterizedTest
     @MethodSource("clientViolations")
     public void reportsTheViolationOfAClientTest(Identifier id, String violation) {
-        Assertions.assertThat(DiscoveredTest.CLIENT.get(id)).isEqualTo(new Discovered.Invalid(id, violation, false));
+        Assertions.assertThat(DiscoveredTest.CLIENT.get(id)).isEqualTo(new Discovered.Invalid(id, violation, false, false));
     }
     
     private static Stream<Arguments> clientViolations() {
@@ -108,7 +108,13 @@ public class DiscoveredTest {
         Assertions.assertThat(DiscoveredTest.SERVER.get(DiscoveredTest.sample("meets_constraints"))).isInstanceOfSatisfying(Discovered.Valid.class, valid -> Assertions.assertThat(valid.required()).isTrue());
         Assertions.assertThat(DiscoveredTest.SERVER.get(DiscoveredTest.sample("optional"))).isInstanceOfSatisfying(Discovered.Valid.class, valid -> Assertions.assertThat(valid.required()).isFalse());
     }
-    
+
+    @Test
+    public void readsExplicitFromTheAnnotation() {
+        Assertions.assertThat(DiscoveredTest.SERVER.get(DiscoveredTest.sample("explicit"))).isInstanceOfSatisfying(Discovered.Valid.class, valid -> Assertions.assertThat(valid.explicit()).isTrue());
+        Assertions.assertThat(DiscoveredTest.SERVER.get(DiscoveredTest.sample("meets_constraints"))).isInstanceOfSatisfying(Discovered.Valid.class, valid -> Assertions.assertThat(valid.explicit()).isFalse());
+    }
+
     @Test
     public void invokePassesTheParameterAndRethrowsTheTestsOwnException() throws NoSuchMethodException {
         Method method = DiscoverySamples.class.getMethod("throwsItsOwnException", GameTestHelper.class);
