@@ -6,6 +6,7 @@ import dev.satherov.nexus.api.component.ComponentPath;
 import dev.satherov.nexus.api.component.PathReader;
 import dev.satherov.nexus.api.event.component.RegisterPathReadersEvent;
 import dev.satherov.nexus.extension.component.ComponentTypeCodec;
+import dev.satherov.nexus.impl.component.VanillaReaders;
 import dev.satherov.nexus.internal.codec.Traversal;
 import dev.satherov.nexus.internal.codec.vanilla.VanillaAdapters;
 import dev.satherov.nexus.mixin.component.GameDataMixin;
@@ -61,14 +62,18 @@ public class PathReaders {
     }
     
     ///
-    /// Posts the event and then freezes the registrations.
+    /// Posts the [RegisterPathReadersEvent], registers Nexus's own readers to it, and then freezes the registrations.
+    ///
+    /// Nexus's own readers are registered after the event, so a reader that a mod registers for the same path is tried first.
     ///
     /// @see GameDataMixin
     ///
     public static void collect() {
         Map<DataComponentType<?>, List<Function<List<ComponentPath.Step>, ? extends @Nullable PathReader<?>>>> byComponent = new IdentityHashMap<>();
         Map<Codec<?>, List<Function<List<ComponentPath.Step>, ? extends @Nullable PathReader<?>>>> byCodec = new IdentityHashMap<>();
-        ModLoader.postEvent(new RegisterPathReadersEvent(byComponent, byCodec));
+        RegisterPathReadersEvent event = new RegisterPathReadersEvent(byComponent, byCodec);
+        ModLoader.postEvent(event);
+        VanillaReaders.register(event);
         PathReaders.componentReaders = PathReaders.freeze(byComponent);
         PathReaders.codecReaders = PathReaders.freeze(byCodec);
         PathReaders.collected = true;

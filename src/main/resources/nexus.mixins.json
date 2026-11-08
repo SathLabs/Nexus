@@ -4,7 +4,10 @@
   "compatibilityLevel": "JAVA_25",
   "mixins": [
     "component.DataComponentTypeBuilderMixin",
+    "component.FluidResourceAccess",
     "component.GameDataMixin",
+    "component.ItemResourceAccess",
+    "extension.component.PatchedDataComponentMapMixin",
     "extension.component.SimpleTypeMixin",
     "tick.BlockEntityMixin",
     "tick.LevelMixin"

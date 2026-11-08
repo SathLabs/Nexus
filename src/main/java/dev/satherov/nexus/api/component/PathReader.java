@@ -39,7 +39,7 @@ public interface PathReader<VALUE> {
     /// Creates the test of a present component value against the given comparison.
     ///
     /// Called once per comparison, when the filter is built.
-    /// The test should not allocate anything and should fail if the value has nothing at the path.
+    /// The test allocates nothing where the reader's cost is DIRECT and fails where the path is absent.
     ///
     /// @param comparison The comparison of the part at the path.
     ///

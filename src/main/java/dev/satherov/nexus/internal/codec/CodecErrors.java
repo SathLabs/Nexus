@@ -6,10 +6,12 @@ import dev.satherov.nexus.api.codec.result.CodecError;
 import dev.satherov.nexus.api.codec.result.NexusCodecException;
 import dev.satherov.nexus.api.component.ComponentPath;
 
+import net.minecraft.core.Registry;
 import net.minecraft.nbt.CollectionTag;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NumericTag;
 import net.minecraft.nbt.StringTag;
+import net.minecraft.resources.ResourceKey;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -21,6 +23,7 @@ import org.jspecify.annotations.Nullable;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 ///
@@ -80,6 +83,62 @@ public class CodecErrors {
     }
     
     ///
+    /// Creates a failure for an identifier or a network id that the given registry doesn't have.
+    ///
+    /// @param registry The key of the registry.
+    /// @param found    The identifier or the network id found instead.
+    ///
+    /// @return The failure, with one error at an empty path.
+    ///
+    public static NexusCodecException unknownElement(ResourceKey<? extends Registry<?>> registry, Object found) {
+        return CodecErrors.mismatch("an element of the registry '" + registry.identifier() + "'", found);
+    }
+    
+    ///
+    /// Creates a failure for a value to encode that isn't registered in the given registry.
+    ///
+    /// @param registry The key of the registry.
+    ///
+    /// @return The failure, with one error at an empty path.
+    ///
+    public static NexusCodecException unregistered(ResourceKey<? extends Registry<?>> registry) {
+        return new NexusCodecException("Expected an element of the registry '" + registry.identifier() + "', found an unregistered value");
+    }
+    
+    ///
+    /// Creates a failure for a key that an object doesn't have.
+    ///
+    /// @param key The key that is missing.
+    ///
+    /// @return The failure, with one error at the key.
+    ///
+    public static NexusCodecException missing(String key) {
+        return new NexusCodecException(List.of(new CodecError(key, "Missing")));
+    }
+    
+    ///
+    /// Creates the error for a key that a strict format refuses.
+    ///
+    /// @param key The key that the codec doesn't know.
+    ///
+    /// @return The error at the key.
+    ///
+    public static CodecError unknownKey(String key) {
+        return new CodecError(key, "Unknown key");
+    }
+    
+    ///
+    /// Creates a failure with the message of the given exception, which a constructor or a factory threw to refuse a decoded value.
+    ///
+    /// @param failure The exception that refused the value.
+    ///
+    /// @return The failure, with one error at an empty path.
+    ///
+    public static NexusCodecException refused(IllegalArgumentException failure) {
+        return new NexusCodecException(Objects.requireNonNullElse(failure.getMessage(), failure.toString()));
+    }
+    
+    ///
     /// Creates the failure for a step of a component path that no value of a codec can hold.
     ///
     /// @param expected The kind of step that could be read in its place.
@@ -135,7 +194,7 @@ public class CodecErrors {
     }
     
     ///
-    /// Puts the given text between two of the given marks, escaping backslashes, that mark, and control characters.
+    /// Quotes the given text with the given mark and escapes backslashes, the mark, and control characters.
     ///
     private static String quote(String text, char mark) {
         StringBuilder quoted = new StringBuilder().append(mark);
@@ -160,7 +219,7 @@ public class CodecErrors {
     ///
     /// Puts the given key in front of the path of every error of the given failure.
     ///
-    /// @param failure The failure that the value under the key threw.
+    /// @param failure The failure of the value under the key.
     /// @param key     The key of the value.
     ///
     /// @return A new failure holding the prefixed errors.

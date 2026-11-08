@@ -1,5 +1,7 @@
 ///
-/// The readers of component paths, registered by mods or created from the codec of the component.
+/// The readers of component paths, the data and network form of component filters, and the generation of the registries that filters read through.
+///
+/// The vanilla types that test with a component filter are in [dev.satherov.nexus.internal.component.vanilla].
 ///
 @NullMarked
 @CheckReturnValue

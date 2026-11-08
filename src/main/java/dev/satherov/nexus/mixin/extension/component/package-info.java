@@ -1,5 +1,5 @@
 ///
-/// The mixins that implement the extension interfaces of data component types.
+/// The mixins that implement the extension interfaces of data component types and patched data component maps.
 ///
 @NullMarked
 @CheckReturnValue
