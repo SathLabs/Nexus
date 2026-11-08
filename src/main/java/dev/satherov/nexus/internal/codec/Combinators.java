@@ -7,18 +7,24 @@ import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.codec.result.CodecError;
 import dev.satherov.nexus.api.codec.result.NexusCodecException;
 import dev.satherov.nexus.api.codec.struct.StructCodec;
+import dev.satherov.nexus.api.component.Comparison;
+import dev.satherov.nexus.api.component.ComponentPath;
+import dev.satherov.nexus.api.component.PathReader;
 import dev.satherov.nexus.internal.codec.format.Operations;
 import dev.satherov.nexus.internal.codec.struct.Structs;
 
 import net.minecraft.resources.Identifier;
 
 import com.google.common.base.Suppliers;
+import com.google.common.collect.Comparators;
 import com.mojang.datafixers.util.Either;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +32,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -74,6 +81,27 @@ public class Combinators {
                 }
                 
                 return Combinators.readEither(operations, input, first, second);
+            }
+            
+            ///
+            /// Reads the side that the value holds with the reader of its codec.
+            ///
+            /// If neither codec can hold the steps, the failure of the left codec is thrown and the failure of the right one is added to it as suppressed.
+            ///
+            @Override
+            public PathReader<Either<L, R>> reader(List<ComponentPath.Step> steps, int from) {
+                List<IllegalArgumentException> failures = new ArrayList<>();
+                PathReader<L> left = Combinators.branchReader(first, steps, from, failures);
+                PathReader<R> right = Combinators.branchReader(second, steps, from, failures);
+                if (left == null && right == null) {
+                    throw Combinators.refused(failures);
+                }
+                
+                if (left instanceof Traversal.EncodedReader<L> && right instanceof Traversal.EncodedReader<R>) {
+                    return super.reader(steps, from);
+                }
+                
+                return new EitherReader<>(left, right);
             }
         };
     }
@@ -138,6 +166,27 @@ public class Combinators {
     }
     
     ///
+    /// Creates the reader of the given branch, or returns `null` and adds the failure to the given list if the branch can't hold the steps.
+    ///
+    private static <T> @Nullable PathReader<T> branchReader(Traversal<T, ?> branch, List<ComponentPath.Step> steps, int from, List<IllegalArgumentException> failures) {
+        try {
+            return branch.reader(steps, from);
+        } catch (IllegalArgumentException failure) {
+            failures.add(failure);
+            return null;
+        }
+    }
+    
+    ///
+    /// Gets the first of the given failures of the branches, with the others added as suppressed.
+    ///
+    private static IllegalArgumentException refused(List<IllegalArgumentException> failures) {
+        IllegalArgumentException first = failures.getFirst();
+        failures.subList(1, failures.size()).forEach(first::addSuppressed);
+        return first;
+    }
+    
+    ///
     /// Creates the codec behind [StructCodec#orShort(NexusCodec, Function, Function)], which is the `either` of the short form and the struct.
     ///
     /// @param struct    The codec of the struct.
@@ -195,6 +244,11 @@ public class Combinators {
             private final Supplier<Traversal<T, A>> defined = Suppliers.memoize(() -> (Traversal<T, A>) definition.apply(this));
             
             ///
+            /// The indexes of the steps that a reader of this codec is being created for on the current thread.
+            ///
+            private final ThreadLocal<BitSet> building = ThreadLocal.withInitial(BitSet::new);
+            
+            ///
             /// Writes the value with the codec the definition returns.
             ///
             @Override
@@ -208,6 +262,26 @@ public class Combinators {
             @Override
             public <V> T read(Operations<V> operations, V input) {
                 return this.defined.get().read(operations, input);
+            }
+            
+            ///
+            /// Creates the reader of the codec that the definition returns.
+            ///
+            /// If the definition reaches this codec again at the same step, that inner reader reads by encoding instead.
+            ///
+            @Override
+            public PathReader<T> reader(List<ComponentPath.Step> steps, int from) {
+                BitSet building = this.building.get();
+                if (building.get(from)) {
+                    return super.reader(steps, from);
+                }
+                
+                building.set(from);
+                try {
+                    return this.defined.get().reader(steps, from);
+                } finally {
+                    building.clear(from);
+                }
             }
         };
     }
@@ -281,7 +355,7 @@ public class Combinators {
             String name,
             Traversal<S, ? super A> codec,
             Function<? super S, ? extends T> to,
-            Function<? super T, ? extends S> from
+            Function<? super T, ? extends S> back
     ) {
         return new Traversal<>(name) {
             
@@ -290,7 +364,7 @@ public class Combinators {
             ///
             @Override
             public <V> V write(Operations<V> operations, T value) {
-                return codec.write(operations, from.apply(value));
+                return codec.write(operations, back.apply(value));
             }
             
             ///
@@ -299,6 +373,15 @@ public class Combinators {
             @Override
             public <V> T read(Operations<V> operations, V input) {
                 return to.apply(codec.read(operations, input));
+            }
+            
+            ///
+            /// Maps the value back and then reads it with the reader of the codec.
+            ///
+            @Override
+            public PathReader<T> reader(List<ComponentPath.Step> steps, int from) {
+                PathReader<S> mapped = codec.reader(steps, from);
+                return mapped instanceof Traversal.EncodedReader<S> ? super.reader(steps, from) : new MappedReader<>(back, mapped);
             }
         };
     }
@@ -412,6 +495,56 @@ public class Combinators {
         }
         
         ///
+        /// Reads the identifier under the key, or a field of the subtypes with the reader of the subtype that the value picks.
+        ///
+        /// A wildcard reads by encoding the struct, and a reader with no steps left never passes.
+        /// If no subtype can hold the steps, the first failure is thrown and the others are added to it as suppressed.
+        ///
+        @Override
+        public PathReader<T> reader(List<ComponentPath.Step> steps, int from) {
+            if (from == steps.size()) {
+                return new WholeReader<>();
+            }
+            
+            if (steps.get(from) instanceof ComponentPath.Step.Wildcard) {
+                return super.reader(steps, from);
+            }
+            
+            ComponentPath.Step step = steps.get(from);
+            if (!(step instanceof ComponentPath.Step.Key(String name)) || !this.keys.contains(name)) {
+                throw CodecErrors.unknownStep(this.keys, step);
+            }
+            
+            if (name.equals(this.key)) {
+                return new MappedReader<>(this::subtypeId, Scalars.IDENTIFIER.reader(steps, from + 1));
+            }
+            
+            List<IllegalArgumentException> failures = new ArrayList<>();
+            Map<Identifier, PathReader<T>> readers = new HashMap<>();
+            this.subtypes.forEach((id, subtype) -> {
+                PathReader<? extends T> reader = subtype.keys().contains(name) ? Combinators.branchReader(subtype, steps, from, failures) : null;
+                if (reader != null) {
+                    //noinspection unchecked A value is only ever read by the subtype that its own identifier picks.
+                    readers.put(id, (PathReader<T>) reader);
+                }
+            });
+            
+            if (readers.isEmpty()) {
+                throw Combinators.refused(failures);
+            }
+            
+            return new DispatchReader<>(this.keyOf, Map.copyOf(readers));
+        }
+        
+        ///
+        /// Gets the identifier of the subtype of the given value, or `null` if no subtype has it.
+        ///
+        private @Nullable Identifier subtypeId(T value) {
+            Identifier id = this.keyOf.apply(value);
+            return this.subtypes.containsKey(id) ? id : null;
+        }
+        
+        ///
         /// Reads the identifier under the key and then the fields of its subtype, and on a strict format refuses the keys that neither has.
         ///
         @Override
@@ -475,6 +608,169 @@ public class Combinators {
             
             //noinspection unchecked A value is only ever written by the subtype that its own identifier picks.
             return (Structs.Inlinable<T, ? super A>) subtype;
+        }
+    }
+    
+    ///
+    /// A reader of the side that an either holds.
+    ///
+    /// @param left  The reader of the left side, or `null` if its codec can't hold the steps.
+    /// @param right The reader of the right side, or `null` if its codec can't hold the steps.
+    /// @param <L>   The type of the left side.
+    /// @param <R>   The type of the right side.
+    ///
+    private record EitherReader<L, R>(@Nullable PathReader<L> left, @Nullable PathReader<R> right) implements PathReader<Either<L, R>> {
+        
+        ///
+        /// The higher of the costs of the sides.
+        ///
+        @Override
+        public PathReader.Cost getCost() {
+            PathReader.Cost left = this.left != null ? this.left.getCost() : PathReader.Cost.DIRECT;
+            PathReader.Cost right = this.right != null ? this.right.getCost() : PathReader.Cost.DIRECT;
+            return Comparators.max(left, right);
+        }
+        
+        ///
+        /// If the values of either side have an order.
+        ///
+        @Override
+        public boolean isOrdered() {
+            return (this.left != null && this.left.isOrdered()) || (this.right != null && this.right.isOrdered());
+        }
+        
+        ///
+        /// Creates the test of the side that the value holds.
+        ///
+        /// A side without a reader reads as absent.
+        ///
+        @Override
+        public Predicate<Either<L, R>> bind(Comparison comparison) {
+            Function<L, Boolean> left = this.left != null ? this.left.bind(comparison)::test : _ -> false;
+            Function<R, Boolean> right = this.right != null ? this.right.bind(comparison)::test : _ -> false;
+            return value -> value.map(left, right);
+        }
+    }
+    
+    ///
+    /// A reader of a value mapped by a function.
+    ///
+    /// @param mapping The function that maps the value.
+    /// @param mapped  The reader of the mapped value.
+    /// @param <S>     The type of the mapped value.
+    /// @param <T>     The type of the value.
+    ///
+    private record MappedReader<S, T>(Function<? super T, ? extends @Nullable S> mapping, PathReader<S> mapped) implements PathReader<T> {
+        
+        ///
+        /// The cost of the mapped value.
+        ///
+        @Override
+        public PathReader.Cost getCost() {
+            return this.mapped.getCost();
+        }
+        
+        ///
+        /// If the mapped values have an order.
+        ///
+        @Override
+        public boolean isOrdered() {
+            return this.mapped.isOrdered();
+        }
+        
+        ///
+        /// Creates the test of the mapped value.
+        ///
+        /// If the function maps the value to `null` or throws on it, the value reads as absent.
+        ///
+        @Override
+        public Predicate<T> bind(Comparison comparison) {
+            Predicate<S> test = this.mapped.bind(comparison);
+            return value -> {
+                try {
+                    S mapped = this.mapping.apply(value);
+                    return mapped != null && test.test(mapped);
+                } catch (RuntimeException _) {
+                    return false;
+                }
+            };
+        }
+    }
+    
+    ///
+    /// A reader of a struct with subtypes, which reads the value with the reader of the subtype its identifier picks.
+    ///
+    /// @param keyOf   The getter of the identifier of the subtype of a value.
+    /// @param readers The reader of every subtype that can hold the steps, by its identifier.
+    /// @param <T>     The type of the struct.
+    ///
+    private record DispatchReader<T>(Function<? super T, Identifier> keyOf, Map<Identifier, PathReader<T>> readers) implements PathReader<T> {
+        
+        ///
+        /// The highest of the costs of the subtypes.
+        ///
+        @Override
+        public PathReader.Cost getCost() {
+            return this.readers.values().stream().map(PathReader::getCost).reduce(PathReader.Cost.DIRECT, Comparators::max);
+        }
+        
+        ///
+        /// If the values of any subtype have an order.
+        ///
+        @Override
+        public boolean isOrdered() {
+            return this.readers.values().stream().anyMatch(PathReader::isOrdered);
+        }
+        
+        ///
+        /// Creates the test with the reader of the subtype that the value picks.
+        ///
+        /// If the subtype of the value has no reader or the getter of its identifier throws, the value reads as absent.
+        ///
+        @Override
+        public Predicate<T> bind(Comparison comparison) {
+            Map<Identifier, Predicate<T>> tests = new HashMap<>();
+            this.readers.forEach((id, reader) -> tests.put(id, reader.bind(comparison)));
+            return value -> {
+                try {
+                    Predicate<T> test = tests.get(this.keyOf.apply(value));
+                    return test != null && test.test(value);
+                } catch (RuntimeException _) {
+                    return false;
+                }
+            };
+        }
+    }
+    
+    ///
+    /// A reader of a whole struct with subtypes, which fails every comparison since its compound tag has no value to compare.
+    ///
+    /// @param <T> The type of the struct with subtypes.
+    ///
+    private static final class WholeReader<T> implements PathReader<T> {
+        
+        ///
+        /// Will always return [PathReader.Cost#DIRECT].
+        ///
+        @Override
+        public PathReader.Cost getCost() {
+            return PathReader.Cost.DIRECT;
+        }
+        
+        ///
+        /// Will always return `false`.
+        ///
+        @Override
+        public boolean isOrdered() {
+            return false;
+        }
+        
+        ///
+        /// Creates the test that always fails.
+        ///
+        @Override
+        public Predicate<T> bind(Comparison comparison) {
+            return _ -> false;
         }
     }
 }

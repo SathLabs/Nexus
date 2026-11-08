@@ -4,6 +4,7 @@ import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.api.codec.result.CodecError;
 import dev.satherov.nexus.api.codec.result.NexusCodecException;
+import dev.satherov.nexus.api.component.ComponentPath;
 
 import net.minecraft.nbt.CollectionTag;
 import net.minecraft.nbt.CompoundTag;
@@ -20,6 +21,7 @@ import org.jspecify.annotations.Nullable;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.stream.Collectors;
 
 ///
 /// Utility for building codec failures, their messages, and their paths.
@@ -75,6 +77,36 @@ public class CodecErrors {
     ///
     public static NexusCodecException unknownName(Collection<String> known, String found) {
         return new NexusCodecException("Expected one of [" + String.join(", ", known) + "], found " + CodecErrors.describe(found));
+    }
+    
+    ///
+    /// Creates the failure for a step of a component path that no value of a codec can hold.
+    ///
+    /// @param expected The kind of step that could be read in its place.
+    /// @param found    The step found instead.
+    ///
+    /// @return The failure.
+    ///
+    public static IllegalArgumentException unexpectedStep(String expected, ComponentPath.Step found) {
+        String step = switch (found) {
+            case ComponentPath.Step.Key(String name) -> "the key " + CodecErrors.quote(name, '\'');
+            case ComponentPath.Step.Index(int index) -> "the index '" + index + "'";
+            case ComponentPath.Step.Wildcard() -> "a wildcard";
+        };
+        
+        return new IllegalArgumentException("Expected " + expected + ", found " + step);
+    }
+    
+    ///
+    /// Creates the failure for a step of a component path that is not one of the keys of a struct.
+    ///
+    /// @param keys  The keys of the struct.
+    /// @param found The step found instead.
+    ///
+    /// @return The failure.
+    ///
+    public static IllegalArgumentException unknownStep(Collection<String> keys, ComponentPath.Step found) {
+        return CodecErrors.unexpectedStep("one of the keys [" + keys.stream().sorted().collect(Collectors.joining(", ")) + "]", found);
     }
     
     ///

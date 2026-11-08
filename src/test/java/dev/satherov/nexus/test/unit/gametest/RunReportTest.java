@@ -401,7 +401,9 @@ public class RunReportTest {
                         Map.entry("nexus:hud_layer_samples/layer_draws_above_crosshair", Expected.passed()),
                         Map.entry("nexus:hud_layer_samples/below_slot_draws_under_anchor", Expected.passed()),
                         Map.entry("nexus:hud_layer_samples/projected_marker_hits_block", Expected.passed()),
-                        Map.entry("nexus:hud_layer_samples/hidden_hud_skips_layer", Expected.passed())
+                        Map.entry("nexus:hud_layer_samples/hidden_hud_skips_layer", Expected.passed()),
+                        Map.entry("nexus:encoding_samples/holder_of_the_client_level_encodes_on_the_client_thread", Expected.passed()),
+                        Map.entry("nexus:encoding_samples/owner_outside_a_world_is_the_built_in_registry", Expected.passed())
                 ),
                 List.of(
                         Measurement.of("nexus/client_run_samples/window", 40),

@@ -6,13 +6,18 @@ import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.codec.result.CodecError;
 import dev.satherov.nexus.api.codec.result.NexusCodecException;
+import dev.satherov.nexus.api.component.Comparison;
+import dev.satherov.nexus.api.component.ComponentPath;
+import dev.satherov.nexus.api.component.PathReader;
 import dev.satherov.nexus.internal.codec.format.Operations;
+import dev.satherov.nexus.internal.codec.path.Encoding;
 
 import net.neoforged.neoforge.registries.NeoForgeRegistries;
 import net.neoforged.neoforge.registries.holdersets.HolderSetType;
 import net.neoforged.neoforge.registries.holdersets.ICustomHolderSet;
 
 import net.minecraft.core.Holder;
+import net.minecraft.core.HolderOwner;
 import net.minecraft.core.HolderSet;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
@@ -41,6 +46,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 ///
@@ -87,6 +93,20 @@ public class HolderCodecs {
                 }
                 
                 return HolderCodecs.byIdentifier(operations, registry, Scalars.IDENTIFIER.read(operations, input));
+            }
+            
+            ///
+            /// Reads the identifier of a reference holder as text.
+            ///
+            /// A direct holder reads as absent.
+            ///
+            @Override
+            public PathReader<Holder<T>> reader(List<ComponentPath.Step> steps, int from) {
+                if (from < steps.size()) {
+                    throw CodecErrors.unexpectedStep("the end of the path", steps.get(from));
+                }
+                
+                return new ReferenceReader<>(registry, null);
             }
         };
     }
@@ -142,6 +162,15 @@ public class HolderCodecs {
                 }
                 
                 return HolderCodecs.byIdentifier(operations, registry, id);
+            }
+            
+            ///
+            /// Reads the identifier of a reference holder as text and the value of a direct holder with the reader of the inline codec.
+            ///
+            @Override
+            public PathReader<Holder<T>> reader(List<ComponentPath.Step> steps, int from) {
+                PathReader<T> direct = inline.reader(steps, from);
+                return from < steps.size() ? new DirectReader<>(direct) : new ReferenceReader<>(registry, direct);
             }
         };
     }
@@ -498,6 +527,87 @@ public class HolderCodecs {
                     .getter()
                     .get(TagKey.create(this.registry, location))
                     .orElseThrow(() -> CodecErrors.mismatch("a tag of the registry '" + this.registry.identifier() + "'", "#" + location));
+        }
+    }
+    
+    ///
+    /// A reader of the identifier of a reference holder as text.
+    ///
+    /// @param registry The resource key of the registry.
+    /// @param direct   The reader of the value of a direct holder, or `null` if a direct holder reads as absent.
+    /// @param <T>      The type of the values of the registry.
+    ///
+    private record ReferenceReader<T>(ResourceKey<? extends Registry<T>> registry, @Nullable PathReader<T> direct) implements PathReader<Holder<T>> {
+        
+        ///
+        /// The cost of the value of a direct holder, or [PathReader.Cost#DIRECT] if a direct holder is absent.
+        ///
+        @Override
+        public PathReader.Cost getCost() {
+            return this.direct != null ? this.direct.getCost() : PathReader.Cost.DIRECT;
+        }
+        
+        ///
+        /// If the values of a direct holder have an order.
+        ///
+        @Override
+        public boolean isOrdered() {
+            return this.direct != null && this.direct.isOrdered();
+        }
+        
+        ///
+        /// Creates the test of the identifier of a reference holder and of the value of a direct holder.
+        ///
+        /// If a reference holder can't be serialized in the registries of [Encoding#owner(ResourceKey)], it reads as absent.
+        ///
+        @Override
+        public Predicate<Holder<T>> bind(Comparison comparison) {
+            Predicate<T> direct = this.direct != null ? this.direct.bind(comparison) : _ -> false;
+            return holder -> {
+                if (holder.kind() == Holder.Kind.DIRECT) {
+                    return direct.test(holder.value());
+                }
+                
+                HolderOwner<T> owner = Encoding.owner(this.registry);
+                ResourceKey<T> key = holder.getKey();
+                return owner != null && holder.canSerializeIn(owner) && key != null && comparison.test(key.identifier());
+            };
+        }
+    }
+    
+    ///
+    /// A reader of the value of a direct holder.
+    ///
+    /// @param direct The reader of the value of a direct holder.
+    /// @param <T>    The type of the values of the registry.
+    ///
+    private record DirectReader<T>(PathReader<T> direct) implements PathReader<Holder<T>> {
+        
+        ///
+        /// The cost of the value.
+        ///
+        @Override
+        public PathReader.Cost getCost() {
+            return this.direct.getCost();
+        }
+        
+        ///
+        /// If the values have an order.
+        ///
+        @Override
+        public boolean isOrdered() {
+            return this.direct.isOrdered();
+        }
+        
+        ///
+        /// Creates the test of the value of a direct holder.
+        ///
+        /// A reference holder reads as absent.
+        ///
+        @Override
+        public Predicate<Holder<T>> bind(Comparison comparison) {
+            Predicate<T> test = this.direct.bind(comparison);
+            return holder -> holder.kind() == Holder.Kind.DIRECT && test.test(holder.value());
         }
     }
 }

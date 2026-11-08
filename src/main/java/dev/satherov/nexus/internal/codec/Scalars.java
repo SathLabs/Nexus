@@ -5,9 +5,13 @@ import lombok.experimental.UtilityClass;
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.codec.result.NexusCodecException;
+import dev.satherov.nexus.api.component.Comparison;
+import dev.satherov.nexus.api.component.ComponentPath;
+import dev.satherov.nexus.api.component.PathReader;
 import dev.satherov.nexus.internal.codec.format.Operations;
 
 import net.minecraft.core.UUIDUtil;
+import net.minecraft.nbt.ByteTag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.StringRepresentable;
@@ -20,6 +24,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 ///
@@ -49,6 +54,15 @@ public class Scalars {
         public <V> Boolean read(Operations<V> operations, V input) {
             return operations.asBoolean(input);
         }
+        
+        ///
+        /// Reads the `boolean` as a flag or as the number `1` or `0`, the same as its byte tag.
+        ///
+        @Override
+        public PathReader<Boolean> reader(List<ComponentPath.Step> steps, int from) {
+            Scalars.requireEnd(steps, from);
+            return new ScalarReader<>(false, comparison -> comparison::test);
+        }
     };
     
     ///
@@ -70,6 +84,15 @@ public class Scalars {
         @Override
         public <V> Byte read(Operations<V> operations, V input) {
             return operations.asByte(input);
+        }
+        
+        ///
+        /// Reads the `byte` as a number or as a flag, the same as its byte tag.
+        ///
+        @Override
+        public PathReader<Byte> reader(List<ComponentPath.Step> steps, int from) {
+            Scalars.requireEnd(steps, from);
+            return new ScalarReader<>(true, comparison -> value -> comparison.test(ByteTag.valueOf(value)));
         }
     };
     
@@ -93,6 +116,14 @@ public class Scalars {
         public <V> Short read(Operations<V> operations, V input) {
             return operations.asShort(input);
         }
+        
+        ///
+        /// Reads the `short` as a number.
+        ///
+        @Override
+        public PathReader<Short> reader(List<ComponentPath.Step> steps, int from) {
+            return Scalars.number(steps, from);
+        }
     };
     
     ///
@@ -114,6 +145,14 @@ public class Scalars {
         @Override
         public <V> Integer read(Operations<V> operations, V input) {
             return operations.asInt(input);
+        }
+        
+        ///
+        /// Reads the `int` as a number.
+        ///
+        @Override
+        public PathReader<Integer> reader(List<ComponentPath.Step> steps, int from) {
+            return Scalars.number(steps, from);
         }
     };
     
@@ -137,6 +176,14 @@ public class Scalars {
         public <V> Integer read(Operations<V> operations, V input) {
             return operations.asVarInt(input);
         }
+        
+        ///
+        /// Reads the `int` as a number.
+        ///
+        @Override
+        public PathReader<Integer> reader(List<ComponentPath.Step> steps, int from) {
+            return Scalars.number(steps, from);
+        }
     };
     
     ///
@@ -158,6 +205,14 @@ public class Scalars {
         @Override
         public <V> Long read(Operations<V> operations, V input) {
             return operations.asLong(input);
+        }
+        
+        ///
+        /// Reads the `long` as a number.
+        ///
+        @Override
+        public PathReader<Long> reader(List<ComponentPath.Step> steps, int from) {
+            return Scalars.number(steps, from);
         }
     };
     
@@ -181,6 +236,14 @@ public class Scalars {
         public <V> Long read(Operations<V> operations, V input) {
             return operations.asVarLong(input);
         }
+        
+        ///
+        /// Reads the `long` as a number.
+        ///
+        @Override
+        public PathReader<Long> reader(List<ComponentPath.Step> steps, int from) {
+            return Scalars.number(steps, from);
+        }
     };
     
     ///
@@ -203,6 +266,14 @@ public class Scalars {
         public <V> Float read(Operations<V> operations, V input) {
             return operations.asFloat(input);
         }
+        
+        ///
+        /// Reads the `float` as a number.
+        ///
+        @Override
+        public PathReader<Float> reader(List<ComponentPath.Step> steps, int from) {
+            return Scalars.number(steps, from);
+        }
     };
     
     ///
@@ -224,6 +295,14 @@ public class Scalars {
         @Override
         public <V> Double read(Operations<V> operations, V input) {
             return operations.asDouble(input);
+        }
+        
+        ///
+        /// Reads the `double` as a number.
+        ///
+        @Override
+        public PathReader<Double> reader(List<ComponentPath.Step> steps, int from) {
+            return Scalars.number(steps, from);
         }
     };
     
@@ -257,6 +336,15 @@ public class Scalars {
             }
             
             return identifier;
+        }
+        
+        ///
+        /// Reads the string form of the identifier as text.
+        ///
+        @Override
+        public PathReader<Identifier> reader(List<ComponentPath.Step> steps, int from) {
+            Scalars.requireEnd(steps, from);
+            return new ScalarReader<>(true, comparison -> comparison::test);
         }
     };
     
@@ -333,6 +421,17 @@ public class Scalars {
             public <V> String read(Operations<V> operations, V input) {
                 return operations.asString(input, limit);
             }
+            
+            ///
+            /// Reads the string as text.
+            ///
+            /// A string longer than the limit reads as absent.
+            ///
+            @Override
+            public PathReader<String> reader(List<ComponentPath.Step> steps, int from) {
+                Scalars.requireEnd(steps, from);
+                return new ScalarReader<>(true, comparison -> value -> value.length() <= limit && comparison.test(value));
+            }
         };
     }
     
@@ -396,6 +495,23 @@ public class Scalars {
         } catch (IllegalArgumentException _) {
             throw CodecErrors.mismatch("a UUID string", text);
         }
+    }
+    
+    ///
+    /// Checks that no steps are left to read past a scalar.
+    ///
+    private static void requireEnd(List<ComponentPath.Step> steps, int from) {
+        if (from < steps.size()) {
+            throw CodecErrors.unexpectedStep("the end of the path", steps.get(from));
+        }
+    }
+    
+    ///
+    /// Creates the reader of a number, which compares it as a `double`.
+    ///
+    private static <T extends Number> PathReader<T> number(List<ComponentPath.Step> steps, int from) {
+        Scalars.requireEnd(steps, from);
+        return new ScalarReader<>(true, comparison -> value -> comparison.test(value.doubleValue()));
     }
     
     ///
@@ -479,6 +595,41 @@ public class Scalars {
             }
             
             return constant;
+        }
+        
+        ///
+        /// Reads the name of the constant as text.
+        ///
+        @Override
+        public PathReader<E> reader(List<ComponentPath.Step> steps, int from) {
+            Scalars.requireEnd(steps, from);
+            return new ScalarReader<>(true, comparison -> value -> comparison.test(this.names.get(value.ordinal())));
+        }
+    }
+    
+    ///
+    /// A reader of a scalar, which compares the value directly.
+    ///
+    /// @param isOrdered If the values have an order.
+    /// @param binder    The creator of the test of a value, called once per comparison.
+    /// @param <T>       The type of the value.
+    ///
+    private record ScalarReader<T>(boolean isOrdered, Function<Comparison, Predicate<T>> binder) implements PathReader<T> {
+        
+        ///
+        /// Will always return [PathReader.Cost#DIRECT].
+        ///
+        @Override
+        public PathReader.Cost getCost() {
+            return PathReader.Cost.DIRECT;
+        }
+        
+        ///
+        /// Creates the test of a value with the binder.
+        ///
+        @Override
+        public Predicate<T> bind(Comparison comparison) {
+            return this.binder.apply(comparison);
         }
     }
 }

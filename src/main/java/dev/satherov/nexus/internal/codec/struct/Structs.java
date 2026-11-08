@@ -8,6 +8,9 @@ import dev.satherov.nexus.api.codec.result.CodecError;
 import dev.satherov.nexus.api.codec.result.NexusCodecException;
 import dev.satherov.nexus.api.codec.struct.StructCodec;
 import dev.satherov.nexus.api.codec.struct.StructField;
+import dev.satherov.nexus.api.component.Comparison;
+import dev.satherov.nexus.api.component.ComponentPath;
+import dev.satherov.nexus.api.component.PathReader;
 import dev.satherov.nexus.internal.codec.CodecErrors;
 import dev.satherov.nexus.internal.codec.Combinators;
 import dev.satherov.nexus.internal.codec.Traversal;
@@ -42,6 +45,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 ///
 /// Utility for the struct codecs.
@@ -84,6 +88,15 @@ public class Structs {
                 return operations.isNull(input) ?
                         Optional.empty() :
                         Optional.of(codec.read(operations, input));
+            }
+            
+            ///
+            /// Reads a present value with the reader of the codec.
+            ///
+            @Override
+            public PathReader<Optional<T>> reader(List<ComponentPath.Step> steps, int from) {
+                PathReader<T> present = codec.reader(steps, from);
+                return present instanceof Traversal.EncodedReader<T> ? super.reader(steps, from) : new PresentReader<>(present);
             }
         };
     }
@@ -625,6 +638,18 @@ public class Structs {
         }
         
         ///
+        /// Creates the reader of the given field if it holds the given key, or returns `null` if it doesn't.
+        ///
+        private static <Z, F> @Nullable PathReader<Z> fieldReader(BoundField<Z, F, ?> field, String key, List<ComponentPath.Step> steps, int from) {
+            Inlinable<F, ?> nested = field.inlined();
+            if (nested != null) {
+                return nested.keys().contains(key) ? new FieldReader<>(field.getter(), null, nested.reader(steps, from)) : null;
+            }
+            
+            return field.name().equals(key) ? new FieldReader<>(field.getter(), field.fallback(), field.codec().reader(steps, from + 1)) : null;
+        }
+        
+        ///
         /// The keys of every field, including the keys of the structs of inline fields.
         ///
         @Override
@@ -716,6 +741,148 @@ public class Structs {
             }
             
             return this.constructor.apply(values);
+        }
+        
+        ///
+        /// Reads the field under a key, searching the structs of inline fields too.
+        ///
+        /// A wildcard reads by encoding the struct, and a reader with no steps left never passes.
+        ///
+        @Override
+        public PathReader<T> reader(List<ComponentPath.Step> steps, int from) {
+            if (from == steps.size()) {
+                return new WholeReader<>();
+            }
+            
+            if (steps.get(from) instanceof ComponentPath.Step.Wildcard) {
+                return super.reader(steps, from);
+            }
+            
+            ComponentPath.Step step = steps.get(from);
+            if (step instanceof ComponentPath.Step.Key(String name)) {
+                for (BoundField<T, ?, ?> field : this.fields) {
+                    PathReader<T> reader = Struct.fieldReader(field, name, steps, from);
+                    if (reader != null) {
+                        return reader;
+                    }
+                }
+            }
+            
+            throw CodecErrors.unknownStep(this.keys, step);
+        }
+    }
+    
+    ///
+    /// A reader of the value of a field.
+    ///
+    /// @param getter   The getter of the value from the owner.
+    /// @param fallback The value that is left out when written, or `null` if the field doesn't have one.
+    /// @param value    The reader of the value.
+    /// @param <Z>      The type of the struct.
+    /// @param <T>      The type of the value.
+    ///
+    private record FieldReader<Z, T>(Function<Z, T> getter, @Nullable T fallback, PathReader<T> value) implements PathReader<Z> {
+        
+        ///
+        /// The cost of the value.
+        ///
+        @Override
+        public PathReader.Cost getCost() {
+            return this.value.getCost();
+        }
+        
+        ///
+        /// If the values of the field have an order.
+        ///
+        @Override
+        public boolean isOrdered() {
+            return this.value.isOrdered();
+        }
+        
+        ///
+        /// Creates the test of the value of the field.
+        ///
+        /// The value reads as absent if it's the fallback of the field or the getter throws.
+        ///
+        @Override
+        public Predicate<Z> bind(Comparison comparison) {
+            Predicate<T> test = this.value.bind(comparison);
+            return owner -> {
+                try {
+                    T part = this.getter.apply(owner);
+                    return !part.equals(this.fallback) && test.test(part);
+                } catch (RuntimeException _) {
+                    return false;
+                }
+            };
+        }
+    }
+    
+    ///
+    /// A reader of the value of an optional.
+    ///
+    /// @param value The reader of the present value.
+    /// @param <T>   The type of the value.
+    ///
+    private record PresentReader<T>(PathReader<T> value) implements PathReader<Optional<T>> {
+        
+        ///
+        /// The cost of the value.
+        ///
+        @Override
+        public PathReader.Cost getCost() {
+            return this.value.getCost();
+        }
+        
+        ///
+        /// If the values have an order.
+        ///
+        @Override
+        public boolean isOrdered() {
+            return this.value.isOrdered();
+        }
+        
+        ///
+        /// Creates the test of the present value.
+        ///
+        /// An empty optional reads as absent.
+        ///
+        @Override
+        public Predicate<Optional<T>> bind(Comparison comparison) {
+            Predicate<T> test = this.value.bind(comparison);
+            return optional -> optional.isPresent() && test.test(optional.get());
+        }
+    }
+    
+    ///
+    /// A reader of a whole struct, which fails every comparison since its compound tag has no value to compare.
+    ///
+    /// @param <T> The type of the struct.
+    ///
+    private static final class WholeReader<T> implements PathReader<T> {
+        
+        ///
+        /// Will always return [PathReader.Cost#DIRECT].
+        ///
+        @Override
+        public PathReader.Cost getCost() {
+            return PathReader.Cost.DIRECT;
+        }
+        
+        ///
+        /// Will always return `false`.
+        ///
+        @Override
+        public boolean isOrdered() {
+            return false;
+        }
+        
+        ///
+        /// Creates the test that always fails.
+        ///
+        @Override
+        public Predicate<T> bind(Comparison comparison) {
+            return _ -> false;
         }
     }
 }
