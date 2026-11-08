@@ -52,6 +52,17 @@ public class ServerTests {
     private static final Lazy<Measurements> MEASUREMENTS = Lazy.of(ServerTests::measurements);
     
     ///
+    /// The measurements of the run.
+    ///
+    /// The measurements have already been created during registration.
+    ///
+    /// @return The measurements of the run.
+    ///
+    public static Measurements getMeasurements() {
+        return ServerTests.MEASUREMENTS.get();
+    }
+    
+    ///
     /// Registers the function of every selected test, and the baseline if the run has one.
     ///
     /// @param event The registry event that the functions are registered with.

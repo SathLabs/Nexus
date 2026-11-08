@@ -104,7 +104,7 @@ public class RunReportTest {
                     .getAsJsonArray("nanos");
 
             Assertions.assertThat(nanos.size())
-                    .as("The number of ticks or frames in '%s.json'", measurement.path())
+                    .as("The number of durations in '%s.json'", measurement.path())
                     .isEqualTo(measurement.window());
             Assertions.assertThat(Files.isRegularFile(run.directory().resolve(measurement.path() + ".txt")))
                     .as("If the run wrote a profile to '%s.txt'", measurement.path())
@@ -151,6 +151,10 @@ public class RunReportTest {
                         Map.entry("nexus:tick_window_samples/tick_rate", Expected.passed()),
                         Map.entry("nexus:server_test_samples/past_max_ticks", Expected.skipped("within 2 ticks")),
                         Map.entry("nexus:server_test_samples/optional_failure", Expected.skipped("The optional sample failed")),
+                        Map.entry("nexus:timing_samples/records_a_series", Expected.passed()),
+                        Map.entry("nexus:timing_samples/refuses_an_invalid_name", Expected.passed()),
+                        Map.entry("nexus:timing_samples/refuses_a_duplicate_name", Expected.passed()),
+                        Map.entry("nexus:timing_samples/empty_series_keeps_its_name", Expected.passed()),
                         Map.entry("nexus:attach_tooltips_event_samples/attaches_between_hover_text_and_components", Expected.passed()),
                         Map.entry("nexus:attach_tooltips_event_samples/skips_other_items", Expected.passed()),
                         Map.entry("nexus:attach_tooltips_event_samples/attaches_to_fluid_stacks", Expected.passed()),
@@ -283,12 +287,15 @@ public class RunReportTest {
                         Measurement.of("nexus/discovery_samples/long_window", 10),
                         Measurement.of("nexus/tick_window_samples/window", 7),
                         Measurement.profiled("nexus/tick_window_samples/profiled_window", 3),
+                        Measurement.of("nexus/timing_samples/records_a_series.sample", 3),
+                        Measurement.of("nexus/timing_samples/refuses_a_duplicate_name.sample", 2),
                         Measurement.of("nexus_gametest/baseline", 10)
                 ),
                 List.of(
                         "nexus/discovery_samples/window_overruns_ticks",
                         "nexus/discovery_samples/empty_window",
-                        "nexus/tick_window_samples/succeeds_itself"
+                        "nexus/tick_window_samples/succeeds_itself",
+                        "nexus/timing_samples/empty_series_keeps_its_name.empty"
                 )
         ),
         CLIENT(
@@ -419,7 +426,7 @@ public class RunReportTest {
         // The measurement files the run should write, by their path without the extension.
         private final List<Measurement> measurements;
 
-        // The measured cases that should leave no measurement files, by their path without the extension.
+        // The measured cases and series that should leave no measurement files, by their path without the extension.
         private final List<String> unmeasured;
 
         private static Map<String, Expected> replaced(Map<String, Expected> cases, String id, Expected expected) {
