@@ -326,6 +326,8 @@ public class RunReportTest {
                         Map.entry("nexus:vanilla_readers_samples/enchantments_match_the_encoding", Expected.passed()),
                         Map.entry("nexus:vanilla_readers_samples/container_slots_match_the_encoding", Expected.passed()),
                         Map.entry("nexus:vanilla_readers_samples/bundle_items_match_the_encoding", Expected.passed()),
+                        Map.entry("nexus:vanilla_readers_samples/container_stack_parts_match_the_encoding", Expected.passed()),
+                        Map.entry("nexus:vanilla_readers_samples/bundle_stack_parts_match_the_encoding", Expected.passed()),
                         Map.entry("nexus:vanilla_readers_samples/enchantments_of_another_registry_set_read_as_absent", Expected.passed()),
                         Map.entry("nexus:scenario_samples/farm_rules_agree_with_their_direct_reads", Expected.passed()),
                         Map.entry("nexus:scenario_samples/storage_rules_agree_with_their_direct_reads", Expected.passed()),
