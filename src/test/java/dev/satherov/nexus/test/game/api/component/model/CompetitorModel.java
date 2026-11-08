@@ -1,13 +1,15 @@
 package dev.satherov.nexus.test.game.api.component.model;
 
+import lombok.SneakyThrows;
+
 import dev.satherov.nexus.api.component.ComponentFilter;
 
 import net.minecraft.core.component.DataComponentGetter;
-import net.minecraft.core.component.DataComponentType;
 import net.minecraft.world.item.ItemStack;
 
-import org.jspecify.annotations.Nullable;
-
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.util.function.Predicate;
 
 ///
@@ -15,7 +17,18 @@ import java.util.function.Predicate;
 ///
 /// The component filter is translated once per cell into what the mod evaluates.
 ///
+/// The parts of a filter that a mod can't express are tested with [#testUnmemoized(ComponentFilter, ItemStack)] after the checks of the mod.
+/// The test runs on the item stack and never reads or stores its memo.
+///
 public interface CompetitorModel {
+    
+    MethodHandle EVALUATION = CompetitorModel.findEvaluation();
+    
+    @SneakyThrows(ReflectiveOperationException.class)
+    private static MethodHandle findEvaluation() {
+        return MethodHandles.privateLookupIn(ComponentFilter.class, MethodHandles.lookup())
+                .findVirtual(ComponentFilter.class, "evaluate", MethodType.methodType(boolean.class, DataComponentGetter.class));
+    }
     
     String getName();
     
@@ -23,26 +36,8 @@ public interface CompetitorModel {
     
     boolean expresses(ComponentFilter filter);
     
-    ///
-    /// A component getter that forwards to one item stack at a time.
-    ///
-    /// A component filter tested on it never reads or stores the memo of the item stack.
-    /// Meant to be used for the parts of a filter that a mod can't express, after the checks of the mod.
-    ///
-    /// Should only ever be used on one thread.
-    ///
-    final class Unmemoized implements DataComponentGetter {
-        
-        private ItemStack stack = ItemStack.EMPTY;
-        
-        public boolean test(ComponentFilter filter, ItemStack stack) {
-            this.stack = stack;
-            return filter.test(this);
-        }
-        
-        @Override
-        public <T> @Nullable T get(DataComponentType<? extends T> type) {
-            return this.stack.get(type);
-        }
+    @SneakyThrows
+    static boolean testUnmemoized(ComponentFilter filter, ItemStack stack) {
+        return (boolean) CompetitorModel.EVALUATION.invokeExact(filter, (DataComponentGetter) stack);
     }
 }

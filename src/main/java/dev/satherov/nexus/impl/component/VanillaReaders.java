@@ -14,12 +14,15 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderOwner;
+import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStackTemplate;
 import net.minecraft.world.item.alchemy.PotionContents;
 import net.minecraft.world.item.component.BundleContents;
@@ -28,6 +31,8 @@ import net.minecraft.world.item.component.ItemAttributeModifiers;
 import net.minecraft.world.item.component.ItemContainerContents;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
+
+import com.google.common.collect.Comparators;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
@@ -118,41 +123,75 @@ public class VanillaReaders {
     }
     
     ///
-    /// Creates the reader of the given steps in container contents, which reads the item identifier in one slot or in any slot.
+    /// Creates the reader of the given steps in container contents, which reads a part of the item stack template in one slot or in any slot.
     ///
     /// @param steps The steps of the path.
     ///
-    /// @return The reader of the steps, or `null` if the steps are not an index or a wildcard followed by the keys `item` and `id`.
+    /// @return The reader of the steps, or `null` if the steps are not an index or a wildcard followed by the key `item` and steps that [#item(List)] reads.
     ///
     private static @Nullable PathReader<ItemContainerContents> container(List<ComponentPath.Step> steps) {
-        if (steps.size() != 3 || !steps.subList(1, 3).equals(List.of(new ComponentPath.Step.Key("item"), new ComponentPath.Step.Key("id")))) {
+        if (steps.size() < 2 || !steps.get(1).equals(new ComponentPath.Step.Key("item")) || !(VanillaReaders.item(steps.subList(2, steps.size())) instanceof PathReader<ItemStackTemplate> reader)) {
             return null;
         }
         
         return switch (steps.getFirst()) {
-            case ComponentPath.Step.Index(int index) -> new ContainerItemId(index);
-            case ComponentPath.Step.Wildcard _ -> AnyContainerItemId.INSTANCE;
+            case ComponentPath.Step.Index(int index) -> new ContainerSlot(index, reader);
+            case ComponentPath.Step.Wildcard _ -> new AnyContainerSlot(reader);
             case ComponentPath.Step.Key _ -> null;
         };
     }
     
     ///
-    /// Creates the reader of the given steps in bundle contents, which reads the item identifier of one item or of any item.
+    /// Creates the reader of the given steps in bundle contents, which reads a part of one item stack template or of any item stack template.
     ///
     /// @param steps The steps of the path.
     ///
-    /// @return The reader of the steps, or `null` if the steps are not an index or a wildcard followed by the key `id`.
+    /// @return The reader of the steps, or `null` if the steps are not an index or a wildcard followed by steps that [#item(List)] reads.
     ///
     private static @Nullable PathReader<BundleContents> bundle(List<ComponentPath.Step> steps) {
-        if (steps.size() != 2 || !steps.getLast().equals(new ComponentPath.Step.Key("id"))) {
+        if (steps.isEmpty() || !(VanillaReaders.item(steps.subList(1, steps.size())) instanceof PathReader<ItemStackTemplate> reader)) {
             return null;
         }
         
         return switch (steps.getFirst()) {
-            case ComponentPath.Step.Index(int index) -> new BundleItemId(index);
-            case ComponentPath.Step.Wildcard _ -> AnyBundleItemId.INSTANCE;
+            case ComponentPath.Step.Index(int index) -> new BundleItem(index, reader);
+            case ComponentPath.Step.Wildcard _ -> new AnyBundleItem(reader);
             case ComponentPath.Step.Key _ -> null;
         };
+    }
+    
+    ///
+    /// Creates the reader of the given steps in an item stack template.
+    ///
+    /// The key `id` reads the identifier of the item, and the key `count` reads the count.
+    /// The key `components` followed by the identifier of a component reads the rest of the steps in the value that the patch sets for that component.
+    ///
+    /// @param steps The steps of the path.
+    ///
+    /// @return The reader of the steps, or `null` if they're none of these or the identifier isn't the one that the patch codec writes for a registered persistent component.
+    ///
+    private static @Nullable PathReader<ItemStackTemplate> item(List<ComponentPath.Step> steps) {
+        if (steps.equals(List.of(new ComponentPath.Step.Key("id")))) {
+            return ItemId.INSTANCE;
+        }
+        
+        if (steps.equals(List.of(new ComponentPath.Step.Key("count")))) {
+            return ItemCount.INSTANCE;
+        }
+        
+        if (
+                steps.size() >= 2 &&
+                steps.getFirst().equals(new ComponentPath.Step.Key("components")) &&
+                steps.get(1) instanceof ComponentPath.Step.Key(String name) &&
+                BuiltInRegistries.DATA_COMPONENT_TYPE.getValue(Identifier.tryParse(name)) instanceof DataComponentType<?> type &&
+                !type.isTransient() &&
+                BuiltInRegistries.DATA_COMPONENT_TYPE.getKey(type) instanceof Identifier key &&
+                key.toString().equals(name)
+        ) {
+            return new ItemComponent<>(type, steps.subList(2, steps.size()));
+        }
+        
+        return null;
     }
     
     ///
@@ -165,6 +204,7 @@ public class VanillaReaders {
     /// @param event The event to register the readers to.
     ///
     public static void register(RegisterPathReadersEvent event) {
+        event.register(DataComponents.DAMAGE, steps -> steps.isEmpty() ? DamageValue.INSTANCE : null);
         event.register(DataComponents.ENCHANTMENTS, VanillaReaders::enchantments);
         event.register(DataComponents.STORED_ENCHANTMENTS, VanillaReaders::enchantments);
         event.register(DataComponents.CUSTOM_NAME, VanillaReaders::name);
@@ -174,6 +214,50 @@ public class VanillaReaders {
         event.register(DataComponents.CONTAINER, VanillaReaders::container);
         event.register(DataComponents.BUNDLE_CONTENTS, VanillaReaders::bundle);
         event.register(CustomData.CODEC, steps -> new CustomDataTag(new TagReader(steps)));
+    }
+    
+    ///
+    /// The reader of an item stack's damage at a path without steps.
+    ///
+    private enum DamageValue implements PathReader<Integer> {
+        ///
+        /// The only instance of the reader.
+        ///
+        INSTANCE;
+        
+        ///
+        /// Will always return [PathReader.Cost#DIRECT].
+        ///
+        /// @return [PathReader.Cost#DIRECT].
+        ///
+        @Override
+        public PathReader.Cost getCost() {
+            return PathReader.Cost.DIRECT;
+        }
+        
+        ///
+        /// Will always return `true`.
+        ///
+        /// @return `true`.
+        ///
+        @Override
+        public boolean isOrdered() {
+            return true;
+        }
+        
+        ///
+        /// Creates the test of the damage as a number.
+        ///
+        /// Negative damage reads as absent, since the codec fails to encode it.
+        ///
+        /// @param comparison The comparison to test with.
+        ///
+        /// @return The test.
+        ///
+        @Override
+        public Predicate<Integer> bind(Comparison comparison) {
+            return damage -> damage >= 0 && comparison.test(damage);
+        }
     }
     
     ///
@@ -409,36 +493,37 @@ public class VanillaReaders {
     }
     
     ///
-    /// The reader of the item identifier in one slot of container contents.
+    /// The reader of a part of the item stack template in one slot of container contents.
     ///
     /// The slots are counted the way the codec writes them, which is only the slots that hold an item.
     ///
-    /// @param index The index of the slot among the slots that hold an item.
+    /// @param index  The index of the slot among the slots that hold an item.
+    /// @param reader The reader of the part of the item stack template.
     ///
-    private record ContainerItemId(int index) implements PathReader<ItemContainerContents> {
+    private record ContainerSlot(int index, PathReader<ItemStackTemplate> reader) implements PathReader<ItemContainerContents> {
         
         ///
-        /// Will always return [PathReader.Cost#SCAN].
+        /// Will return the cost of the reader of the part, but at least [PathReader.Cost#SCAN].
         ///
-        /// @return [PathReader.Cost#SCAN].
+        /// @return The cost of the reader of the part, but at least [PathReader.Cost#SCAN].
         ///
         @Override
         public PathReader.Cost getCost() {
-            return PathReader.Cost.SCAN;
+            return Comparators.max(PathReader.Cost.SCAN, this.reader.getCost());
         }
         
         ///
-        /// Will always return `false`.
+        /// Will return the same as the reader of the part.
         ///
-        /// @return `false`.
+        /// @return `true` if the reader of the part is ordered.
         ///
         @Override
         public boolean isOrdered() {
-            return false;
+            return this.reader.isOrdered();
         }
         
         ///
-        /// Creates the test of the item identifier, which fails if fewer slots hold an item.
+        /// Creates the test of the part, which fails if the index is past the last slot that holds an item.
         ///
         /// @param comparison The comparison to test with.
         ///
@@ -446,6 +531,7 @@ public class VanillaReaders {
         ///
         @Override
         public Predicate<ItemContainerContents> bind(Comparison comparison) {
+            Predicate<ItemStackTemplate> test = this.reader.bind(comparison);
             return contents -> {
                 int remaining = this.index;
                 for (int slot = 0; slot < contents.items.size(); slot++) {
@@ -455,7 +541,7 @@ public class VanillaReaders {
                     }
                     
                     if (remaining == 0) {
-                        return VanillaReaders.testName(item.get().item(), comparison);
+                        return test.test(item.get());
                     }
                     
                     remaining--;
@@ -467,36 +553,34 @@ public class VanillaReaders {
     }
     
     ///
-    /// The reader of the item identifier in any slot of container contents that holds an item.
+    /// The reader of a part of the item stack template in any slot of container contents.
     ///
-    private enum AnyContainerItemId implements PathReader<ItemContainerContents> {
-        ///
-        /// The only instance of the reader.
-        ///
-        INSTANCE;
+    /// @param reader The reader of the part of the item stack template.
+    ///
+    private record AnyContainerSlot(PathReader<ItemStackTemplate> reader) implements PathReader<ItemContainerContents> {
         
         ///
-        /// Will always return [PathReader.Cost#SCAN].
+        /// Will return the cost of the reader of the part, but at least [PathReader.Cost#SCAN].
         ///
-        /// @return [PathReader.Cost#SCAN].
+        /// @return The cost of the reader of the part, but at least [PathReader.Cost#SCAN].
         ///
         @Override
         public PathReader.Cost getCost() {
-            return PathReader.Cost.SCAN;
+            return Comparators.max(PathReader.Cost.SCAN, this.reader.getCost());
         }
         
         ///
-        /// Will always return `false`.
+        /// Will return the same as the reader of the part.
         ///
-        /// @return `false`.
+        /// @return `true` if the reader of the part is ordered.
         ///
         @Override
         public boolean isOrdered() {
-            return false;
+            return this.reader.isOrdered();
         }
         
         ///
-        /// Creates the test that passes if the item identifier in any slot passes.
+        /// Creates the test that passes if the part passes in any slot.
         ///
         /// @param comparison The comparison to test with.
         ///
@@ -504,10 +588,11 @@ public class VanillaReaders {
         ///
         @Override
         public Predicate<ItemContainerContents> bind(Comparison comparison) {
+            Predicate<ItemStackTemplate> test = this.reader.bind(comparison);
             return contents -> {
                 for (int slot = 0; slot < contents.items.size(); slot++) {
                     Optional<ItemStackTemplate> item = contents.items.get(slot);
-                    if (item.isPresent() && VanillaReaders.testName(item.get().item(), comparison)) {
+                    if (item.isPresent() && test.test(item.get())) {
                         return true;
                     }
                 }
@@ -518,11 +603,104 @@ public class VanillaReaders {
     }
     
     ///
-    /// The reader of the item identifier of the item at one index of bundle contents.
+    /// The reader of a part of the item stack template at one index of bundle contents.
     ///
-    /// @param index The index of the item.
+    /// @param index  The index of the item stack template.
+    /// @param reader The reader of the part of the item stack template.
     ///
-    private record BundleItemId(int index) implements PathReader<BundleContents> {
+    private record BundleItem(int index, PathReader<ItemStackTemplate> reader) implements PathReader<BundleContents> {
+        
+        ///
+        /// Will return the cost of the reader of the part.
+        ///
+        /// @return The cost of the reader of the part.
+        ///
+        @Override
+        public PathReader.Cost getCost() {
+            return this.reader.getCost();
+        }
+        
+        ///
+        /// Will return the same as the reader of the part.
+        ///
+        /// @return `true` if the reader of the part is ordered.
+        ///
+        @Override
+        public boolean isOrdered() {
+            return this.reader.isOrdered();
+        }
+        
+        ///
+        /// Creates the test of the part, which fails if the index is past the last item stack template.
+        ///
+        /// @param comparison The comparison to test with.
+        ///
+        /// @return The test.
+        ///
+        @Override
+        public Predicate<BundleContents> bind(Comparison comparison) {
+            Predicate<ItemStackTemplate> test = this.reader.bind(comparison);
+            return bundle -> this.index < bundle.items().size() && test.test(bundle.items().get(this.index));
+        }
+    }
+    
+    ///
+    /// The reader of a part of any item stack template in bundle contents.
+    ///
+    /// @param reader The reader of the part of the item stack template.
+    ///
+    private record AnyBundleItem(PathReader<ItemStackTemplate> reader) implements PathReader<BundleContents> {
+        
+        ///
+        /// Will return the cost of the reader of the part, but at least [PathReader.Cost#SCAN].
+        ///
+        /// @return The cost of the reader of the part, but at least [PathReader.Cost#SCAN].
+        ///
+        @Override
+        public PathReader.Cost getCost() {
+            return Comparators.max(PathReader.Cost.SCAN, this.reader.getCost());
+        }
+        
+        ///
+        /// Will return the same as the reader of the part.
+        ///
+        /// @return `true` if the reader of the part is ordered.
+        ///
+        @Override
+        public boolean isOrdered() {
+            return this.reader.isOrdered();
+        }
+        
+        ///
+        /// Creates the test that passes if the part of any item stack template passes.
+        ///
+        /// @param comparison The comparison to test with.
+        ///
+        /// @return The test.
+        ///
+        @Override
+        public Predicate<BundleContents> bind(Comparison comparison) {
+            Predicate<ItemStackTemplate> test = this.reader.bind(comparison);
+            return bundle -> {
+                for (int i = 0; i < bundle.items().size(); i++) {
+                    if (test.test(bundle.items().get(i))) {
+                        return true;
+                    }
+                }
+                
+                return false;
+            };
+        }
+    }
+    
+    ///
+    /// The reader of the item identifier of an item stack template.
+    ///
+    private enum ItemId implements PathReader<ItemStackTemplate> {
+        ///
+        /// The only instance of the reader.
+        ///
+        INSTANCE;
         
         ///
         /// Will always return [PathReader.Cost#DIRECT].
@@ -545,65 +723,114 @@ public class VanillaReaders {
         }
         
         ///
-        /// Creates the test of the item identifier, which fails if the index is past the last item.
+        /// Creates the test of the item identifier.
         ///
         /// @param comparison The comparison to test with.
         ///
         /// @return The test.
         ///
         @Override
-        public Predicate<BundleContents> bind(Comparison comparison) {
-            return bundle -> this.index < bundle.items().size() && VanillaReaders.testName(bundle.items().get(this.index).item(), comparison);
+        public Predicate<ItemStackTemplate> bind(Comparison comparison) {
+            return item -> VanillaReaders.testName(item.item(), comparison);
         }
     }
     
     ///
-    /// The reader of the item identifier of any item in bundle contents.
+    /// The reader of the count of an item stack template.
     ///
-    private enum AnyBundleItemId implements PathReader<BundleContents> {
+    private enum ItemCount implements PathReader<ItemStackTemplate> {
         ///
         /// The only instance of the reader.
         ///
         INSTANCE;
         
         ///
-        /// Will always return [PathReader.Cost#SCAN].
+        /// Will always return [PathReader.Cost#DIRECT].
         ///
-        /// @return [PathReader.Cost#SCAN].
+        /// @return [PathReader.Cost#DIRECT].
         ///
         @Override
         public PathReader.Cost getCost() {
-            return PathReader.Cost.SCAN;
+            return PathReader.Cost.DIRECT;
         }
         
         ///
-        /// Will always return `false`.
+        /// Will always return `true`.
         ///
-        /// @return `false`.
+        /// @return `true`.
         ///
         @Override
         public boolean isOrdered() {
-            return false;
+            return true;
         }
         
         ///
-        /// Creates the test that passes if the item identifier of any item passes.
+        /// Creates the test of the count.
+        ///
+        /// The codec leaves out a count of `1` and fails to encode a count less than `1` or greater than {@value Item#ABSOLUTE_MAX_STACK_SIZE}, so such a count reads as absent.
         ///
         /// @param comparison The comparison to test with.
         ///
         /// @return The test.
         ///
         @Override
-        public Predicate<BundleContents> bind(Comparison comparison) {
-            return bundle -> {
-                for (int i = 0; i < bundle.items().size(); i++) {
-                    if (VanillaReaders.testName(bundle.items().get(i).item(), comparison)) {
-                        return true;
-                    }
-                }
-                
-                return false;
-            };
+        public Predicate<ItemStackTemplate> bind(Comparison comparison) {
+            return item -> item.count() > 1 && item.count() <= Item.ABSOLUTE_MAX_STACK_SIZE && comparison.test(item.count());
+        }
+    }
+    
+    ///
+    /// The reader of a path in the value that the patch of an item stack template sets for one [DataComponentType].
+    ///
+    /// @param type    The data component type, which is registered and persistent.
+    /// @param reader  The reader of the path in the value of the component.
+    /// @param <VALUE> The type of the values of the component.
+    ///
+    private record ItemComponent<VALUE>(DataComponentType<VALUE> type, PathReader<VALUE> reader) implements PathReader<ItemStackTemplate> {
+        
+        ///
+        /// Creates the reader of the given steps in the values of the given data component type.
+        ///
+        /// @param type  The data component type, which is registered and persistent.
+        /// @param steps The steps of the path in the value of the component.
+        ///
+        private ItemComponent(DataComponentType<VALUE> type, List<ComponentPath.Step> steps) {
+            this(type, PathReaders.resolve(type, steps));
+        }
+        
+        ///
+        /// Will return the cost of the reader of the path.
+        ///
+        /// @return The cost of the reader of the path.
+        ///
+        @Override
+        public PathReader.Cost getCost() {
+            return this.reader.getCost();
+        }
+        
+        ///
+        /// Will return the same as the reader of the path.
+        ///
+        /// @return `true` if the reader of the path is ordered.
+        ///
+        @Override
+        public boolean isOrdered() {
+            return this.reader.isOrdered();
+        }
+        
+        ///
+        /// Creates the test of the value that the patch sets for the component.
+        ///
+        /// If only the prototype of the item has the component or the patch removes it, the component will read as absent.
+        ///
+        /// @param comparison The comparison to test with.
+        ///
+        /// @return The test.
+        ///
+        @Override
+        public Predicate<ItemStackTemplate> bind(Comparison comparison) {
+            Predicate<VALUE> test = this.reader.bind(comparison);
+            return item -> item.components().getPatch(this.type) instanceof Optional<VALUE> patched && patched.isPresent() && test.test(patched.get());
         }
     }
     

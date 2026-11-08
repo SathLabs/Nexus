@@ -19,6 +19,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.nbt.Tag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.ItemStackTemplate;
 import net.minecraft.world.item.Items;
@@ -56,6 +57,22 @@ public class VanillaReadersSamples {
             new Comparison.Literal.Flag(true)
     );
     
+    private static final List<String> PARTS = List.of(
+            "id",
+            "count",
+            "components['minecraft:damage']",
+            "components['minecraft:enchantments']['minecraft:sharpness']",
+            "components['minecraft:custom_name']"
+    );
+    private static final List<Comparison.Literal> PART_LITERALS = List.of(
+            new Comparison.Literal.Text("minecraft:diamond_sword"),
+            new Comparison.Literal.Text("Sword"),
+            new Comparison.Literal.Numeric(5.0D),
+            new Comparison.Literal.Numeric(3.0D),
+            new Comparison.Literal.Numeric(0.0D),
+            new Comparison.Literal.Flag(true)
+    );
+    
     @ServerTest
     public static void enchantmentsMatchTheEncoding(GameTestHelper helper) {
         HolderLookup.RegistryLookup<Enchantment> enchantments = helper.getLevel().registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
@@ -83,7 +100,7 @@ public class VanillaReadersSamples {
         ItemEnchantments enchantments = mutable.toImmutable();
         PathReader<ItemEnchantments> reader = VanillaReadersSamples.reader(DataComponents.ENCHANTMENTS, "['minecraft:sharpness']");
         
-        Assertions.assertThat(Encoding.encode(VanillaAdapters.ofRegistryDfu(DataComponents.ENCHANTMENTS.codecOrThrow()), enchantments)).isNull();
+        Assertions.assertThat(Encoding.encode(VanillaAdapters.ofRegistryDfu(ItemEnchantments.CODEC), enchantments)).isNull();
         for (Comparison.Operator operator : Comparison.Operator.values()) {
             Assertions.assertThat(reader.bind(new Comparison(operator, new Comparison.Literal.Numeric(3.0D))).test(enchantments)).as(operator.getSymbol()).isFalse();
         }
@@ -125,6 +142,57 @@ public class VanillaReadersSamples {
         Assertions.assertThat(VanillaReadersSamples.test(DataComponents.BUNDLE_CONTENTS, "[1].id", new Comparison.Literal.Text("minecraft:diamond"), bundle)).isTrue();
         Assertions.assertThat(VanillaReadersSamples.test(DataComponents.BUNDLE_CONTENTS, "[*].id", new Comparison.Literal.Text("minecraft:stone"), bundle)).isTrue();
         helper.succeed();
+    }
+    
+    @ServerTest
+    public static void containerStackPartsMatchTheEncoding(GameTestHelper helper) {
+        ItemStack plain = new ItemStack(Items.DIAMOND_SWORD);
+        ItemStack box = new ItemStack(Items.SHULKER_BOX);
+        box.set(DataComponents.CONTAINER, ItemContainerContents.fromItems(List.of(ItemStack.EMPTY, VanillaReadersSamples.sword(helper), ItemStack.EMPTY, plain, new ItemStack(Items.DIAMOND, 3))));
+        
+        for (String slot : List.of("[0]", "[1]", "[2]", "[3]", "[*]")) {
+            for (String part : VanillaReadersSamples.PARTS) {
+                VanillaReadersSamples.assertMatchesTheEncoding(DataComponents.CONTAINER, slot + ".item." + part, VanillaReadersSamples.PART_LITERALS, box);
+            }
+        }
+        
+        Assertions.assertThat(plain.get(DataComponents.DAMAGE)).isZero();
+        Assertions.assertThat(VanillaReadersSamples.test(DataComponents.CONTAINER, "[1].item.components['minecraft:damage']", new Comparison.Literal.Numeric(0.0D), box)).isFalse();
+        Assertions.assertThat(VanillaReadersSamples.test(DataComponents.CONTAINER, "[0].item.components['minecraft:damage']", new Comparison.Literal.Numeric(5.0D), box)).isTrue();
+        Assertions.assertThat(VanillaReadersSamples.test(DataComponents.CONTAINER, "[0].item.components['minecraft:enchantments']['minecraft:sharpness']", new Comparison.Literal.Numeric(3.0D), box)).isTrue();
+        Assertions.assertThat(VanillaReadersSamples.test(DataComponents.CONTAINER, "[2].item.count", new Comparison.Literal.Numeric(3.0D), box)).isTrue();
+        helper.succeed();
+    }
+    
+    @ServerTest
+    public static void bundleStackPartsMatchTheEncoding(GameTestHelper helper) {
+        ItemStack plain = new ItemStack(Items.DIAMOND_SWORD);
+        ItemStack bundle = new ItemStack(Items.BUNDLE);
+        bundle.set(DataComponents.BUNDLE_CONTENTS, new BundleContents(List.of(
+                ItemStackTemplate.fromNonEmptyStack(VanillaReadersSamples.sword(helper)),
+                ItemStackTemplate.fromNonEmptyStack(plain),
+                ItemStackTemplate.fromNonEmptyStack(new ItemStack(Items.DIAMOND, 3))
+        )));
+        
+        for (String index : List.of("[0]", "[1]", "[2]", "[3]", "[*]")) {
+            for (String part : VanillaReadersSamples.PARTS) {
+                VanillaReadersSamples.assertMatchesTheEncoding(DataComponents.BUNDLE_CONTENTS, index + "." + part, VanillaReadersSamples.PART_LITERALS, bundle);
+            }
+        }
+        
+        Assertions.assertThat(plain.get(DataComponents.DAMAGE)).isZero();
+        Assertions.assertThat(VanillaReadersSamples.test(DataComponents.BUNDLE_CONTENTS, "[1].components['minecraft:damage']", new Comparison.Literal.Numeric(0.0D), bundle)).isFalse();
+        Assertions.assertThat(VanillaReadersSamples.test(DataComponents.BUNDLE_CONTENTS, "[0].components['minecraft:custom_name']", new Comparison.Literal.Text("Sword"), bundle)).isTrue();
+        Assertions.assertThat(VanillaReadersSamples.test(DataComponents.BUNDLE_CONTENTS, "[*].components['minecraft:enchantments']['minecraft:sharpness']", new Comparison.Literal.Numeric(3.0D), bundle)).isTrue();
+        helper.succeed();
+    }
+    
+    private static ItemStack sword(GameTestHelper helper) {
+        ItemStack sword = new ItemStack(Items.DIAMOND_SWORD);
+        sword.enchant(helper.getLevel().registryAccess().lookupOrThrow(Registries.ENCHANTMENT).getOrThrow(Enchantments.SHARPNESS), 3);
+        sword.setDamageValue(5);
+        sword.set(DataComponents.CUSTOM_NAME, Component.literal("Sword"));
+        return sword;
     }
     
     private static <VALUE> PathReader<VALUE> reader(DataComponentType<VALUE> type, String path) {

@@ -56,9 +56,9 @@ import java.util.stream.StreamSupport;
 /// - An exact filter checks that the data value of the component equals the value encoded to NBT when the filter is built.
 /// - A compare filter reads the data value of the component, then a tag for each key, a list element for each index, and every child for a wildcard.
 /// - A compare filter then checks that the tag is present, converts it, and compares it against the literal.
-/// - Vanilla predicates, `has` filters on transient components, ordered comparisons of text, and exact filters whose value can't be encoded are tested on a [CompetitorModel.Unmemoized].
+/// - Vanilla predicates, `has` filters on transient components, ordered comparisons of text, and exact filters whose value can't be encoded are tested with [CompetitorModel#testUnmemoized(ComponentFilter, ItemStack)].
 ///
-/// Within an all-of or an any-of filter, the filters tested on the [CompetitorModel.Unmemoized] run after their siblings.
+/// Within an all-of or an any-of filter, the filters tested with [CompetitorModel#testUnmemoized(ComponentFilter, ItemStack)] run after their siblings.
 ///
 /// The model differs from the code of the mods in these ways:
 /// - It leaves out the work of the exporter around the predicate, so it's cheaper.
@@ -154,25 +154,23 @@ public final class IntegratedTunnelsModel implements CompetitorModel {
             IntegratedTunnelsModel.RELATIONAL_LT
     );
     
-    private static Operator translate(ComponentFilter filter, CompetitorModel.Unmemoized unmemoized) {
+    private static Operator translate(ComponentFilter filter) {
         return switch (filter) {
             case ComponentFilter.Has has when !has.getComponent().isTransient() -> IntegratedTunnelsModel.translateHas(has.getComponent());
-            case ComponentFilter.Exact exact -> IntegratedTunnelsModel.translateExact(exact, unmemoized);
+            case ComponentFilter.Exact exact -> IntegratedTunnelsModel.translateExact(exact);
             case ComponentFilter.Compare compare when !IntegratedTunnelsModel.isOrderedText(compare.getComparison()) -> IntegratedTunnelsModel.translateCompare(compare);
             case ComponentFilter.AllOf all -> IntegratedTunnelsModel.combine(
                     all.getAllFilters(),
-                    unmemoized,
                     IntegratedTunnelsModel::conjunction,
                     IntegratedTunnelsModel.conjunction()
             );
             case ComponentFilter.AnyOf any -> IntegratedTunnelsModel.combine(
                     any.getAllFilters(),
-                    unmemoized,
                     IntegratedTunnelsModel::disjunction,
                     IntegratedTunnelsModel.disjunction()
             );
-            case ComponentFilter.Not not -> IntegratedTunnelsModel.negation(IntegratedTunnelsModel.translate(not.getFilter(), unmemoized));
-            case ComponentFilter.Has _, ComponentFilter.Compare _, ComponentFilter.Matching _ -> new NexusLeaf(filter, unmemoized);
+            case ComponentFilter.Not not -> IntegratedTunnelsModel.negation(IntegratedTunnelsModel.translate(not.getFilter()));
+            case ComponentFilter.Has _, ComponentFilter.Compare _, ComponentFilter.Matching _ -> new NexusLeaf(filter);
         };
     }
     
@@ -180,9 +178,9 @@ public final class IntegratedTunnelsModel implements CompetitorModel {
         return comparison.literal() instanceof Comparison.Literal.Text && comparison.operator().isOrdered();
     }
     
-    private static Operator combine(List<ComponentFilter> filters, CompetitorModel.Unmemoized unmemoized, BinaryOperator<Operator> combinator, Operator none) {
+    private static Operator combine(List<ComponentFilter> filters, BinaryOperator<Operator> combinator, Operator none) {
         return filters.stream()
-                .map(filter -> IntegratedTunnelsModel.translate(filter, unmemoized))
+                .map(IntegratedTunnelsModel::translate)
                 .sorted(Comparator.comparing(operator -> operator instanceof NexusLeaf))
                 .reduce(combinator)
                 .orElse(none);
@@ -193,7 +191,7 @@ public final class IntegratedTunnelsModel implements CompetitorModel {
         return IntegratedTunnelsModel.pipe(IntegratedTunnelsModel.DATA_KEYS, IntegratedTunnelsModel.apply(IntegratedTunnelsModel.flip(IntegratedTunnelsModel.LIST_CONTAINS), key));
     }
     
-    private static Operator translateExact(ComponentFilter.Exact exact, CompetitorModel.Unmemoized unmemoized) {
+    private static Operator translateExact(ComponentFilter.Exact exact) {
         return exact.getValue()
                 .encodeValue(IntegratedTunnelsModel.nbtContext())
                 .result()
@@ -201,7 +199,7 @@ public final class IntegratedTunnelsModel implements CompetitorModel {
                         IntegratedTunnelsModel.readComponent(exact.getValue().type()),
                         IntegratedTunnelsModel.apply(IntegratedTunnelsModel.RELATIONAL_EQUALS, NbtValue.of(tag))
                 ))
-                .orElseGet(() -> new NexusLeaf(exact, unmemoized));
+                .orElseGet(() -> new NexusLeaf(exact));
     }
     
     private static Operator translateCompare(ComponentFilter.Compare compare) {
@@ -606,7 +604,7 @@ public final class IntegratedTunnelsModel implements CompetitorModel {
     
     @Override
     public Predicate<ItemStack> build(ComponentFilter filter) {
-        Operator predicate = IntegratedTunnelsModel.translate(filter, new CompetitorModel.Unmemoized());
+        Operator predicate = IntegratedTunnelsModel.translate(filter);
         return stack -> {
             Value result = IntegratedTunnelsModel.evaluate(predicate, new ItemValue(stack));
             IntegratedTunnelsModel.validatePredicateOutput(result);
@@ -621,7 +619,7 @@ public final class IntegratedTunnelsModel implements CompetitorModel {
             case ComponentFilter.AnyOf any -> any.getAllFilters().stream().anyMatch(this::expresses);
             case ComponentFilter.Not not -> this.expresses(not.getFilter());
             case ComponentFilter.Has _, ComponentFilter.Exact _, ComponentFilter.Compare _, ComponentFilter.Matching _ -> {
-                yield !(IntegratedTunnelsModel.translate(filter, new CompetitorModel.Unmemoized()) instanceof NexusLeaf);
+                yield !(IntegratedTunnelsModel.translate(filter) instanceof NexusLeaf);
             }
         };
     }
@@ -951,7 +949,7 @@ public final class IntegratedTunnelsModel implements CompetitorModel {
         }
     }
     
-    private record NexusLeaf(ComponentFilter filter, CompetitorModel.Unmemoized unmemoized) implements Operator {
+    private record NexusLeaf(ComponentFilter filter) implements Operator {
         
         @Override
         public ValueType[] getAllInputTypes() {
@@ -970,7 +968,7 @@ public final class IntegratedTunnelsModel implements CompetitorModel {
         
         @Override
         public Value evaluate(Variable[] input) {
-            return BooleanValue.of(this.unmemoized.test(this.filter, ((ItemValue) input[0].value()).stack()));
+            return BooleanValue.of(CompetitorModel.testUnmemoized(this.filter, ((ItemValue) input[0].value()).stack()));
         }
     }
 }

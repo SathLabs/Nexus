@@ -88,6 +88,9 @@ public class PathReaders {
     /// Without a registered reader, the reader is created from that codec.
     /// If that reader reads by encoding the value, it encodes with `type.codec()` instead, so vanilla's encoder cache is used for a type built with `cacheEncoding()`.
     ///
+    /// The cache matches a value by `equals`, and neoforge compares two holder references only by their kind and resource key.
+    /// If a value holds a holder from other registries, it will read like an equal value encoded before it, even though encoding it on its own fails and reads as absent.
+    ///
     /// @param type  The data component type that the path starts at.
     /// @param steps The steps of the path.
     ///

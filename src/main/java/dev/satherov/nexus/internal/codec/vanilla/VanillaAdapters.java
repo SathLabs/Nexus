@@ -13,6 +13,8 @@ import dev.satherov.nexus.api.codec.struct.StructCodec;
 import dev.satherov.nexus.api.component.Comparison;
 import dev.satherov.nexus.api.component.ComponentPath;
 import dev.satherov.nexus.api.component.PathReader;
+import dev.satherov.nexus.internal.codec.CodecErrors;
+import dev.satherov.nexus.internal.codec.Scalars;
 import dev.satherov.nexus.internal.codec.Traversal;
 import dev.satherov.nexus.internal.codec.format.JsonOperations;
 import dev.satherov.nexus.internal.codec.format.NbtOperations;
@@ -34,6 +36,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.ExtraCodecs;
+import net.minecraft.util.StringRepresentable;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeSerializer;
 
@@ -422,6 +425,19 @@ public class VanillaAdapters {
     }
     
     ///
+    /// Creates the reader of a DFU codec that encodes each value as the string that the given function returns for it.
+    ///
+    /// @throws IllegalArgumentException If a step is left past the string.
+    ///
+    private static <T> PathReader<T> textReader(List<ComponentPath.Step> steps, int from, Function<T, String> text) {
+        if (from < steps.size()) {
+            throw CodecErrors.unexpectedStep("the end of the path", steps.get(from));
+        }
+        
+        return new TextReader<>(text);
+    }
+    
+    ///
     /// The codec behind the wrappers, which runs a DFU codec in JSON and NBT and a stream codec on the network.
     ///
     /// @param <T> The type of value this codec encodes and decodes.
@@ -522,7 +538,13 @@ public class VanillaAdapters {
         ///
         /// Creates the reader of the steps from the given index on in the values of the given DFU codec, or returns `null` if its structure is unknown.
         ///
-        /// Unwraps the layers that `xmap`, `flatXmap`, and `validate` add, and then reads the steps in a map, in a list, or in the codec that the DFU codec was created from.
+        /// Unwraps the layers that `xmap`, `flatXmap`, and `validate` add, and then reads the steps in a map, in a list, in a leaf, or in the codec that the DFU codec was created from.
+        /// A leaf is any of the codecs [Codec#BOOL], [Codec#BYTE], [Codec#SHORT], [Codec#INT], [Codec#LONG], [Codec#FLOAT], [Codec#DOUBLE], [Codec#STRING], and [Identifier#CODEC], as well as any codec whose class is exactly [StringRepresentable.EnumCodec].
+        ///
+        /// Bytes and booleans compare by the rules of a byte tag, and every other number compares as a number.
+        /// A string compares as text of any length, an identifier as its text, and an enum as its serialized name.
+        ///
+        /// @throws IllegalArgumentException If a step is left past a leaf.
         ///
         private @Nullable PathReader<T> walk(Codec<T> dfu, List<ComponentPath.Step> steps, int from) {
             SyntheticFields fields = VanillaAdapters.SYNTHETIC_FIELDS;
@@ -558,6 +580,16 @@ public class VanillaAdapters {
                 case UnboundedMapCodec<?, ?> map -> this.mapReader(map, steps, from);
                 case ExtraCodecs.StrictUnboundedMapCodec<?, ?> map -> this.mapReader(map, steps, from);
                 case ListCodec<?> list -> this.listReader(list, steps, from);
+                case Codec<?> leaf when leaf == Codec.BOOL -> Scalars.BOOL.reader(steps, from);
+                case Codec<?> leaf when leaf == Codec.BYTE -> Scalars.BYTE.reader(steps, from);
+                case Codec<?> leaf when leaf == Codec.SHORT -> Scalars.SHORT.reader(steps, from);
+                case Codec<?> leaf when leaf == Codec.INT -> Scalars.INT.reader(steps, from);
+                case Codec<?> leaf when leaf == Codec.LONG -> Scalars.LONG.reader(steps, from);
+                case Codec<?> leaf when leaf == Codec.FLOAT -> Scalars.FLOAT.reader(steps, from);
+                case Codec<?> leaf when leaf == Codec.DOUBLE -> Scalars.DOUBLE.reader(steps, from);
+                case Codec<?> leaf when leaf == Codec.STRING -> VanillaAdapters.textReader(steps, from, Function.identity());
+                case Codec<?> leaf when leaf == Identifier.CODEC -> Scalars.IDENTIFIER.reader(steps, from);
+                case StringRepresentable.EnumCodec<?> leaf when leaf.getClass() == StringRepresentable.EnumCodec.class -> VanillaAdapters.textReader(steps, from, StringRepresentable::getSerializedName);
                 default -> null;
             };
             
@@ -725,11 +757,11 @@ public class VanillaAdapters {
     private record LayeredReader<T>(List<Function<Object, @Nullable Object>> layers, PathReader<?> inner) implements PathReader<T> {
         
         ///
-        /// The cost of the reader of the innermost codec.
+        /// The cost of the reader of the innermost codec, but at least [PathReader.Cost#SCAN], since the encode function of a layer may allocate.
         ///
         @Override
         public PathReader.Cost getCost() {
-            return this.inner.getCost();
+            return Comparators.max(PathReader.Cost.SCAN, this.inner.getCost());
         }
         
         ///
@@ -761,6 +793,39 @@ public class VanillaAdapters {
                     return false;
                 }
             };
+        }
+    }
+    
+    ///
+    /// The reader of a DFU codec that encodes its values as strings of any length.
+    ///
+    /// @param text The function that gets the string that a value is encoded as.
+    /// @param <T>  The type of the values.
+    ///
+    private record TextReader<T>(Function<T, String> text) implements PathReader<T> {
+        
+        ///
+        /// Will always return [PathReader.Cost#DIRECT].
+        ///
+        @Override
+        public PathReader.Cost getCost() {
+            return PathReader.Cost.DIRECT;
+        }
+        
+        ///
+        /// Will always return `true`.
+        ///
+        @Override
+        public boolean isOrdered() {
+            return true;
+        }
+        
+        ///
+        /// Creates the test of the string of a value.
+        ///
+        @Override
+        public Predicate<T> bind(Comparison comparison) {
+            return value -> comparison.test(this.text.apply(value));
         }
     }
     

@@ -58,30 +58,30 @@ public final class CreateAttributeModel implements CompetitorModel {
         MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
         if (server == null) throw new IllegalStateException("There is no running server to read the registries of");
         
-        Context context = new Context(server.registryAccess(), new CompetitorModel.Unmemoized());
+        RegistryAccess registries = server.registryAccess();
         return switch (filter) {
-            case ComponentFilter.AllOf all -> new AttributeFilter(Mode.WHITELIST_CONJ, CreateAttributeModel.entries(all.getAllFilters(), context));
-            case ComponentFilter.AnyOf any -> new AttributeFilter(Mode.WHITELIST_DISJ, CreateAttributeModel.entries(any.getAllFilters(), context));
+            case ComponentFilter.AllOf all -> new AttributeFilter(Mode.WHITELIST_CONJ, CreateAttributeModel.entries(all.getAllFilters(), registries));
+            case ComponentFilter.AnyOf any -> new AttributeFilter(Mode.WHITELIST_DISJ, CreateAttributeModel.entries(any.getAllFilters(), registries));
             case ComponentFilter.Not not -> new AttributeFilter(
                     Mode.BLACKLIST,
-                    CreateAttributeModel.entries(not.getFilter() instanceof ComponentFilter.AnyOf any ? any.getAllFilters() : List.of(not.getFilter()), context)
+                    CreateAttributeModel.entries(not.getFilter() instanceof ComponentFilter.AnyOf any ? any.getAllFilters() : List.of(not.getFilter()), registries)
             );
             case ComponentFilter.Has _, ComponentFilter.Exact _, ComponentFilter.Compare _, ComponentFilter.Matching _ -> new AttributeFilter(
                     Mode.WHITELIST_DISJ,
-                    CreateAttributeModel.entries(List.of(filter), context)
+                    CreateAttributeModel.entries(List.of(filter), registries)
             );
         };
     }
     
-    private static List<Entry> entries(List<ComponentFilter> filters, Context context) {
+    private static List<Entry> entries(List<ComponentFilter> filters, RegistryAccess registries) {
         List<Entry> entries = new ArrayList<>();
         List<Entry> leftovers = new ArrayList<>();
         for (ComponentFilter filter : filters) {
-            Predicate<ItemStack> attribute = CreateAttributeModel.attribute(filter instanceof ComponentFilter.Not not ? not.getFilter() : filter, context);
+            Predicate<ItemStack> attribute = CreateAttributeModel.attribute(filter instanceof ComponentFilter.Not not ? not.getFilter() : filter, registries);
             if (attribute != null) {
                 entries.add(new Entry(attribute, filter instanceof ComponentFilter.Not));
             } else {
-                leftovers.add(new Entry(new Leftover(filter, context.unmemoized()), false));
+                leftovers.add(new Entry(new Leftover(filter), false));
             }
         }
         
@@ -89,7 +89,7 @@ public final class CreateAttributeModel implements CompetitorModel {
         return entries;
     }
     
-    private static @Nullable Predicate<ItemStack> attribute(ComponentFilter filter, Context context) {
+    private static @Nullable Predicate<ItemStack> attribute(ComponentFilter filter, RegistryAccess registries) {
         return switch (filter) {
             case ComponentFilter.Has has when has.getComponent() == DataComponents.CUSTOM_NAME -> stack -> stack.has(DataComponents.CUSTOM_NAME);
             case ComponentFilter.Has has when has.getComponent() == DataComponents.FOOD -> stack -> stack.has(DataComponents.FOOD);
@@ -97,19 +97,19 @@ public final class CreateAttributeModel implements CompetitorModel {
                     exact.getValue().type() == DataComponents.CUSTOM_NAME &&
                     exact.getValue().value() instanceof Component name &&
                     !name.getString().isEmpty()
-            ) -> CreateAttributeModel.hasName(name.getString(), filter, context);
-            case ComponentFilter.Compare compare -> CreateAttributeModel.comparedAttribute(compare, context);
+            ) -> CreateAttributeModel.hasName(name.getString(), filter, registries);
+            case ComponentFilter.Compare compare -> CreateAttributeModel.comparedAttribute(compare, registries);
             case ComponentFilter.Has _, ComponentFilter.Exact _, ComponentFilter.Matching _, ComponentFilter.AllOf _, ComponentFilter.AnyOf _, ComponentFilter.Not _ -> null;
         };
     }
     
-    private static @Nullable Predicate<ItemStack> comparedAttribute(ComponentFilter.Compare compare, Context context) {
+    private static @Nullable Predicate<ItemStack> comparedAttribute(ComponentFilter.Compare compare, RegistryAccess registries) {
         DataComponentType<?> component = compare.getPath().getComponent();
         List<ComponentPath.Step> steps = compare.getPath().getAllSteps();
         Comparison comparison = compare.getComparison();
         boolean equality = comparison.operator() == Comparison.Operator.EQUAL;
         if (component == DataComponents.CUSTOM_NAME && steps.isEmpty() && equality && comparison.literal() instanceof Comparison.Literal.Text(String text) && !text.isEmpty()) {
-            return CreateAttributeModel.hasName(text, compare, context);
+            return CreateAttributeModel.hasName(text, compare, registries);
         }
         
         if (
@@ -132,11 +132,11 @@ public final class CreateAttributeModel implements CompetitorModel {
         ) {
             int generation = (int) number;
             Predicate<ItemStack> attribute = stack -> CreateAttributeModel.bookGeneration(stack) == generation;
-            return generation == 0 ? CreateAttributeModel.corrected(attribute, stack -> !stack.has(DataComponents.WRITTEN_BOOK_CONTENT), compare, context.unmemoized()) : attribute;
+            return generation == 0 ? CreateAttributeModel.corrected(attribute, stack -> !stack.has(DataComponents.WRITTEN_BOOK_CONTENT), compare) : attribute;
         }
         
         if (component == DataComponents.DAMAGE && steps.isEmpty() && CreateAttributeModel.isAboveZeroTest(comparison)) {
-            return CreateAttributeModel.corrected(ItemStack::isDamaged, ItemStack::isDamageableItem, compare, context.unmemoized());
+            return CreateAttributeModel.corrected(ItemStack::isDamaged, ItemStack::isDamageableItem, compare);
         }
         
         boolean stored = component == DataComponents.STORED_ENCHANTMENTS;
@@ -147,32 +147,30 @@ public final class CreateAttributeModel implements CompetitorModel {
                 Identifier.tryParse(key) instanceof Identifier id &&
                 id.toString().equals(key) &&
                 CreateAttributeModel.isAboveZeroTest(comparison) &&
-                context.registries().get(ResourceKey.create(Registries.ENCHANTMENT, id)).orElse(null) instanceof Holder<Enchantment> enchantment
+                registries.get(ResourceKey.create(Registries.ENCHANTMENT, id)).orElse(null) instanceof Holder<Enchantment> enchantment
         ) {
             return CreateAttributeModel.corrected(
                     stack -> EnchantmentHelper.getEnchantmentsForCrafting(stack).keySet().contains(enchantment),
                     stack -> stack.is(Items.ENCHANTED_BOOK) == stored,
-                    compare,
-                    context.unmemoized()
+                    compare
             );
         }
         
         return null;
     }
     
-    private static Predicate<ItemStack> hasName(String name, ComponentFilter filter, Context context) {
+    private static Predicate<ItemStack> hasName(String name, ComponentFilter filter, RegistryAccess registries) {
         return CreateAttributeModel.corrected(
-                stack -> CreateAttributeModel.customName(stack, context.registries()).equals(name),
+                stack -> CreateAttributeModel.customName(stack, registries).equals(name),
                 stack -> !stack.has(DataComponents.CUSTOM_NAME),
-                filter,
-                context.unmemoized()
+                filter
         );
     }
     
-    private static Predicate<ItemStack> corrected(Predicate<ItemStack> attribute, Predicate<ItemStack> agrees, ComponentFilter filter, CompetitorModel.Unmemoized unmemoized) {
+    private static Predicate<ItemStack> corrected(Predicate<ItemStack> attribute, Predicate<ItemStack> agrees, ComponentFilter filter) {
         return stack -> {
             boolean applies = attribute.test(stack);
-            return agrees.test(stack) ? applies : unmemoized.test(filter, stack);
+            return agrees.test(stack) ? applies : CompetitorModel.testUnmemoized(filter, stack);
         };
     }
     
@@ -240,13 +238,11 @@ public final class CreateAttributeModel implements CompetitorModel {
     
     private record Entry(Predicate<ItemStack> attribute, boolean inverted) { }
     
-    private record Context(RegistryAccess registries, CompetitorModel.Unmemoized unmemoized) { }
-    
-    private record Leftover(ComponentFilter filter, CompetitorModel.Unmemoized unmemoized) implements Predicate<ItemStack> {
+    private record Leftover(ComponentFilter filter) implements Predicate<ItemStack> {
         
         @Override
         public boolean test(ItemStack stack) {
-            return this.unmemoized.test(this.filter, stack);
+            return CompetitorModel.testUnmemoized(this.filter, stack);
         }
     }
     

@@ -14,26 +14,33 @@ import dev.satherov.nexus.internal.codec.vanilla.VanillaAdapters;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderOwner;
+import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.IntTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.util.Unit;
 import net.minecraft.world.entity.EquipmentSlotGroup;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.attributes.RangedAttribute;
+import net.minecraft.world.item.ItemStackTemplate;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.alchemy.Potion;
 import net.minecraft.world.item.alchemy.PotionContents;
 import net.minecraft.world.item.alchemy.Potions;
+import net.minecraft.world.item.component.BundleContents;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.component.ItemAttributeModifiers;
+import net.minecraft.world.item.component.ItemContainerContents;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
 
@@ -132,6 +139,75 @@ public class VanillaReadersTest {
             new Comparison.Literal.Flag(true),
             new Comparison.Literal.Flag(false)
     );
+    
+    private static final List<Integer> DAMAGES = List.of(0, 5, Integer.MAX_VALUE, -1, Integer.MIN_VALUE);
+    private static final List<Comparison.Literal> DAMAGE_LITERALS = List.of(
+            new Comparison.Literal.Numeric(5.0D),
+            new Comparison.Literal.Numeric(0.0D),
+            new Comparison.Literal.Numeric(-1.0D),
+            new Comparison.Literal.Text("5"),
+            new Comparison.Literal.Flag(true),
+            new Comparison.Literal.Flag(false)
+    );
+    
+    private static final ItemStackTemplate STONE = new ItemStackTemplate(Items.STONE);
+    private static final ItemStackTemplate DIAMONDS = new ItemStackTemplate(Items.DIAMOND, 64);
+    private static final ItemStackTemplate SWORD = new ItemStackTemplate(Items.DIAMOND_SWORD, DataComponentPatch.builder()
+            .set(DataComponents.DAMAGE, 5)
+            .set(DataComponents.CUSTOM_NAME, Component.literal("Sword"))
+            .set(DataComponents.ATTRIBUTE_MODIFIERS, VanillaReadersTest.ATTRIBUTES)
+            .set(DataComponents.CUSTOM_DATA, CustomData.EMPTY.update(tag -> tag.putInt("level", 3)))
+            .set(DataComponents.CREATIVE_SLOT_LOCK, Unit.INSTANCE)
+            .build());
+    private static final ItemStackTemplate STRIPPED = new ItemStackTemplate(Items.DIAMOND_SWORD, 2, DataComponentPatch.builder()
+            .remove(DataComponents.DAMAGE)
+            .remove(DataComponents.CUSTOM_NAME)
+            .build());
+    private static final List<String> ITEM_PATHS = List.of(
+            "id",
+            "count",
+            "components['minecraft:damage']",
+            "components['minecraft:custom_name']",
+            "components['minecraft:attribute_modifiers'][0].amount",
+            "components['minecraft:custom_data'].level",
+            "components['minecraft:custom_data'][*]"
+    );
+    private static final List<Comparison.Literal> ITEM_LITERALS = List.of(
+            new Comparison.Literal.Text("minecraft:stone"),
+            new Comparison.Literal.Text("minecraft:diamond_sword"),
+            new Comparison.Literal.Text("Sword"),
+            new Comparison.Literal.Numeric(64.0D),
+            new Comparison.Literal.Numeric(5.0D),
+            new Comparison.Literal.Numeric(3.0D),
+            new Comparison.Literal.Numeric(2.0D),
+            new Comparison.Literal.Numeric(1.0D),
+            new Comparison.Literal.Numeric(0.0D),
+            new Comparison.Literal.Flag(true)
+    );
+    
+    @Test
+    public void damageMatchesTheEncoding() {
+        VanillaReadersTest.assertMatchesTheEncoding(DataComponents.DAMAGE, "", VanillaReadersTest.DAMAGE_LITERALS, VanillaReadersTest.DAMAGES);
+        
+        Assertions.assertThat(VanillaReadersTest.test(DataComponents.DAMAGE, "", Comparison.Operator.EQUAL, new Comparison.Literal.Numeric(5.0D), 5)).isTrue();
+        Assertions.assertThat(VanillaReadersTest.test(DataComponents.DAMAGE, "", Comparison.Operator.GREATER, new Comparison.Literal.Numeric(5.0D), Integer.MAX_VALUE)).isTrue();
+    }
+    
+    @Test
+    public void readsANegativeDamageAsAbsent() {
+        for (Comparison.Operator operator : Comparison.Operator.values()) {
+            for (int damage : List.of(-1, Integer.MIN_VALUE)) {
+                Assertions.assertThat(VanillaReadersTest.test(DataComponents.DAMAGE, "", operator, new Comparison.Literal.Numeric(-1.0D), damage)).as("%s on %s", operator.getSymbol(), damage).isFalse();
+            }
+        }
+    }
+    
+    @Test
+    public void declinesDamagePathsWithSteps() {
+        for (String path : List.of("x", "[0]", "[*]")) {
+            Assertions.assertThat(VanillaReadersTest.reader(DataComponents.DAMAGE, path)).as(path).isNull();
+        }
+    }
     
     @Test
     public void readsEveryEnchantmentAsAbsentWithoutTheRegistry() {
@@ -271,25 +347,118 @@ public class VanillaReadersTest {
     }
     
     @Test
-    public void declinesContainerPathsOtherThanTheItemIdentifierOfASlot() {
-        Assertions.assertThat(VanillaReadersTest.reader(DataComponents.CONTAINER, "[0].item.id")).isNotNull();
-        Assertions.assertThat(VanillaReadersTest.reader(DataComponents.CONTAINER, "[*].item.id")).isNotNull();
-        for (String path : List.of("", "[0]", "[0].item", "[0].item.count", "[0].slot", "[0].item.id.x", "['a'].item.id", "item.id")) {
+    public void containerItemsMatchTheEncoding() {
+        ItemContainerContents contents = VanillaReadersTest.container(null, VanillaReadersTest.STONE, null, null, VanillaReadersTest.SWORD, VanillaReadersTest.DIAMONDS, VanillaReadersTest.STRIPPED);
+        for (String slot : List.of("[0]", "[1]", "[2]", "[3]", "[4]", "[*]")) {
+            for (String part : VanillaReadersTest.ITEM_PATHS) {
+                VanillaReadersTest.assertMatchesTheEncoding(DataComponents.CONTAINER, slot + ".item." + part, VanillaReadersTest.ITEM_LITERALS, List.of(contents, ItemContainerContents.EMPTY));
+            }
+        }
+        
+        Assertions.assertThat(VanillaReadersTest.test(DataComponents.CONTAINER, "[1].item.components['minecraft:damage']", Comparison.Operator.EQUAL, new Comparison.Literal.Numeric(5.0D), contents)).isTrue();
+        Assertions.assertThat(VanillaReadersTest.test(DataComponents.CONTAINER, "[2].item.count", Comparison.Operator.EQUAL, new Comparison.Literal.Numeric(64.0D), contents)).isTrue();
+        Assertions.assertThat(VanillaReadersTest.test(DataComponents.CONTAINER, "[*].item.components['minecraft:attribute_modifiers'][0].amount", Comparison.Operator.EQUAL, new Comparison.Literal.Numeric(5.0D), contents)).isTrue();
+    }
+    
+    @Test
+    public void bundleItemsMatchTheEncoding() {
+        BundleContents bundle = new BundleContents(List.of(VanillaReadersTest.STONE, VanillaReadersTest.SWORD, VanillaReadersTest.DIAMONDS, VanillaReadersTest.STRIPPED));
+        for (String index : List.of("[0]", "[1]", "[2]", "[3]", "[4]", "[*]")) {
+            for (String part : VanillaReadersTest.ITEM_PATHS) {
+                VanillaReadersTest.assertMatchesTheEncoding(DataComponents.BUNDLE_CONTENTS, index + "." + part, VanillaReadersTest.ITEM_LITERALS, List.of(bundle, BundleContents.EMPTY));
+            }
+        }
+        
+        Assertions.assertThat(VanillaReadersTest.test(DataComponents.BUNDLE_CONTENTS, "[1].components['minecraft:custom_name']", Comparison.Operator.EQUAL, new Comparison.Literal.Text("Sword"), bundle)).isTrue();
+        Assertions.assertThat(VanillaReadersTest.test(DataComponents.BUNDLE_CONTENTS, "[3].count", Comparison.Operator.EQUAL, new Comparison.Literal.Numeric(2.0D), bundle)).isTrue();
+        Assertions.assertThat(VanillaReadersTest.test(DataComponents.BUNDLE_CONTENTS, "[*].components['minecraft:custom_data'].level", Comparison.Operator.EQUAL, new Comparison.Literal.Numeric(3.0D), bundle)).isTrue();
+    }
+    
+    @Test
+    public void readsWhatTheCodecLeavesOutOfAnItemAsAbsent() {
+        BundleContents bundle = new BundleContents(List.of(VanillaReadersTest.STONE, VanillaReadersTest.STRIPPED));
+        for (Comparison.Operator operator : Comparison.Operator.values()) {
+            for (double number : new double[]{ 0.0D, 1.0D, 5.0D }) {
+                for (String path : List.of("[0].count", "[0].components['minecraft:damage']", "[1].components['minecraft:damage']", "[*].components['minecraft:damage']")) {
+                    Assertions.assertThat(VanillaReadersTest.test(DataComponents.BUNDLE_CONTENTS, path, operator, new Comparison.Literal.Numeric(number), bundle)).as("%s %s %s", path, operator.getSymbol(), number).isFalse();
+                }
+            }
+        }
+    }
+    
+    @Test
+    public void readsACountOrComponentThatFailsToEncodeAsAbsent() {
+        BundleContents bundle = new BundleContents(List.of(
+                new ItemStackTemplate(Items.STONE, 100),
+                new ItemStackTemplate(Items.STONE, -1),
+                new ItemStackTemplate(Items.DIAMOND_SWORD, DataComponentPatch.builder().set(DataComponents.DAMAGE, -1).build())
+        ));
+        for (Comparison.Operator operator : Comparison.Operator.values()) {
+            for (double number : new double[]{ -1.0D, 0.0D, 100.0D }) {
+                for (String path : List.of("[0].count", "[1].count", "[*].count", "[2].components['minecraft:damage']", "[*].components['minecraft:damage']")) {
+                    Assertions.assertThat(VanillaReadersTest.test(DataComponents.BUNDLE_CONTENTS, path, operator, new Comparison.Literal.Numeric(number), bundle)).as("%s %s %s", path, operator.getSymbol(), number).isFalse();
+                }
+            }
+        }
+    }
+    
+    @Test
+    public void readsTheIdentifierOfAnItemWhoseCountDoesNotEncode() {
+        BundleContents bundle = new BundleContents(List.of(new ItemStackTemplate(Items.STONE, 100)));
+        
+        Assertions.assertThat(VanillaReadersTest.test(DataComponents.BUNDLE_CONTENTS, "[0].id", Comparison.Operator.EQUAL, new Comparison.Literal.Text("minecraft:stone"), bundle)).isTrue();
+    }
+    
+    @Test
+    public void declinesContainerPathsOtherThanAPartOfTheItemInASlot() {
+        for (String path : List.of(
+                "",
+                "[0]",
+                "[0].item",
+                "[0].slot",
+                "[0].id",
+                "[0].count",
+                "[0].item.id.x",
+                "[0].item.count[0]",
+                "['a'].item.id",
+                "item.id",
+                "[0].item.components",
+                "[0].item.components[*]",
+                "[0].item.components[0]",
+                "[0].item.components['damage']",
+                "[0].item.components['!minecraft:damage']",
+                "[0].item.components['nexus:missing']",
+                "[0].item.components['minecraft:creative_slot_lock']"
+        )) {
             Assertions.assertThat(VanillaReadersTest.reader(DataComponents.CONTAINER, path)).as(path).isNull();
         }
     }
     
     @Test
-    public void declinesBundlePathsOtherThanTheItemIdentifierOfAnItem() {
-        Assertions.assertThat(VanillaReadersTest.reader(DataComponents.BUNDLE_CONTENTS, "[0].id")).isNotNull();
-        Assertions.assertThat(VanillaReadersTest.reader(DataComponents.BUNDLE_CONTENTS, "[*].id")).isNotNull();
-        for (String path : List.of("", "[0]", "[0].count", "[0].id.x", "['a'].id", "id")) {
+    public void declinesBundlePathsOtherThanAPartOfAnItem() {
+        for (String path : List.of(
+                "",
+                "[0]",
+                "[0].item.id",
+                "[0].id.x",
+                "[0].count[0]",
+                "['a'].id",
+                "id",
+                "[0].components",
+                "[0].components[*]",
+                "[0].components[0]",
+                "[0].components['damage']",
+                "[0].components['!minecraft:damage']",
+                "[0].components['nexus:missing']",
+                "[0].components['minecraft:creative_slot_lock']"
+        )) {
             Assertions.assertThat(VanillaReadersTest.reader(DataComponents.BUNDLE_CONTENTS, path)).as(path).isNull();
         }
     }
     
     @Test
     public void declaresTheOrderAndCostOfEveryRead() {
+        VanillaReadersTest.assertDeclares(DataComponents.DAMAGE, "", true, PathReader.Cost.DIRECT);
         VanillaReadersTest.assertDeclares(DataComponents.ENCHANTMENTS, "['minecraft:sharpness']", true, PathReader.Cost.SCAN);
         VanillaReadersTest.assertDeclares(DataComponents.CUSTOM_NAME, "", true, PathReader.Cost.DIRECT);
         VanillaReadersTest.assertDeclares(DataComponents.CUSTOM_NAME, "translate", true, PathReader.Cost.DIRECT);
@@ -297,8 +466,17 @@ public class VanillaReadersTest {
         VanillaReadersTest.assertDeclares(DataComponents.ATTRIBUTE_MODIFIERS, "[0].amount", true, PathReader.Cost.DIRECT);
         VanillaReadersTest.assertDeclares(DataComponents.CONTAINER, "[0].item.id", false, PathReader.Cost.SCAN);
         VanillaReadersTest.assertDeclares(DataComponents.CONTAINER, "[*].item.id", false, PathReader.Cost.SCAN);
+        VanillaReadersTest.assertDeclares(DataComponents.CONTAINER, "[0].item.count", true, PathReader.Cost.SCAN);
+        VanillaReadersTest.assertDeclares(DataComponents.CONTAINER, "[0].item.components['minecraft:damage']", true, PathReader.Cost.SCAN);
+        VanillaReadersTest.assertDeclares(DataComponents.CONTAINER, "[*].item.components['minecraft:potion_contents'].potion", false, PathReader.Cost.SCAN);
         VanillaReadersTest.assertDeclares(DataComponents.BUNDLE_CONTENTS, "[0].id", false, PathReader.Cost.DIRECT);
         VanillaReadersTest.assertDeclares(DataComponents.BUNDLE_CONTENTS, "[*].id", false, PathReader.Cost.SCAN);
+        VanillaReadersTest.assertDeclares(DataComponents.BUNDLE_CONTENTS, "[0].count", true, PathReader.Cost.DIRECT);
+        VanillaReadersTest.assertDeclares(DataComponents.BUNDLE_CONTENTS, "[0].components['minecraft:damage']", true, PathReader.Cost.DIRECT);
+        VanillaReadersTest.assertDeclares(DataComponents.BUNDLE_CONTENTS, "[0].components['minecraft:potion_contents'].potion", false, PathReader.Cost.DIRECT);
+        VanillaReadersTest.assertDeclares(DataComponents.BUNDLE_CONTENTS, "[0].components['minecraft:enchantments']['minecraft:sharpness']", true, PathReader.Cost.SCAN);
+        VanillaReadersTest.assertDeclares(DataComponents.BUNDLE_CONTENTS, "[0].components['minecraft:custom_data'][*]", true, PathReader.Cost.SCAN);
+        VanillaReadersTest.assertDeclares(DataComponents.BUNDLE_CONTENTS, "[*].components['minecraft:damage']", true, PathReader.Cost.SCAN);
         VanillaReadersTest.assertDeclares(DataComponents.CUSTOM_DATA, "nested.a", true, PathReader.Cost.DIRECT);
         VanillaReadersTest.assertDeclares(DataComponents.CUSTOM_DATA, "list[*]", true, PathReader.Cost.SCAN);
     }
@@ -310,11 +488,30 @@ public class VanillaReadersTest {
         return enchantments.toImmutable();
     }
     
+    private static ItemContainerContents container(@Nullable ItemStackTemplate... slots) {
+        ListTag encoded = new ListTag();
+        for (int slot = 0; slot < slots.length; slot++) {
+            if (slots[slot] instanceof ItemStackTemplate item) {
+                CompoundTag entry = new CompoundTag();
+                entry.putInt("slot", slot);
+                entry.put("item", ItemStackTemplate.CODEC.encodeStart(NbtOps.INSTANCE, item).getOrThrow());
+                encoded.add(entry);
+            }
+        }
+        
+        return ItemContainerContents.CODEC.parse(NbtOps.INSTANCE, encoded).getOrThrow();
+    }
+    
+    private static List<ComponentPath.Step> steps(String path) {
+        // Custom data takes any steps, so parsing the path here never creates a reader on the component under test.
+        return ComponentPath.of(DataComponents.CUSTOM_DATA, path).getAllSteps();
+    }
+    
     private static <VALUE> @Nullable PathReader<VALUE> reader(DataComponentType<VALUE> type, String path) {
         Map<DataComponentType<?>, List<Function<List<ComponentPath.Step>, ? extends @Nullable PathReader<?>>>> byComponent = new IdentityHashMap<>();
         Map<Codec<?>, List<Function<List<ComponentPath.Step>, ? extends @Nullable PathReader<?>>>> byCodec = new IdentityHashMap<>();
         VanillaReaders.register(new RegisterPathReadersEvent(byComponent, byCodec));
-        List<ComponentPath.Step> steps = ComponentPath.of(type, path).getAllSteps();
+        List<ComponentPath.Step> steps = VanillaReadersTest.steps(path);
         Codec<?> built = Objects.requireNonNullElse(((ComponentTypeCodec) type).nexus$getCodec(), type.codecOrThrow());
         for (Function<List<ComponentPath.Step>, ? extends @Nullable PathReader<?>> readers : Iterables.concat(
                 byComponent.getOrDefault(type, List.of()),
@@ -336,7 +533,7 @@ public class VanillaReadersTest {
     
     private static <VALUE> void assertMatchesTheEncoding(DataComponentType<VALUE> type, String path, List<Comparison.Literal> literals, List<VALUE> values) {
         PathReader<VALUE> reader = Objects.requireNonNull(VanillaReadersTest.reader(type, path));
-        TagReader tag = new TagReader(ComponentPath.of(type, path).getAllSteps());
+        TagReader tag = new TagReader(VanillaReadersTest.steps(path));
         NexusCodec<VALUE, ?> codec = VanillaAdapters.ofRegistryDfu(type.codecOrThrow());
         for (Comparison.Operator operator : Comparison.Operator.values()) {
             for (Comparison.Literal literal : literals) {
