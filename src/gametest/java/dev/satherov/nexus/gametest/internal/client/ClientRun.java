@@ -100,6 +100,8 @@ public class ClientRun {
     ///
     /// Reports are written even if a failure occurs.
     ///
+    /// The pump is released afterwards, so the client shuts down on vanilla's timing.
+    ///
     /// The number of failed tests corresponds to the system exit code.
     ///
     /// Every test runs in a window of {@value ClientRun#WIDTH} by {@value ClientRun#HEIGHT} pixels at GUI scale {@value ClientRun#GUI_SCALE}.
@@ -114,6 +116,7 @@ public class ClientRun {
         try {
             failed = ClientRun.runTests(minecraft, options, report);
         } finally {
+            Pump.release();
             report.write();
         }
         

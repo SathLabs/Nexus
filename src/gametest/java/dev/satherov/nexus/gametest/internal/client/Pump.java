@@ -97,6 +97,15 @@ public final class Pump {
     }
     
     ///
+    /// Forgets the pump of the current run, so the client and the server go back to vanilla's timing.
+    ///
+    /// Should only ever be called from [ClientRun#run(Minecraft)], once every test has run.
+    ///
+    public static void release() {
+        Pump.instance = null;
+    }
+    
+    ///
     /// Deletes the file of a report that was never saved to ensure that a previous run is not mistakenly interpreted as this run's report.
     ///
     /// @param profile The file of the report that was not written.
