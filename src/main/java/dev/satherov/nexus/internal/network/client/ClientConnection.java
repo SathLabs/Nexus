@@ -40,16 +40,17 @@ public class ClientConnection {
     ///
     /// @param payload The payload to send.
     ///
+    /// @throws NullPointerException  If the payload is `null`.
     /// @throws IllegalStateException If the client has no play connection open.
     /// @see ClientPacketDistributor#sendToServer(CustomPacketPayload, CustomPacketPayload...)
     ///
     public static void sendToServer(CustomPacketPayload payload) {
+        Objects.requireNonNull(payload, "Cannot send null payload");
         ClientPacketListener connection = Minecraft.getInstance().getConnection();
         if (connection == null) {
             throw new IllegalStateException("Could not send the payload '" + payload.type().id() + "', the client has no play connection open");
         }
         
-        Objects.requireNonNull(payload, "Cannot send null payload");
         connection.send(payload);
     }
     
