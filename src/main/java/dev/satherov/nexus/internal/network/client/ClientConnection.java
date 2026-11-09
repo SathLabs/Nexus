@@ -7,6 +7,7 @@ import dev.satherov.nexus.api.network.context.ClientHandlerContext;
 import dev.satherov.nexus.api.network.payload.Payload;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
 import dev.satherov.nexus.internal.codec.path.Encoding;
+import dev.satherov.nexus.internal.component.LookupGeneration;
 import dev.satherov.nexus.internal.network.Envelope;
 
 import net.neoforged.neoforge.client.network.ClientPacketDistributor;
@@ -25,9 +26,10 @@ import java.util.Objects;
 import java.util.function.BiConsumer;
 
 ///
-/// Utility for sending payloads to the server, built on [ClientPacketDistributor].
+/// Utility for the play connection of the client, which sends payloads to the server and reads the listener and registries of the connection.
 ///
-/// Should only ever be loaded on the client, through [Payload#sendToServer(Object)], [Payload#canSendToServer()], the openers of [PayloadBuilder], and [Encoding].
+/// Should only ever be loaded on the client, through [Payload#sendToServer(Object)], [Payload#canSendToServer()], [PayloadBuilder#toClient(ClientOnly)],
+/// [PayloadBuilder#bidirectional(ClientOnly, BiConsumer)], [Encoding], and [LookupGeneration].
 ///
 @UtilityClass
 @ApiStatus.Internal
@@ -38,16 +40,17 @@ public class ClientConnection {
     ///
     /// @param payload The payload to send.
     ///
+    /// @throws NullPointerException  If the payload is `null`.
     /// @throws IllegalStateException If the client has no play connection open.
     /// @see ClientPacketDistributor#sendToServer(CustomPacketPayload, CustomPacketPayload...)
     ///
     public static void sendToServer(CustomPacketPayload payload) {
+        Objects.requireNonNull(payload, "Cannot send null payload");
         ClientPacketListener connection = Minecraft.getInstance().getConnection();
         if (connection == null) {
             throw new IllegalStateException("Could not send the payload '" + payload.type().id() + "', the client has no play connection open");
         }
         
-        Objects.requireNonNull(payload, "Cannot send null payload");
         connection.send(payload);
     }
     

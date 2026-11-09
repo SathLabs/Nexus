@@ -142,6 +142,13 @@ public final class Glows {
     ///
     public void clear() {
         this.checkUsable();
+        this.dropAll();
+    }
+    
+    ///
+    /// Ends and forgets every glow of this mod.
+    ///
+    private void dropAll() {
         this.glowByKey.values().forEach(Glow::end);
         this.glowByKey.clear();
         this.glowByEntity.clear();
@@ -239,11 +246,16 @@ public final class Glows {
     ///
     /// Ends every glow.
     ///
+    /// Works while the client is in no level, since the level may already be gone when it unloads.
+    ///
     /// Should only ever be called by Nexus itself.
+    ///
+    /// @throws IllegalStateException If called off the client thread.
     ///
     @ApiStatus.Internal
     public void end() {
-        this.clear();
+        this.checkThread();
+        this.dropAll();
     }
     
     ///

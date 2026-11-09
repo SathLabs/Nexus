@@ -25,7 +25,7 @@ import java.util.Set;
 ///
 /// All tick-scopes and the budgets of one mod.
 ///
-/// Every ticker will be called on the thread of its respected creation side.
+/// Every ticker will be called on the thread of its respective creation side.
 ///
 /// Can be accessed through [NexusMod#getScheduler()].
 ///
@@ -66,7 +66,7 @@ public final class Scheduler {
     ///
     /// The scope of the given level, on the level's logical side.
     ///
-    /// The scope will be recreated if the level is unloaded.
+    /// The scope ends when the level unloads. If the dimension is loaded again, its new level gets a new scope.
     ///
     /// @param level The level.
     ///
@@ -117,7 +117,7 @@ public final class Scheduler {
     }
     
     ///
-    /// Wakes up the ticker of the given block entity that this ticker owns, if any.
+    /// Wakes up the ticker this mod bound to the given block entity, if any.
     ///
     /// Does nothing if this mod didn't bind a ticker to this block entity.
     ///

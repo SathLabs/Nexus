@@ -82,7 +82,7 @@ public final class Ticker {
     }
     
     ///
-    /// Ticks the ticker on the current pass if it wasn't called yet or on the next if it already was.
+    /// Ticks the ticker on the next pass, even if it is asleep or due later.
     ///
     /// If called during its own tick, the return value is ignored.
     ///

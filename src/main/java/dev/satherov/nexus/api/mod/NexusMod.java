@@ -16,9 +16,9 @@ import net.minecraft.core.Registry;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 
-import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 ///
 /// A mod as Nexus sees it, holding the mod's id, event bus, and container.
@@ -30,7 +30,9 @@ public final class NexusMod {
     ///
     /// The ids of every mod that already has a handle.
     ///
-    private static final Set<String> TAKEN = new HashSet<>();
+    /// Concurrent, since NeoForge runs the mod constructors in parallel.
+    ///
+    private static final Set<String> TAKEN = ConcurrentHashMap.newKeySet();
     
     ///
     /// The mod id.
