@@ -8,6 +8,8 @@ import dev.satherov.nexus.internal.tick.client.ClientTicks;
 
 import net.neoforged.fml.LogicalSide;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.event.level.LevelEvent;
+import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
@@ -285,7 +287,7 @@ public final class TickScope {
     ///
     /// Drops every task, ticker, and job of this scope and refuses every call after that.
     ///
-    /// Should only ever be called from [Ticks#onLevelTick(LevelTickEvent.Post)], [Ticks#onServerTick(ServerTickEvent.Post)] or [ClientTicks#onClientTick(ClientTickEvent.Post)]
+    /// Should only ever be called from [Ticks#onLevelUnload(LevelEvent.Unload)], [Ticks#onServerStopped(ServerStoppedEvent)] or [ClientTicks#endScope()].
     ///
     /// @throws IllegalStateException If called from another thread than the scope's own, or after the scope has ended.
     ///

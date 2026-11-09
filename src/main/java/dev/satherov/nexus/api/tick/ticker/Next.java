@@ -7,7 +7,7 @@ import org.jetbrains.annotations.Range;
 ///
 /// When to run the next tick of a [Ticker].
 ///
-/// The return value of every [EntityTickable#tick]
+/// The return value of every [Tickable#tick(int)] and [EntityTickable#tick].
 ///
 public sealed interface Next {
     
