@@ -142,6 +142,13 @@ public final class Scene {
     ///
     public void clear() {
         this.checkUsable();
+        this.dropAll();
+    }
+    
+    ///
+    /// Ends and forgets every drawing.
+    ///
+    private void dropAll() {
         this.drawings.forEach(Drawing::end);
         this.drawings.clear();
         this.drawingByKey.clear();
@@ -186,11 +193,16 @@ public final class Scene {
     ///
     /// Removes every drawing and frees the GPU buffers.
     ///
+    /// Works while the client is in no level, since the level may already be gone when it unloads.
+    ///
     /// Should only ever be called by Nexus itself.
+    ///
+    /// @throws IllegalStateException If called off the client thread.
     ///
     @ApiStatus.Internal
     public void end() {
-        this.clear();
+        this.checkThread();
+        this.dropAll();
         this.mesh.close();
         this.changed = false;
     }
