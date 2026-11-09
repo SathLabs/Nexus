@@ -56,9 +56,11 @@ public class ClientSession {
     ///
     /// Marks the client as logged into a world.
     ///
+    /// Runs before every other listener of the login, so all of them can already reach the client scope.
+    ///
     /// @param event The login event.
     ///
-    @SubscribeEvent
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onLoggingIn(ClientPlayerNetworkEvent.LoggingIn event) {
         ClientSession.loggedIn = true;
     }
