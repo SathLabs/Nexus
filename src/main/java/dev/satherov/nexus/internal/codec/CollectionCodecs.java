@@ -8,19 +8,30 @@ import dev.satherov.nexus.api.codec.format.CodecFormat;
 import dev.satherov.nexus.api.codec.key.MapKey;
 import dev.satherov.nexus.api.codec.result.CodecError;
 import dev.satherov.nexus.api.codec.result.NexusCodecException;
+import dev.satherov.nexus.api.component.Comparison;
+import dev.satherov.nexus.api.component.ComponentPath;
+import dev.satherov.nexus.api.component.PathReader;
 import dev.satherov.nexus.internal.codec.format.Operations;
 
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.resources.Identifier;
 
+import com.google.common.collect.Comparators;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSortedMap;
+import com.google.common.collect.Iterables;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonPrimitive;
+import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -30,6 +41,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.function.IntFunction;
+import java.util.function.Predicate;
 
 ///
 /// Utility for the list, set, and map codecs with their limits, and the keys behind [MapKey].
@@ -94,7 +106,7 @@ public class CollectionCodecs {
     /// @return The codec of the list.
     ///
     public static <T, A extends Access.Plain> Traversal<List<T>, A> list(Traversal<T, ? super A> codec, int limit) {
-        return new CollectionTraversal<>("list", codec, ArrayList::new, limit);
+        return new CollectionTraversal<>("list", codec, ArrayList::new, limit, PathReader.Cost.DIRECT);
     }
     
     ///
@@ -106,7 +118,7 @@ public class CollectionCodecs {
     /// @return The codec of the set.
     ///
     public static <T, A extends Access.Plain> Traversal<Set<T>, A> set(Traversal<T, ? super A> codec, int limit) {
-        return new CollectionTraversal<>("set", codec, LinkedHashSet::newLinkedHashSet, limit);
+        return new CollectionTraversal<>("set", codec, LinkedHashSet::newLinkedHashSet, limit, PathReader.Cost.SCAN);
     }
     
     ///
@@ -276,12 +288,18 @@ public class CollectionCodecs {
         private final int limit;
         
         ///
+        /// The cost of reading the element at an index.
+        ///
+        private final PathReader.Cost indexCost;
+        
+        ///
         /// Creates the codec of a collection with the given name.
         ///
-        private CollectionTraversal(String name, Traversal<T, ? super A> codec, IntFunction<C> factory, int limit) {
+        private CollectionTraversal(String name, Traversal<T, ? super A> codec, IntFunction<C> factory, int limit, PathReader.Cost indexCost) {
             super(name);
             this.codec = codec;
             this.factory = factory;
+            this.indexCost = indexCost;
             
             this.limit = CollectionCodecs.requireLimit(name, limit);
         }
@@ -367,6 +385,22 @@ public class CollectionCodecs {
             }
             
             return collection;
+        }
+        
+        ///
+        /// Reads the element at an index, in iteration order, or any element of the collection.
+        ///
+        @Override
+        public PathReader<C> reader(List<ComponentPath.Step> steps, int from) {
+            if (from == steps.size()) {
+                return super.reader(steps, from);
+            }
+            
+            return switch (steps.get(from)) {
+                case ComponentPath.Step.Index(int index) -> new IndexReader<>(index, this.indexCost, this.codec.reader(steps, from + 1), this.limit);
+                case ComponentPath.Step.Wildcard() -> new AnyReader<>(Function.identity(), this.codec.reader(steps, from + 1), this.limit);
+                case ComponentPath.Step.Key key -> throw CodecErrors.unexpectedStep("an index or a wildcard", key);
+            };
         }
     }
     
@@ -503,6 +537,220 @@ public class CollectionCodecs {
             }
             
             return map;
+        }
+        
+        ///
+        /// Reads the value under a key or any value of the map.
+        ///
+        /// The key is decoded from the name of the step once, when the reader is created.
+        ///
+        @Override
+        public PathReader<Map<K, T>> reader(List<ComponentPath.Step> steps, int from) {
+            if (from == steps.size()) {
+                return super.reader(steps, from);
+            }
+            
+            return switch (steps.get(from)) {
+                case ComponentPath.Step.Key(String name) -> new KeyReader<>(this.key, name, this.keyOf(name), this.value.reader(steps, from + 1), this.limit);
+                case ComponentPath.Step.Wildcard() -> new AnyReader<>(Map::values, this.value.reader(steps, from + 1), this.limit);
+                case ComponentPath.Step.Index index -> throw CodecErrors.unexpectedStep("a key or a wildcard", index);
+            };
+        }
+        
+        ///
+        /// Decodes the given name into a key, or returns `null` if it can't be decoded or doesn't encode back to the name.
+        ///
+        private @Nullable K keyOf(String name) {
+            try {
+                K decoded = this.key.parse(name);
+                return this.key.print(decoded).equals(name) ? decoded : null;
+            } catch (NexusCodecException _) {
+                return null;
+            }
+        }
+    }
+    
+    ///
+    /// A reader of the element at one index of a list or a set, in iteration order.
+    ///
+    /// @param index     The index of the element.
+    /// @param indexCost What reading the element at the index costs.
+    /// @param element   The reader of the element.
+    /// @param limit     The maximum number of elements, above which the collection reads as absent.
+    /// @param <C>       The type of the collection.
+    /// @param <T>       The type of the elements.
+    ///
+    private record IndexReader<C extends Collection<T>, T>(int index, PathReader.Cost indexCost, PathReader<T> element, int limit) implements PathReader<C> {
+        
+        ///
+        /// The higher of the cost of the index and the cost of the element.
+        ///
+        @Override
+        public PathReader.Cost getCost() {
+            return Comparators.max(this.indexCost, this.element.getCost());
+        }
+        
+        ///
+        /// If the elements have an order.
+        ///
+        @Override
+        public boolean isOrdered() {
+            return this.element.isOrdered();
+        }
+        
+        ///
+        /// Creates the test of the element at the index.
+        ///
+        /// The element reads as absent if the collection is too short or has more elements than the limit.
+        ///
+        @Override
+        public Predicate<C> bind(Comparison comparison) {
+            Predicate<T> test = this.element.bind(comparison);
+            return collection -> collection.size() <= this.limit && this.index < collection.size() && test.test(Iterables.get(collection, this.index));
+        }
+    }
+    
+    ///
+    /// A reader of the elements of a list or a set, or of the values of a map.
+    ///
+    /// @param elements The getter of the elements of a value.
+    /// @param element  The reader of one element.
+    /// @param limit    The maximum number of elements, above which the value reads as absent.
+    /// @param <C>      The type of the value.
+    /// @param <T>      The type of the elements.
+    ///
+    private record AnyReader<C, T>(Function<? super C, ? extends Collection<T>> elements, PathReader<T> element, int limit) implements PathReader<C> {
+        
+        ///
+        /// The cost of the element, but at least [PathReader.Cost#SCAN].
+        ///
+        @Override
+        public PathReader.Cost getCost() {
+            return Comparators.max(PathReader.Cost.SCAN, this.element.getCost());
+        }
+        
+        ///
+        /// If the elements have an order.
+        ///
+        @Override
+        public boolean isOrdered() {
+            return this.element.isOrdered();
+        }
+        
+        ///
+        /// Creates the test that passes if any element passes.
+        ///
+        /// The value reads as absent if it has more elements than the limit.
+        ///
+        @Override
+        public Predicate<C> bind(Comparison comparison) {
+            Predicate<T> test = this.element.bind(comparison);
+            return value -> {
+                Collection<T> all = this.elements.apply(value);
+                if (all.size() > this.limit) {
+                    return false;
+                }
+                
+                for (T element : all) {
+                    if (test.test(element)) {
+                        return true;
+                    }
+                }
+                
+                return false;
+            };
+        }
+    }
+    
+    ///
+    /// A reader of the value under one key of a map.
+    ///
+    /// @param mapKey The key of the entries of the map.
+    /// @param name   The name of the key in the path.
+    /// @param key    The key decoded from the name, or `null` if the name doesn't encode back to itself.
+    /// @param value  The reader of the value.
+    /// @param limit  The maximum number of entries, above which the map reads as absent.
+    /// @param <K>    The type of the keys.
+    /// @param <T>    The type of the values.
+    ///
+    private record KeyReader<K, T>(Key<K, ?> mapKey, String name, @Nullable K key, PathReader<T> value, int limit) implements PathReader<Map<K, T>> {
+        
+        ///
+        /// The classes of the maps whose `get` finds a key by `equals`, besides the immutable maps of Guava that aren't sorted.
+        ///
+        private static final Set<Class<?>> EQUALITY_MAPS = Set.of(
+                HashMap.class,
+                LinkedHashMap.class,
+                Object2ObjectOpenHashMap.class,
+                Object2ObjectLinkedOpenHashMap.class,
+                Object2ObjectArrayMap.class,
+                Map.of().getClass(),
+                Map.of("", "").getClass()
+        );
+        
+        ///
+        /// If the given map finds a key by `equals`.
+        ///
+        private static boolean hasEqualsLookup(Map<?, ?> map) {
+            return KeyReader.EQUALITY_MAPS.contains(map.getClass()) || (map instanceof ImmutableMap<?, ?> && !(map instanceof ImmutableSortedMap<?, ?>));
+        }
+        
+        ///
+        /// The cost of the value, but at least [PathReader.Cost#SCAN], since a map that doesn't find a key by `equals` is scanned.
+        ///
+        @Override
+        public PathReader.Cost getCost() {
+            return Comparators.max(PathReader.Cost.SCAN, this.value.getCost());
+        }
+        
+        ///
+        /// If the values have an order.
+        ///
+        @Override
+        public boolean isOrdered() {
+            return this.value.isOrdered();
+        }
+        
+        ///
+        /// Creates the test of the value under the key.
+        ///
+        /// The key is looked up with `get` in a map that finds keys by `equals`, and searched for by encoding every key in any other map.
+        /// The value reads as absent if the name has no key, if the map doesn't have the key, or if the map has more entries than the limit.
+        ///
+        @Override
+        public Predicate<Map<K, T>> bind(Comparison comparison) {
+            K decoded = this.key;
+            if (decoded == null) {
+                return _ -> false;
+            }
+            
+            Predicate<T> test = this.value.bind(comparison);
+            return map -> {
+                if (map.size() > this.limit) {
+                    return false;
+                }
+                
+                T found = KeyReader.hasEqualsLookup(map) ? map.get(decoded) : this.scan(map);
+                return found != null && test.test(found);
+            };
+        }
+        
+        ///
+        /// Gets the value of the last entry whose key encodes to the name, or `null` if none exists.
+        ///
+        private @Nullable T scan(Map<K, T> map) {
+            T found = null;
+            for (Map.Entry<K, T> entry : map.entrySet()) {
+                try {
+                    if (this.mapKey.print(entry.getKey()).equals(this.name)) {
+                        found = entry.getValue();
+                    }
+                } catch (NexusCodecException _) {
+                    // A key that fails to encode is left out, the same as a sibling part.
+                }
+            }
+            
+            return found;
         }
     }
 }

@@ -3,6 +3,9 @@
   "package": "dev.satherov.nexus.gametest.mixin",
   "compatibilityLevel": "JAVA_25",
   "mixins": [
+    "GameTestInfoAccess",
+    "GameTestInfoMixin",
+    "GameTestSequenceMixin",
     "GameTestServerMixin"
   ],
   "client": [

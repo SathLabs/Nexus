@@ -10,11 +10,18 @@ import dev.satherov.nexus.api.codec.format.CodecFormat;
 import dev.satherov.nexus.api.codec.result.CodecResult;
 import dev.satherov.nexus.api.codec.result.NexusCodecException;
 import dev.satherov.nexus.api.codec.struct.StructField;
+import dev.satherov.nexus.api.component.Comparison;
+import dev.satherov.nexus.api.component.ComponentPath;
+import dev.satherov.nexus.api.component.PathReader;
 import dev.satherov.nexus.internal.codec.format.Operations;
+import dev.satherov.nexus.internal.codec.path.Encoding;
+import dev.satherov.nexus.internal.codec.path.TagReader;
 import dev.satherov.nexus.internal.codec.struct.Structs;
 import dev.satherov.nexus.internal.codec.vanilla.VanillaAdapters;
+import dev.satherov.nexus.internal.component.PathReaders;
 
 import net.minecraft.core.component.DataComponentType;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
@@ -30,6 +37,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 ///
 /// A codec that every internal codec extends, with the entry points of [NexusCodec] written once.
@@ -248,6 +256,22 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     }
     
     ///
+    /// Creates the reader of the steps from the given index on in the values of this codec.
+    ///
+    /// The default implementation returns an [EncodedReader] over this codec.
+    ///
+    /// @param steps The steps of the path.
+    /// @param from  The index of the first step to read.
+    ///
+    /// @return The reader of the steps.
+    ///
+    /// @throws IllegalArgumentException If no value of this codec can hold the steps.
+    ///
+    public PathReader<T> reader(List<ComponentPath.Step> steps, int from) {
+        return new EncodedReader<>(this, new TagReader(steps.subList(from, steps.size())));
+    }
+    
+    ///
     /// Writes the given value through the given operations.
     ///
     /// @param operations The operations of the format to write in.
@@ -271,4 +295,46 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     /// @throws NexusCodecException If the input could not be read, with every error at its path below this codec.
     ///
     public abstract <V> T read(Operations<V> operations, V input);
+    
+    ///
+    /// The default reader of a codec, which encodes the value with the codec and reads the remaining steps in the tag.
+    ///
+    /// If the inner codecs of `xmap`, `flatXmap`, `validate`, `optional`, or `either` read by encoding, the outer codec reads by encoding too.
+    /// The default reader should always be this type, since it's checked for in those codecs and in [PathReaders#resolve(DataComponentType, List)].
+    ///
+    /// @param codec The codec to encode the value with.
+    /// @param tag   The reader of the remaining steps in the tag.
+    /// @param <T>   The type of the value.
+    ///
+    public record EncodedReader<T>(NexusCodec<T, ?> codec, TagReader tag) implements PathReader<T> {
+        
+        ///
+        /// Will always return [PathReader.Cost#ENCODE].
+        ///
+        @Override
+        public PathReader.Cost getCost() {
+            return PathReader.Cost.ENCODE;
+        }
+        
+        ///
+        /// Will always return `true`.
+        ///
+        @Override
+        public boolean isOrdered() {
+            return true;
+        }
+        
+        ///
+        /// Creates the test that encodes the value and then tests the tag at the steps.
+        ///
+        /// If the value could not be encoded, it reads as absent.
+        ///
+        @Override
+        public Predicate<T> bind(Comparison comparison) {
+            return value -> {
+                Tag encoded = Encoding.encode(this.codec, value);
+                return encoded != null && this.tag.test(encoded, comparison);
+            };
+        }
+    }
 }

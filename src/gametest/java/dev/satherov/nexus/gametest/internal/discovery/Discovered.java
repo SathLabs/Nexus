@@ -83,7 +83,7 @@ public sealed interface Discovered {
         String violation = Discovered.getFirstConstraintViolation(method, test);
         return violation == null ?
                 new Valid(id, method, test, method.getAnnotation(Measured.class)) :
-                new Invalid(id, violation, Discovered.required(test));
+                new Invalid(id, violation, Discovered.required(test), Discovered.explicit(test));
     }
     
     ///
@@ -94,7 +94,7 @@ public sealed interface Discovered {
     /// @return The method that the scan entry refers to.
     ///
     /// @throws IllegalStateException  If the class that the annotation data says owns the method doesn't actually declare the method.
-    /// @throws ClassNotFoundException If the class that the annotation data says owns the method could not be loaded.
+    /// @throws ClassNotFoundException If the class that owns the method according to the annotation data could not be loaded.
     ///
     @SneakyThrows(ClassNotFoundException.class)
     private static Method method(ModFileScanData.AnnotationData found) {
@@ -203,17 +203,38 @@ public sealed interface Discovered {
             default -> throw new IllegalArgumentException(test.annotationType().getName() + " is not a test annotation");
         };
     }
-    
+
+    ///
+    /// If the test is marked as `explicit`.
+    ///
+    /// A [ClientTest] is never explicit.
+    ///
+    /// @param test The test annotation we check from.
+    ///
+    /// @return `true` if the test is marked as `explicit`.
+    ///
+    /// @throws IllegalArgumentException If the annotation is not a test annotation.
+    ///
+    private static boolean explicit(Annotation test) {
+        return switch (test) {
+            case ServerTest server -> server.explicit();
+            case ClientTest _ -> false;
+            default -> throw new IllegalArgumentException(test.annotationType().getName() + " is not a test annotation");
+        };
+    }
+
     ///
     /// Creates an [Invalid] result for an identifier that was declared twice.
+    ///
+    /// The result is required if either test is, and explicit only if both are.
     ///
     /// @param first  The test with the duplicate identifier.
     /// @param second The second test with the same duplicate identifier.
     ///
-    /// @return One [Invalid] result with the identifier and the `required` status merged.
+    /// @return One [Invalid] result with the identifier and the merged flags.
     ///
     private static Discovered twice(Discovered first, Discovered second) {
-        return new Invalid(first.id(), "Declared twice", first.required() || second.required());
+        return new Invalid(first.id(), "Declared twice", first.required() || second.required(), first.explicit() && second.explicit());
     }
     
     ///
@@ -229,7 +250,14 @@ public sealed interface Discovered {
     /// @return `true` if a failure of the test fails the entire run.
     ///
     boolean required();
-    
+
+    ///
+    /// If the test runs only in a run whose selector matches it.
+    ///
+    /// @return `true` if the test runs only in a run whose selector matches it.
+    ///
+    boolean explicit();
+
     ///
     /// A method that matches all constraints.
     ///
@@ -249,7 +277,17 @@ public sealed interface Discovered {
         public boolean required() {
             return Discovered.required(this.annotation);
         }
-        
+
+        ///
+        /// Checks the `explicit` flag from the annotation of this test's method.
+        ///
+        /// @return `true` if the test runs only in a run whose selector matches it.
+        ///
+        @Override
+        public boolean explicit() {
+            return Discovered.explicit(this.annotation);
+        }
+
         ///
         /// Invokes the test method with the respective parameter that the method requires:
         /// - [GameTestHelper] for a [ServerTest].
@@ -275,6 +313,7 @@ public sealed interface Discovered {
     /// @param id        The test case's identifier.
     /// @param violation The first constraint that the test case failed.
     /// @param required  If this test causes the run to fail or is skipped.
+    /// @param explicit  If the test runs only in a run whose selector matches it.
     ///
-    record Invalid(Identifier id, String violation, boolean required) implements Discovered { }
+    record Invalid(Identifier id, String violation, boolean required, boolean explicit) implements Discovered { }
 }

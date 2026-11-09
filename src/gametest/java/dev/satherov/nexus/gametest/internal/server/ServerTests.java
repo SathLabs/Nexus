@@ -52,7 +52,18 @@ public class ServerTests {
     private static final Lazy<Measurements> MEASUREMENTS = Lazy.of(ServerTests::measurements);
     
     ///
-    /// Registers the function of every selected test, and the baseline if the run has one.
+    /// The measurements of the run.
+    ///
+    /// The measurements have already been created during registration.
+    ///
+    /// @return The measurements of the run.
+    ///
+    public static Measurements getMeasurements() {
+        return ServerTests.MEASUREMENTS.get();
+    }
+    
+    ///
+    /// Registers the function of every selected test and the baseline if the run has one.
     ///
     /// @param event The registry event that the functions are registered with.
     ///
@@ -83,7 +94,7 @@ public class ServerTests {
         return switch (test) {
             case Discovered.Valid valid when ServerTests.isMeasured(valid) -> new TickWindow(valid, ServerTests.MEASUREMENTS.get());
             case Discovered.Valid valid -> valid::invoke;
-            case Discovered.Invalid(_, String reason, _) -> helper -> helper.fail(reason);
+            case Discovered.Invalid(_, String reason, _, _) -> helper -> helper.fail(reason);
         };
     }
     
@@ -185,7 +196,7 @@ public class ServerTests {
         RunOptions options = RunOptions.fromProperties();
         return Discovered.all(ServerTest.class)
                 .stream()
-                .filter(test -> options.selects(test.id()))
+                .filter(test -> options.selects(test.id(), test.explicit()))
                 .toList();
     }
     

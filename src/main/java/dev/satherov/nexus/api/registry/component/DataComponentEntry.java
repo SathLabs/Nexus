@@ -1,5 +1,6 @@
 package dev.satherov.nexus.api.registry.component;
 
+import dev.satherov.nexus.api.component.ComponentPath;
 import dev.satherov.nexus.api.registry.RegistryEntry;
 
 import net.neoforged.neoforge.attachment.IAttachmentHolder;
@@ -19,7 +20,7 @@ import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
 ///
-/// An entry of one data component type that a [DataComponentBuilder] registered.
+/// An entry of one [DataComponentType] that a [DataComponentBuilder] registered.
 ///
 /// @param <VALUE> The type of the values of the component.
 ///
@@ -115,5 +116,18 @@ public final class DataComponentEntry<VALUE> extends RegistryEntry<DataComponent
     ///
     public boolean has(DataComponentGetter holder) {
         return holder.has(this.value());
+    }
+
+    ///
+    /// Creates the path with the given steps on this component.
+    ///
+    /// @param steps The steps from the value of the component to the part.
+    ///
+    /// @return The path.
+    ///
+    /// @see ComponentPath#of(DataComponentType, String)
+    ///
+    public ComponentPath path(String steps) {
+        return ComponentPath.of(this.value(), steps);
     }
 }

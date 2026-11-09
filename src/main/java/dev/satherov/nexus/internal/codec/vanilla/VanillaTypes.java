@@ -7,11 +7,15 @@ import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.codec.result.CodecError;
 import dev.satherov.nexus.api.codec.result.NexusCodecException;
 import dev.satherov.nexus.api.codec.vanilla.VanillaCodecs;
+import dev.satherov.nexus.api.component.Comparison;
+import dev.satherov.nexus.api.component.ComponentPath;
+import dev.satherov.nexus.api.component.PathReader;
 import dev.satherov.nexus.internal.codec.CodecErrors;
 import dev.satherov.nexus.internal.codec.HolderCodecs;
 import dev.satherov.nexus.internal.codec.Scalars;
 import dev.satherov.nexus.internal.codec.Traversal;
 import dev.satherov.nexus.internal.codec.format.Operations;
+import dev.satherov.nexus.internal.codec.path.TagReader;
 import dev.satherov.nexus.internal.codec.struct.Structs;
 
 import net.neoforged.neoforge.fluids.FluidStack;
@@ -124,6 +128,14 @@ public class VanillaTypes {
             }
             
             return compound;
+        }
+        
+        ///
+        /// Reads the steps in the compound tag.
+        ///
+        @Override
+        public PathReader<CompoundTag> reader(List<ComponentPath.Step> steps, int from) {
+            return new CompoundTagReader(new TagReader(steps.subList(from, steps.size())));
         }
     };
     
@@ -673,7 +685,7 @@ public class VanillaTypes {
         }
         
         ///
-        /// Gets the identifier of the given component type as a string, and fails if the type isn't registered.
+        /// Gets the identifier of the given component type as a string or fails if the type isn't registered.
         ///
         private static String keyOf(DataComponentType<?> type) {
             Identifier id = BuiltInRegistries.DATA_COMPONENT_TYPE.getKey(type);
@@ -734,7 +746,7 @@ public class VanillaTypes {
     private abstract static class StackCodec<S extends TypedInstance<T>, T> extends Structs.Inlinable<S, Access.Registries> {
         
         ///
-        /// The key of the identifier of the type of a stack.
+        /// The key of the identifier of a stack's type.
         ///
         private static final String ID = "id";
         
@@ -749,7 +761,7 @@ public class VanillaTypes {
         private final DefaultedRegistry<T> registry;
         
         ///
-        /// The codec of the type of a stack on the network, which is its id in the synced registry.
+        /// The codec of a stack's type on the network, which is its id in the synced registry.
         ///
         private final Traversal<Holder<T>, Access.Registries> holder;
         
@@ -999,5 +1011,37 @@ public class VanillaTypes {
         /// @return The stack.
         ///
         protected abstract S create(Holder<T> holder, int amount, DataComponentPatch patch);
+    }
+    
+    ///
+    /// A reader of the steps in the compound tags of [#COMPOUND_TAG].
+    ///
+    /// @param tag The reader of the steps in the tag.
+    ///
+    private record CompoundTagReader(TagReader tag) implements PathReader<CompoundTag> {
+        
+        ///
+        /// [PathReader.Cost#SCAN] if the steps have a wildcard, and [PathReader.Cost#DIRECT] otherwise.
+        ///
+        @Override
+        public PathReader.Cost getCost() {
+            return this.tag.steps().stream().anyMatch(ComponentPath.Step.Wildcard.class::isInstance) ? PathReader.Cost.SCAN : PathReader.Cost.DIRECT;
+        }
+        
+        ///
+        /// Will always return `true`.
+        ///
+        @Override
+        public boolean isOrdered() {
+            return true;
+        }
+        
+        ///
+        /// Creates the test of the tag at the steps in the compound tag.
+        ///
+        @Override
+        public Predicate<CompoundTag> bind(Comparison comparison) {
+            return compound -> this.tag.test(compound, comparison);
+        }
     }
 }

@@ -6,6 +6,7 @@ import dev.satherov.nexus.api.network.PayloadBuilder;
 import dev.satherov.nexus.api.network.context.ClientHandlerContext;
 import dev.satherov.nexus.api.network.payload.Payload;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
+import dev.satherov.nexus.internal.codec.path.Encoding;
 import dev.satherov.nexus.internal.network.Envelope;
 
 import net.neoforged.neoforge.client.network.ClientPacketDistributor;
@@ -14,9 +15,11 @@ import net.neoforged.neoforge.network.handling.IPayloadHandler;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jspecify.annotations.Nullable;
 
 import java.util.Objects;
 import java.util.function.BiConsumer;
@@ -24,7 +27,7 @@ import java.util.function.BiConsumer;
 ///
 /// Utility for sending payloads to the server, built on [ClientPacketDistributor].
 ///
-/// Should only ever be loaded on the client, through [Payload#sendToServer(Object)], [Payload#canSendToServer()] and the openers of [PayloadBuilder].
+/// Should only ever be loaded on the client, through [Payload#sendToServer(Object)], [Payload#canSendToServer()], the openers of [PayloadBuilder], and [Encoding].
 ///
 @UtilityClass
 @ApiStatus.Internal
@@ -62,6 +65,25 @@ public class ClientConnection {
         }
         
         return connection;
+    }
+    
+    ///
+    /// The listener of the play connection of the client, or `null` if the client has no play connection open.
+    ///
+    /// @return The listener of the connection, or `null` if there is none.
+    ///
+    public static @Nullable ICommonPacketListener tryGetListener() {
+        return Minecraft.getInstance().getConnection();
+    }
+    
+    ///
+    /// The registries of the client's play connection, or `null` if the client has no play connection open.
+    ///
+    /// @return The registry access of the connection, or `null` if there is none.
+    ///
+    public static @Nullable RegistryAccess tryGetRegistryAccess() {
+        ClientPacketListener connection = Minecraft.getInstance().getConnection();
+        return connection != null ? connection.registryAccess() : null;
     }
     
     ///

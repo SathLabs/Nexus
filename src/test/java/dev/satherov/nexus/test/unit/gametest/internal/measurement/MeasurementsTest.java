@@ -23,11 +23,12 @@ import java.util.List;
 import java.util.stream.Stream;
 
 ///
-/// Checks the baseline length of [Measurements] and the file it writes for each measurement.
+/// Checks the baseline length of [Measurements], the file it writes for each measurement, and the series it refuses.
 ///
 public class MeasurementsTest {
     
     private static final Identifier TEST = Identifier.fromNamespaceAndPath("nexus", "measurements/some_test");
+    private static final Identifier SERIES = Identifier.fromNamespaceAndPath("nexus", "measurements/some_test.sample");
     
     @Test
     public void takesTheLongestWindowOfTheValidTestsAsTheBaselineLength(@TempDir Path directory) {
@@ -135,6 +136,42 @@ public class MeasurementsTest {
     public void writesTheBaselineUnderItsIdentifier(@TempDir Path directory) {
         new Measurements(directory, null, List.of()).writeBaseline(new long[]{ 10L, 20L });
         Assertions.assertThat(MeasurementsTest.file(directory, Measurements.BASELINE)).isRegularFile();
+    }
+    
+    @Test
+    public void writesASeriesUnderTheTestAndItsName(@TempDir Path directory) throws IOException {
+        new Measurements(directory, null, List.of()).write(MeasurementsTest.TEST, "sample", new long[]{ 10L, 20L });
+        
+        JsonObject series = MeasurementsTest.read(directory, MeasurementsTest.SERIES);
+        Assertions.assertThat(series.get("test").getAsString()).isEqualTo(MeasurementsTest.SERIES.toString());
+        Assertions.assertThat(series.getAsJsonArray("nanos")).hasSize(2);
+    }
+    
+    @Test
+    public void refusesASecondSeriesOfTheTestUnderTheSameName(@TempDir Path directory) throws IOException {
+        Measurements measurements = new Measurements(directory, null, List.of());
+        measurements.write(MeasurementsTest.TEST, "sample", new long[]{ 10L });
+        
+        Assertions.assertThatIllegalArgumentException().isThrownBy(() -> measurements.write(MeasurementsTest.TEST, "sample", new long[]{ 20L, 30L }));
+        Assertions.assertThat(MeasurementsTest.read(directory, MeasurementsTest.SERIES).getAsJsonArray("nanos")).hasSize(1);
+    }
+    
+    @Test
+    public void takesTheSameSeriesNameInAnotherTest(@TempDir Path directory) {
+        Measurements measurements = new Measurements(directory, null, List.of());
+        measurements.write(MeasurementsTest.TEST, "sample", new long[]{ 10L });
+        measurements.write(Identifier.fromNamespaceAndPath("nexus", "measurements/other_test"), "sample", new long[]{ 20L });
+        
+        Assertions.assertThat(MeasurementsTest.file(directory, Identifier.fromNamespaceAndPath("nexus", "measurements/other_test.sample"))).isRegularFile();
+    }
+    
+    @Test
+    public void countsAnEmptySeriesAsRecorded(@TempDir Path directory) {
+        Measurements measurements = new Measurements(directory, null, List.of());
+        measurements.write(MeasurementsTest.TEST, "sample", new long[0]);
+        
+        Assertions.assertThat(MeasurementsTest.file(directory, MeasurementsTest.SERIES)).doesNotExist();
+        Assertions.assertThatIllegalArgumentException().isThrownBy(() -> measurements.write(MeasurementsTest.TEST, "sample", new long[]{ 10L }));
     }
     
     @Test

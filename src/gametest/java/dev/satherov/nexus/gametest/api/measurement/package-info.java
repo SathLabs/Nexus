@@ -1,6 +1,7 @@
 ///
 /// Performance measurements of server and client tests.
 /// - [Measured]: The annotation on a test method that is measured.
+/// - [Timing]: Records durations that a server test measures itself.
 ///
 @NullMarked
 @CheckReturnValue

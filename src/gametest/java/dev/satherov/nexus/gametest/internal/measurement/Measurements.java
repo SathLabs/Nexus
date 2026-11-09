@@ -25,8 +25,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 ///
 /// The measurements of a test case.
@@ -63,6 +65,11 @@ public final class Measurements {
     ///
     @Getter
     private final int baselineLength;
+    
+    ///
+    /// The identifier of every series recorded so far in the run, as `<test>.<name>`.
+    ///
+    private final Set<Identifier> series = new HashSet<>();
     
     ///
     /// Creates the measurements of a run, getting the baseline duration from the longest window that any test declares.
@@ -152,6 +159,26 @@ public final class Measurements {
     ///
     public void writeBaseline(long[] nanos) {
         this.write(new Measurement(Measurements.BASELINE, nanos, null));
+    }
+    
+    ///
+    /// Writes the given series of a test as the measurement `<test>.<name>`.
+    ///
+    /// The series is added to [#series] before it is written, so an empty series counts as recorded too.
+    ///
+    /// @param test  The identifier of the test that recorded the series.
+    /// @param name  The name of the series.
+    /// @param nanos The durations of the series in nanoseconds.
+    ///
+    /// @throws IllegalArgumentException If the test already recorded a series under the given name.
+    ///
+    public void write(Identifier test, String name, long[] nanos) {
+        Identifier id = test.withSuffix("." + name);
+        if (!this.series.add(id)) {
+            throw new IllegalArgumentException("The test '" + test + "' already recorded the series '" + name + "'");
+        }
+        
+        this.write(new Measurement(id, nanos, null));
     }
     
     ///

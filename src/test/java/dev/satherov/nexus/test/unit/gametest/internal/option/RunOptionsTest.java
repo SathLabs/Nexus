@@ -44,29 +44,39 @@ public class RunOptionsTest {
     }
     
     @Test
-    public void selectsEverythingWithoutASelector() {
-        Assertions.assertThat(RunOptionsTest.selecting(null).selects(Identifier.fromNamespaceAndPath("nexus", "some/test"))).isTrue();
+    public void selectsEveryTestThatIsNotExplicitWithoutASelector() {
+        Assertions.assertThat(RunOptionsTest.selecting(null).selects(Identifier.fromNamespaceAndPath("nexus", "some/test"), false)).isTrue();
     }
-    
+
+    @Test
+    public void leavesOutAnExplicitTestWithoutASelector() {
+        Assertions.assertThat(RunOptionsTest.selecting(null).selects(Identifier.fromNamespaceAndPath("nexus", "some/test"), true)).isFalse();
+    }
+
+    @Test
+    public void selectsAnExplicitTestThatTheSelectorMatches() {
+        Assertions.assertThat(RunOptionsTest.selecting("nexus:some/*").selects(Identifier.fromNamespaceAndPath("nexus", "some/test"), true)).isTrue();
+    }
+
     @Test
     public void matchesAnyCharactersWithAStar() {
         RunOptions options = RunOptionsTest.selecting("nexus:some/*");
-        Assertions.assertThat(options.selects(Identifier.fromNamespaceAndPath("nexus", "some/test"))).isTrue();
-        Assertions.assertThat(options.selects(Identifier.fromNamespaceAndPath("nexus", "other/test"))).isFalse();
+        Assertions.assertThat(options.selects(Identifier.fromNamespaceAndPath("nexus", "some/test"), false)).isTrue();
+        Assertions.assertThat(options.selects(Identifier.fromNamespaceAndPath("nexus", "other/test"), false)).isFalse();
     }
-    
+
     @Test
     public void matchesOneCharacterWithAQuestionMark() {
         RunOptions options = RunOptionsTest.selecting("nexus:some/tes?");
-        Assertions.assertThat(options.selects(Identifier.fromNamespaceAndPath("nexus", "some/test"))).isTrue();
-        Assertions.assertThat(options.selects(Identifier.fromNamespaceAndPath("nexus", "some/tests"))).isFalse();
+        Assertions.assertThat(options.selects(Identifier.fromNamespaceAndPath("nexus", "some/test"), false)).isTrue();
+        Assertions.assertThat(options.selects(Identifier.fromNamespaceAndPath("nexus", "some/tests"), false)).isFalse();
     }
-    
+
     @Test
     public void matchesTheNamespace() {
         RunOptions options = RunOptionsTest.selecting("nexus:*");
-        Assertions.assertThat(options.selects(Identifier.fromNamespaceAndPath("nexus", "some/test"))).isTrue();
-        Assertions.assertThat(options.selects(Identifier.fromNamespaceAndPath("other", "some/test"))).isFalse();
+        Assertions.assertThat(options.selects(Identifier.fromNamespaceAndPath("nexus", "some/test"), false)).isTrue();
+        Assertions.assertThat(options.selects(Identifier.fromNamespaceAndPath("other", "some/test"), false)).isFalse();
     }
     
     private static RunOptions selecting(@Nullable String tests) {

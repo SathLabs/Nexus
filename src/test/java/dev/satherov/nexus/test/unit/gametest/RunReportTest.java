@@ -65,6 +65,17 @@ public class RunReportTest {
 
     @EnumSource
     @ParameterizedTest
+    @DisabledIfSystemProperty(named = RunReportTest.SELECTOR_PROPERTY, matches = ".*")
+    public void leavesOutEveryExplicitCase(Run run) throws IOException, ParserConfigurationException, SAXException {
+        Assertions.assertThat(run.readCases())
+                .extracting(Case::id)
+                .filteredOn(run.explicit::contains)
+                .as("Explicit cases in a run without a selector")
+                .isEmpty();
+    }
+
+    @EnumSource
+    @ParameterizedTest
     public void endsEveryReportedCaseAsExpected(Run run) throws IOException, ParserConfigurationException, SAXException {
         for (Case reported : run.readCases()) {
             Expected expected = run.cases.get(reported.id());
@@ -104,7 +115,7 @@ public class RunReportTest {
                     .getAsJsonArray("nanos");
 
             Assertions.assertThat(nanos.size())
-                    .as("The number of ticks or frames in '%s.json'", measurement.path())
+                    .as("The number of durations in '%s.json'", measurement.path())
                     .isEqualTo(measurement.window());
             Assertions.assertThat(Files.isRegularFile(run.directory().resolve(measurement.path() + ".txt")))
                     .as("If the run wrote a profile to '%s.txt'", measurement.path())
@@ -151,6 +162,15 @@ public class RunReportTest {
                         Map.entry("nexus:tick_window_samples/tick_rate", Expected.passed()),
                         Map.entry("nexus:server_test_samples/past_max_ticks", Expected.skipped("within 2 ticks")),
                         Map.entry("nexus:server_test_samples/optional_failure", Expected.skipped("The optional sample failed")),
+                        Map.entry("nexus:server_test_samples/throws_an_error", Expected.skipped("The optional sample threw an error")),
+                        Map.entry("nexus:server_test_samples/throws_an_error_in_a_callback", Expected.skipped("The optional callback threw an error on run 1")),
+                        Map.entry("nexus:server_test_samples/throws_an_error_in_a_condition", Expected.skipped("The optional condition threw an error on run 1")),
+                        Map.entry("nexus:server_test_samples/retries_an_assertion_until_it_passes", Expected.passed()),
+                        Map.entry("nexus:server_test_samples/retries_an_assertion_until_the_timeout", Expected.skipped("The optional assertion never passed")),
+                        Map.entry("nexus:timing_samples/records_a_series", Expected.passed()),
+                        Map.entry("nexus:timing_samples/refuses_an_invalid_name", Expected.passed()),
+                        Map.entry("nexus:timing_samples/refuses_a_duplicate_name", Expected.passed()),
+                        Map.entry("nexus:timing_samples/empty_series_keeps_its_name", Expected.passed()),
                         Map.entry("nexus:attach_tooltips_event_samples/attaches_between_hover_text_and_components", Expected.passed()),
                         Map.entry("nexus:attach_tooltips_event_samples/skips_other_items", Expected.passed()),
                         Map.entry("nexus:attach_tooltips_event_samples/attaches_to_fluid_stacks", Expected.passed()),
@@ -276,19 +296,70 @@ public class RunReportTest {
                         Map.entry("nexus:budget_samples/job_cancelled_inside_its_step_ends_in_level", Expected.passed()),
                         Map.entry("nexus:budget_samples/job_cancelled_inside_its_step_ends_on_server", Expected.passed()),
                         Map.entry("nexus:budget_samples/budget_of_another_mod_is_refused", Expected.passed()),
+                        Map.entry("nexus:component_filter_samples/has_reads_the_default_components_of_the_item", Expected.passed()),
+                        Map.entry("nexus:component_filter_samples/exact_passes_an_equal_value", Expected.passed()),
+                        Map.entry("nexus:component_filter_samples/compare_tests_the_part_at_the_path", Expected.passed()),
+                        Map.entry("nexus:component_filter_samples/compare_fails_every_operator_on_an_absent_part", Expected.passed()),
+                        Map.entry("nexus:component_filter_samples/matching_tests_the_vanilla_predicate", Expected.passed()),
+                        Map.entry("nexus:component_filter_samples/reads_an_item_resource_through_its_stack", Expected.passed()),
+                        Map.entry("nexus:component_filter_samples/reads_a_fluid_resource_through_its_stack", Expected.passed()),
+                        Map.entry("nexus:component_filter_samples/tests_a_fluid_stack", Expected.passed()),
+                        Map.entry("nexus:component_filter_samples/matchers_hold_the_filter_as_their_one_predicate", Expected.passed()),
+                        Map.entry("nexus:component_filter_samples/item_predicate_from_the_matchers_passes_what_the_filter_passes", Expected.passed()),
+                        Map.entry("nexus:component_filter_samples/ingredient_passes_stacks_of_the_set_that_pass_the_filter", Expected.passed()),
+                        Map.entry("nexus:component_filter_samples/fluid_ingredient_passes_stacks_of_the_set_that_pass_the_filter", Expected.passed()),
+                        Map.entry("nexus:component_filter_samples/ingredients_are_equal_by_set_and_filter", Expected.passed()),
+                        Map.entry("nexus:component_filter_samples/predicate_round_trips_in_json", Expected.passed()),
+                        Map.entry("nexus:component_filter_samples/predicate_round_trips_over_the_network", Expected.passed()),
+                        Map.entry("nexus:component_filter_samples/ingredient_round_trips_in_json", Expected.passed()),
+                        Map.entry("nexus:component_filter_samples/ingredient_round_trips_over_the_network", Expected.passed()),
+                        Map.entry("nexus:component_filter_samples/fluid_ingredient_round_trips_in_json", Expected.passed()),
+                        Map.entry("nexus:component_filter_samples/fluid_ingredient_round_trips_over_the_network", Expected.passed()),
+                        Map.entry("nexus:memoized_component_map_samples/every_write_drops_the_stored_result", Expected.passed()),
+                        Map.entry("nexus:memoized_component_map_samples/write_to_a_copy_is_seen_only_on_the_copy", Expected.passed()),
+                        Map.entry("nexus:memoized_component_map_samples/every_filter_gets_its_own_result", Expected.passed()),
+                        Map.entry("nexus:memoized_component_map_samples/alternating_filters_never_store", Expected.passed()),
+                        Map.entry("nexus:memoized_component_map_samples/another_holder_does_not_get_the_stored_result", Expected.passed()),
+                        Map.entry("nexus:memoized_component_map_samples/tag_update_drops_the_stored_result", Expected.passed()),
+                        Map.entry("nexus:memoized_component_map_samples/write_during_the_evaluation_is_seen", Expected.passed()),
+                        Map.entry("nexus:memoized_component_map_samples/tag_update_during_the_evaluation_is_seen", Expected.passed()),
+                        Map.entry("nexus:memoized_component_map_samples/result_of_two_direct_reads_is_stored", Expected.passed()),
+                        Map.entry("nexus:memoized_component_map_samples/result_of_one_direct_read_is_never_stored", Expected.passed()),
+                        Map.entry("nexus:memoized_component_map_samples/result_of_a_scan_read_is_stored", Expected.passed()),
+                        Map.entry("nexus:vanilla_readers_samples/enchantments_match_the_encoding", Expected.passed()),
+                        Map.entry("nexus:vanilla_readers_samples/container_slots_match_the_encoding", Expected.passed()),
+                        Map.entry("nexus:vanilla_readers_samples/bundle_items_match_the_encoding", Expected.passed()),
+                        Map.entry("nexus:vanilla_readers_samples/container_stack_parts_match_the_encoding", Expected.passed()),
+                        Map.entry("nexus:vanilla_readers_samples/bundle_stack_parts_match_the_encoding", Expected.passed()),
+                        Map.entry("nexus:vanilla_readers_samples/enchantments_of_another_registry_set_read_as_absent", Expected.passed()),
+                        Map.entry("nexus:scenario_samples/farm_rules_agree_with_their_direct_reads", Expected.passed()),
+                        Map.entry("nexus:scenario_samples/storage_rules_agree_with_their_direct_reads", Expected.passed()),
+                        Map.entry("nexus:scenario_samples/modded_loot_rules_agree_with_their_direct_reads", Expected.passed()),
+                        Map.entry("nexus:scenario_samples/apotheosis_rules_agree_with_their_direct_reads", Expected.passed()),
                         Map.entry("nexus_gametest:baseline", Expected.passed())
+                ),
+                List.of(
+                        "nexus:discovery_samples/explicit",
+                        "nexus:component_filter_speed_samples/times_farm_rules",
+                        "nexus:component_filter_speed_samples/times_storage_rules",
+                        "nexus:component_filter_speed_samples/times_modded_loot_rules",
+                        "nexus:component_filter_speed_samples/times_apotheosis_rules",
+                        "nexus:component_filter_speed_samples/times_item_resources"
                 ),
                 List.of(
                         Measurement.of("nexus/discovery_samples/measured", 5),
                         Measurement.of("nexus/discovery_samples/long_window", 10),
                         Measurement.of("nexus/tick_window_samples/window", 7),
                         Measurement.profiled("nexus/tick_window_samples/profiled_window", 3),
+                        Measurement.of("nexus/timing_samples/records_a_series.sample", 3),
+                        Measurement.of("nexus/timing_samples/refuses_a_duplicate_name.sample", 2),
                         Measurement.of("nexus_gametest/baseline", 10)
                 ),
                 List.of(
                         "nexus/discovery_samples/window_overruns_ticks",
                         "nexus/discovery_samples/empty_window",
-                        "nexus/tick_window_samples/succeeds_itself"
+                        "nexus/tick_window_samples/succeeds_itself",
+                        "nexus/timing_samples/empty_series_keeps_its_name.empty"
                 )
         ),
         CLIENT(
@@ -394,8 +465,11 @@ public class RunReportTest {
                         Map.entry("nexus:hud_layer_samples/layer_draws_above_crosshair", Expected.passed()),
                         Map.entry("nexus:hud_layer_samples/below_slot_draws_under_anchor", Expected.passed()),
                         Map.entry("nexus:hud_layer_samples/projected_marker_hits_block", Expected.passed()),
-                        Map.entry("nexus:hud_layer_samples/hidden_hud_skips_layer", Expected.passed())
+                        Map.entry("nexus:hud_layer_samples/hidden_hud_skips_layer", Expected.passed()),
+                        Map.entry("nexus:encoding_samples/holder_of_the_client_level_encodes_on_the_client_thread", Expected.passed()),
+                        Map.entry("nexus:encoding_samples/owner_outside_a_world_is_the_built_in_registry", Expected.passed())
                 ),
+                List.of(),
                 List.of(
                         Measurement.of("nexus/client_run_samples/window", 40),
                         Measurement.profiled("nexus/client_run_samples/profiled_window", 3),
@@ -406,6 +480,7 @@ public class RunReportTest {
         CLIENT_SHADERS(
                 "client-shaders",
                 Run.replaced(Run.CLIENT.cases, "nexus:glows_samples/block_glow_keeps_its_color_under_the_pack", Expected.skipped("the red pixels around the block")),
+                Run.CLIENT.explicit,
                 Run.CLIENT.measurements,
                 Run.CLIENT.unmeasured
         );
@@ -416,10 +491,13 @@ public class RunReportTest {
         // Every case the run should report, by its identifier.
         private final Map<String, Expected> cases;
 
+        // The explicit cases the run should not report, by their identifier.
+        private final List<String> explicit;
+
         // The measurement files the run should write, by their path without the extension.
         private final List<Measurement> measurements;
 
-        // The measured cases that should leave no measurement files, by their path without the extension.
+        // The measured cases and series that should leave no measurement files, by their path without the extension.
         private final List<String> unmeasured;
 
         private static Map<String, Expected> replaced(Map<String, Expected> cases, String id, Expected expected) {

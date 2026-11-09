@@ -72,7 +72,16 @@ public @interface ServerTest {
     /// @return `true` if this test failing causes the entire test-run to fail.
     ///
     boolean required() default true;
-    
+
+    ///
+    /// If the test runs only in a run whose selector matches it.
+    ///
+    /// A run without a selector leaves the test out.
+    ///
+    /// @return `true` if the test runs only in a run whose selector matches it.
+    ///
+    boolean explicit() default false;
+
     ///
     /// If the structure needs access to the sky above it.
     ///
