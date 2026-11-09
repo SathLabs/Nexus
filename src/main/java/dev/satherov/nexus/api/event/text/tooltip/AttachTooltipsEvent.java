@@ -24,7 +24,7 @@ import java.util.function.Predicate;
 ///
 /// An event that attaches lines to the tooltips of item stacks and fluid stacks.
 ///
-/// Posted once on the event bus of every mod that has a [NexusMod] handle, when neoforge registers its tooltip appenders.
+/// Posted once on the event bus of every mod that has a [NexusMod] handle, when NeoForge registers its tooltip appenders.
 ///
 public final class AttachTooltipsEvent extends Event implements IModBusEvent {
     
@@ -60,7 +60,7 @@ public final class AttachTooltipsEvent extends Event implements IModBusEvent {
     /// Attaches lines to the tooltip of every stack of the given item.
     ///
     /// The lines are added after the item's own hover text and before the lines of the stack's data components.
-    /// Stacks with previous calls to [#item(ItemLike, BiConsumer)] and [#items(Predicate, BiConsumer)], in the order they were written.
+    /// They come after the lines of earlier calls to [#item(ItemLike, BiConsumer)] and [#items(Predicate, BiConsumer)], in the order the calls were made.
     ///
     /// @param item       The item whose stacks get the lines.
     /// @param attachment The action that adds the lines, called with the stack and the builder of its tooltip.
@@ -70,10 +70,10 @@ public final class AttachTooltipsEvent extends Event implements IModBusEvent {
     }
     
     ///
-    /// Attaches lines to the tooltip of every Item Stack the given filter accepts.
+    /// Attaches lines to the tooltip of every item stack the given filter accepts.
     ///
     /// The lines are added after the item's own hover text and before the lines of the stack's data components.
-    /// Stacks with previous calls to [#item(ItemLike, BiConsumer)] and [#items(Predicate, BiConsumer)], in the order they were written.
+    /// They come after the lines of earlier calls to [#item(ItemLike, BiConsumer)] and [#items(Predicate, BiConsumer)], in the order the calls were made.
     ///
     /// @param filter     The filter the stacks have to pass to get the lines.
     /// @param attachment The action that adds the lines, called with the stack and the builder of its tooltip.
@@ -86,7 +86,7 @@ public final class AttachTooltipsEvent extends Event implements IModBusEvent {
     /// Attaches lines to the tooltip of every stack of the given fluid.
     ///
     /// The lines are added after the fluid's own hover text.
-    /// Stacks with previous calls to [#fluid(Fluid, BiConsumer)] and [#fluids(Predicate, BiConsumer)], in the order they were written.
+    /// They come after the lines of earlier calls to [#fluid(Fluid, BiConsumer)] and [#fluids(Predicate, BiConsumer)], in the order the calls were made.
     ///
     /// @param fluid      The fluid whose stacks get the lines.
     /// @param attachment The action that adds the lines, called with the stack and the builder of its tooltip.
@@ -96,10 +96,10 @@ public final class AttachTooltipsEvent extends Event implements IModBusEvent {
     }
     
     ///
-    /// Attaches lines to the tooltip of every Fluid Stack the given filter accepts.
+    /// Attaches lines to the tooltip of every fluid stack the given filter accepts.
     ///
     /// The lines are added after the fluid's own hover text.
-    /// Stacks with previous calls to [#fluid(Fluid, BiConsumer)] and [#fluids(Predicate, BiConsumer)], in the order they were written.
+    /// They come after the lines of earlier calls to [#fluid(Fluid, BiConsumer)] and [#fluids(Predicate, BiConsumer)], in the order the calls were made.
     ///
     /// @param filter     The filter the stacks have to pass to get the lines.
     /// @param attachment The action that adds the lines, called with the stack and the builder of its tooltip.
@@ -110,6 +110,11 @@ public final class AttachTooltipsEvent extends Event implements IModBusEvent {
     
     ///
     /// Wraps the given attachment so that it only runs for the stacks the given filter accepts.
+    ///
+    /// @param filter     The filter the stacks have to pass for the attachment to run.
+    /// @param attachment The attachment to wrap.
+    /// @param <T>        The type of stack.
+    /// @return The attachment that runs the given one only for the stacks the filter accepts.
     ///
     private static <T> BiConsumer<T, TooltipBuilder> restrict(Predicate<T> filter, BiConsumer<T, TooltipBuilder> attachment) {
         return (stack, builder) -> {
@@ -141,6 +146,10 @@ public final class AttachTooltipsEvent extends Event implements IModBusEvent {
 
     ///
     /// Combines a copy of the given attachments into one attachment that runs them in order, or `null` if there are none.
+    ///
+    /// @param attachments The attachments to combine, oldest first.
+    /// @param <T>         The type of stack.
+    /// @return The attachment that runs all the given ones in order, or `null` if there are none.
     ///
     private static <T> @Nullable BiConsumer<T, TooltipBuilder> combine(List<BiConsumer<T, TooltipBuilder>> attachments) {
         if (attachments.isEmpty()) {
