@@ -102,6 +102,7 @@ public final class SavedValueBuilder<SCOPE, VALUE> {
     /// A player will get the value of the server on login, and the value of a level whenever it enters that level.
     ///
     /// The payload will be declared on the network of the mod as `<modid>:saved/<name>`.
+    /// It is optional, so a player whose connection lacks the payload will not be sent the value.
     ///
     /// @param codec The codec the value is sent with.
     ///
@@ -124,7 +125,7 @@ public final class SavedValueBuilder<SCOPE, VALUE> {
     ///
     public SavedValue<SCOPE, VALUE> register() {
         Identifier id = this.persistence.declare(this.name);
-        PayloadBuilder<VALUE> sync = this.codec != null ? this.persistence.getMod().getNetwork().play("saved/" + this.name, this.codec) : null;
+        PayloadBuilder<VALUE> sync = this.codec != null ? this.persistence.getMod().getNetwork().play("saved/" + this.name, this.codec).optional() : null;
         return new SavedValue<>(this.scope, SavedValueData.type(id, this.format, this.initial), this.initial, sync);
     }
 }
