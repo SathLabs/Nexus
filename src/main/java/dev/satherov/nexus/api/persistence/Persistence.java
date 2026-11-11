@@ -50,6 +50,12 @@ public final class Persistence {
     private final Set<String> names = new HashSet<>();
     
     ///
+    /// The saved data of every player, online or offline.
+    ///
+    @Getter(lazy = true)
+    private final PlayerData playerData = new PlayerData();
+    
+    ///
     /// Should only ever be called from [NexusMod#getPersistence()].
     ///
     /// @param mod The handle of the mod.
