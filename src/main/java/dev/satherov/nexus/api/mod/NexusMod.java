@@ -3,6 +3,7 @@ package dev.satherov.nexus.api.mod;
 import lombok.Getter;
 
 import dev.satherov.nexus.api.network.Network;
+import dev.satherov.nexus.api.persistence.Persistence;
 import dev.satherov.nexus.api.registry.Registrations;
 import dev.satherov.nexus.api.render.Render;
 import dev.satherov.nexus.api.text.Translations;
@@ -85,6 +86,12 @@ public final class NexusMod {
     ///
     @Getter(lazy = true)
     private final Render render = new Render(this);
+    
+    ///
+    /// The mod's persistence, created when its getter is first called.
+    ///
+    @Getter(lazy = true)
+    private final Persistence persistence = new Persistence(this);
     
     ///
     /// Creates the handle of the mod the given container belongs to.

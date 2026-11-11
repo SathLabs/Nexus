@@ -1,0 +1,16 @@
+///
+/// The data that a mod saves with the world.
+/// - [Persistence]: The persistence of one mod, reached through [NexusMod#getPersistence()].
+///
+/// The saved values are in [dev.satherov.nexus.api.persistence.saved].
+/// The formats are in [dev.satherov.nexus.api.persistence.format].
+///
+@NullMarked
+@CheckReturnValue
+package dev.satherov.nexus.api.persistence;
+
+import dev.satherov.nexus.api.mod.NexusMod;
+
+import com.google.errorprone.annotations.CheckReturnValue;
+
+import org.jspecify.annotations.NullMarked;
