@@ -52,6 +52,7 @@ public class ArchiveStoreTest {
 
     private static final Pattern STAMP = Pattern.compile("(\\d+)-([a-z]+)");
     private static final Pattern LEGACY_NAME = Pattern.compile("(\\d+)-([a-z]+)\\.dat(-old)?");
+    private static final Pattern DEVICE = Pattern.compile("(con|prn|aux|nul|com[1-9]|lpt[1-9])(\\..*)?", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
     private static final Instant NOW = Instant.now().truncatedTo(ChronoUnit.SECONDS);
     private static final UUID STEVE = UUID.fromString("8667ba71-b85a-4004-af54-457a9734eed7");
@@ -86,17 +87,7 @@ public class ArchiveStoreTest {
             Assertions.assertThatThrownBy(() -> names.write(new NameKey(""), ArchiveStoreTest.value("empty"))).isInstanceOf(IllegalArgumentException.class);
         }
 
-        try (ArchiveStore<PathKey, CompoundTag> paths = new ArchiveStore<PathKey, CompoundTag>(
-                world.resolve(ArchiveStoreTest.BLUEPRINTS),
-                world,
-                segments -> Optional.of(new PathKey(segments)),
-                ArchiveStoreTest.FORMAT,
-                ArchiveStoreTest.REGISTRIES,
-                Retention.forever(),
-                Retention.forever(),
-                null,
-                null
-        )) {
+        try (ArchiveStore<PathKey, CompoundTag> paths = ArchiveStoreTest.openPaths(world)) {
             Assertions.assertThatThrownBy(() -> paths.write(new PathKey(List.of()), ArchiveStoreTest.value("root"))).isInstanceOf(IllegalArgumentException.class);
             Assertions.assertThatThrownBy(() -> paths.write(new PathKey(List.of("castle", "")), ArchiveStoreTest.value("hollow"))).isInstanceOf(IllegalArgumentException.class);
         }
@@ -137,6 +128,49 @@ public class ArchiveStoreTest {
         Assertions.assertThat(ArchiveStoreTest.files(folder))
                 .map(file -> folder.relativize(file).toString().toLowerCase(Locale.ROOT))
                 .doesNotHaveDuplicates();
+    }
+
+    @Test
+    public void storesKeysOfDifferentDepthSideBySide(@TempDir Path world) {
+        PathKey single = new PathKey(List.of("c"));
+        PathKey underDat = new PathKey(List.of("c.dat", "x"));
+        PathKey underRetired = new PathKey(List.of("c.retired", "x"));
+        List<PathKey> keys = List.of(single, underDat, underRetired);
+        try (ArchiveStore<PathKey, CompoundTag> store = ArchiveStoreTest.openPaths(world)) {
+            keys.forEach(key -> store.write(key, ArchiveStoreTest.value(String.join("/", key.segments()))));
+            store.retire(single);
+        }
+
+        try (ArchiveStore<PathKey, CompoundTag> store = ArchiveStoreTest.openPaths(world)) {
+            Assertions.assertThat(store.list(_ -> true)).containsExactlyInAnyOrder(underDat, underRetired);
+            Assertions.assertThat(store.listRetired(_ -> true)).containsExactly(single);
+            for (PathKey key : keys) {
+                Assertions.assertThat(store.read(key)).contains(ArchiveStoreTest.value(String.join("/", key.segments())));
+            }
+        }
+    }
+
+    @Test
+    public void roundTripsReservedDeviceNamesThroughAReopenedStore(@TempDir Path world) throws IOException {
+        List<PathKey> keys = Stream.of(List.of("con"), List.of("nul.txt"), List.of("com1", "x"))
+                .map(PathKey::new)
+                .toList();
+
+        try (ArchiveStore<PathKey, CompoundTag> store = ArchiveStoreTest.openPaths(world)) {
+            keys.forEach(key -> store.write(key, ArchiveStoreTest.value(String.join("/", key.segments()))));
+        }
+
+        try (ArchiveStore<PathKey, CompoundTag> store = ArchiveStoreTest.openPaths(world)) {
+            Assertions.assertThat(store.list(_ -> true)).containsExactlyInAnyOrderElementsOf(keys);
+            for (PathKey key : keys) {
+                Assertions.assertThat(store.read(key)).contains(ArchiveStoreTest.value(String.join("/", key.segments())));
+            }
+        }
+
+        try (Stream<Path> walk = Files.walk(world.resolve(ArchiveStoreTest.BLUEPRINTS))) {
+            Assertions.assertThat(walk.map(path -> path.getFileName().toString()).toList())
+                    .noneMatch(name -> ArchiveStoreTest.DEVICE.matcher(name).matches());
+        }
     }
 
     @Test
@@ -488,6 +522,20 @@ public class ArchiveStoreTest {
 
     private static ArchiveStore<NameKey, CompoundTag> openNames(Path world) {
         return new ArchiveStore<>(world.resolve(ArchiveStoreTest.BLUEPRINTS), world, NameKey::parse, ArchiveStoreTest.FORMAT, ArchiveStoreTest.REGISTRIES, Retention.forever(), Retention.forever(), null, null);
+    }
+
+    private static ArchiveStore<PathKey, CompoundTag> openPaths(Path world) {
+        return new ArchiveStore<PathKey, CompoundTag>(
+                world.resolve(ArchiveStoreTest.BLUEPRINTS),
+                world,
+                segments -> Optional.of(new PathKey(segments)),
+                ArchiveStoreTest.FORMAT,
+                ArchiveStoreTest.REGISTRIES,
+                Retention.forever(),
+                Retention.forever(),
+                null,
+                null
+        );
     }
 
     private static Optional<Archive.Imported<BackupKey>> readLegacy(Path file) {

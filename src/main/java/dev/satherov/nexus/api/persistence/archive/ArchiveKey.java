@@ -19,7 +19,12 @@ public interface ArchiveKey<SELF extends ArchiveKey<SELF>> extends Comparable<SE
     /// or `.retired` once the entry is retired.
     ///
     /// Lowercase letters, digits, `_`, `-`, and inner `.` will be written as they are, and every other character will be escaped.
+    /// The following will be escaped as well:
+    /// - The `.` that starts a trailing `.dat` or `.retired`.
+    /// - The first character of a device name reserved by Windows, alone or followed by `.` and anything.
+    ///
     /// The escaping keeps any non-empty segment inside the folder of the archive and apart from every other segment, also on a file system that ignores case.
+    /// The file of one key is never the folder of another key.
     ///
     /// The parser of the archive should give back a key with the same segments.
     ///

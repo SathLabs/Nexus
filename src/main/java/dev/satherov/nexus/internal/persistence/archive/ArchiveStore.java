@@ -82,6 +82,11 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     private static final Pattern ESCAPED = Pattern.compile("%([0-9a-f]{4})");
 
     ///
+    /// The pattern of a segment that is a device name reserved by Windows, alone or followed by `.` and anything.
+    ///
+    private static final Pattern DEVICE = Pattern.compile("(con|prn|aux|nul|com[1-9]|lpt[1-9])(\\..*)?", Pattern.DOTALL);
+
+    ///
     /// The folder of the archive, absolute and normalized.
     ///
     private final Path folder;
@@ -181,19 +186,22 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     }
 
     ///
-    /// Escapes every character of the given segment other than lowercase letters, digits, `_`, `-`, and inner `.`.
+    /// Escapes every character of the given segment other than lowercase letters, digits, `_`, `-`, and inner `.`, and escapes the following as well:
+    /// - The `.` that starts a trailing `.dat` or `.retired`.
+    /// - The first character of a device name reserved by Windows.
     ///
     /// @param segment The segment to escape.
     ///
     /// @return The escaped segment.
     ///
     private static String escape(String segment) {
+        boolean device = ArchiveStore.DEVICE.matcher(segment).matches();
         StringBuilder escaped = new StringBuilder();
         for (int i = 0; i < segment.length(); i++) {
             char character = segment.charAt(i);
             boolean plain = (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9') || character == '_' || character == '-';
-            boolean innerDot = character == '.' && i > 0 && i < segment.length() - 1;
-            if (plain || innerDot) {
+            boolean innerDot = character == '.' && i > 0 && i < segment.length() - 1 && !List.of(ArchiveStore.ACTIVE, ArchiveStore.RETIRED).contains(segment.substring(i));
+            if ((plain || innerDot) && !(device && i == 0)) {
                 escaped.append(character);
             } else {
                 escaped.append('%').append(HexFormat.of().toHexDigits(character));
