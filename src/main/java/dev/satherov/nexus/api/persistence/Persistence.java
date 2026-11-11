@@ -8,6 +8,7 @@ import dev.satherov.nexus.api.persistence.archive.ArchiveBuilder;
 import dev.satherov.nexus.api.persistence.archive.ArchiveKey;
 import dev.satherov.nexus.api.persistence.format.Format;
 import dev.satherov.nexus.api.persistence.saved.SavedValueBuilder;
+import dev.satherov.nexus.api.persistence.slot.SlotLayoutBuilder;
 
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -24,7 +25,7 @@ import java.util.Set;
 import java.util.function.Supplier;
 
 ///
-/// Starts the builders of the saved values and the archives of one mod.
+/// Starts the builders of the saved values, the archives, and the slot layouts of one mod.
 ///
 /// Every saved value and every archive should be declared inside the mod's constructor.
 ///
@@ -119,6 +120,17 @@ public final class Persistence {
     ///
     public <KEY extends ArchiveKey<KEY>, VALUE> ArchiveBuilder<KEY, VALUE> archive(String name, ArchiveKey.Parser<KEY> keys, Format<VALUE> format) {
         return new ArchiveBuilder<>(this, name, keys, format);
+    }
+
+    ///
+    /// Starts a new builder of a layout over the slots that holders of the given class have on their body.
+    ///
+    /// @param holder The class of the holders.
+    ///
+    /// @return The builder of the layout.
+    ///
+    public <HOLDER> SlotLayoutBuilder<HOLDER> slots(Class<HOLDER> holder) {
+        return new SlotLayoutBuilder<>(holder);
     }
 
     ///

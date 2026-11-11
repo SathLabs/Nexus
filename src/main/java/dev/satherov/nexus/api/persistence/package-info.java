@@ -6,6 +6,7 @@
 /// The saved values are in [dev.satherov.nexus.api.persistence.saved].
 /// The archives are in [dev.satherov.nexus.api.persistence.archive].
 /// The formats are in [dev.satherov.nexus.api.persistence.format].
+/// The slot layouts are in [dev.satherov.nexus.api.persistence.slot].
 ///
 @NullMarked
 @CheckReturnValue
