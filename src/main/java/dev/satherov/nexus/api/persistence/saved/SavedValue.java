@@ -1,9 +1,12 @@
 package dev.satherov.nexus.api.persistence.saved;
 
+import dev.satherov.nexus.api.codec.format.CodecFormat;
+import dev.satherov.nexus.api.codec.result.NexusCodecException;
 import dev.satherov.nexus.api.network.ClientRecipients;
 import dev.satherov.nexus.api.network.PayloadBuilder;
 import dev.satherov.nexus.api.network.context.ClientHandlerContext;
 import dev.satherov.nexus.api.network.payload.ClientboundPayload;
+import dev.satherov.nexus.internal.codec.CodecErrors;
 import dev.satherov.nexus.internal.persistence.saved.SavedScope;
 import dev.satherov.nexus.internal.persistence.saved.SavedValueData;
 import dev.satherov.nexus.internal.persistence.saved.client.SyncedValue;
@@ -11,13 +14,20 @@ import dev.satherov.nexus.internal.persistence.saved.client.SyncedValue;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.EntityEvent;
 
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.level.saveddata.SavedDataType;
+import net.minecraft.world.level.storage.LevelResource;
+import net.minecraft.world.level.storage.SavedDataStorage;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 
 import org.jspecify.annotations.Nullable;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
@@ -26,6 +36,8 @@ import java.util.function.UnaryOperator;
 /// A handle of one value that a mod saves once per server or once per level.
 ///
 /// Each value should be immutable and is only ever replaced whole.
+///
+/// If the saved value of a scope could not be read, its file will be left as it was.
 ///
 /// Every method other than [#getOnClient()] should only ever be called on the server.
 ///
@@ -78,7 +90,24 @@ public final class SavedValue<SCOPE, VALUE> {
             NeoForge.EVENT_BUS.addListener(scope.joinEvent(), this::onJoin);
         }
     }
-    
+
+    ///
+    /// The folder that the data storage of the given server or level keeps its files in.
+    ///
+    /// @param scope The server or level.
+    ///
+    /// @return The data folder of the scope.
+    ///
+    /// @throws IllegalArgumentException If the scope is neither a server nor a level.
+    ///
+    private static Path getDataFolder(Object scope) {
+        return switch (scope) {
+            case MinecraftServer server -> server.getWorldPath(LevelResource.DATA);
+            case ServerLevel level -> DimensionType.getStorageFolder(level.dimension(), level.getServer().getWorldPath(LevelResource.ROOT)).resolve("data");
+            default -> throw new IllegalArgumentException("The scope " + scope + " is neither a server nor a level");
+        };
+    }
+
     ///
     /// The value of the given scope.
     ///
@@ -87,6 +116,8 @@ public final class SavedValue<SCOPE, VALUE> {
     /// @param scope The server or level that holds the value.
     ///
     /// @return The value of the scope.
+    ///
+    /// @throws NexusCodecException If the scope has a saved value that could not be read.
     ///
     public VALUE get(SCOPE scope) {
         return this.getData(scope).getValue();
@@ -100,16 +131,36 @@ public final class SavedValue<SCOPE, VALUE> {
     /// @param scope The server or level that holds the value.
     /// @param value The new value.
     ///
+    /// @throws NexusCodecException If the scope has a saved value that could not be read.
+    ///
     public void set(SCOPE scope, VALUE value) {
         this.getData(scope).replace(value);
         this.send(value, this.scope.recipients().apply(scope));
     }
     
     ///
-    /// The saved data that holds the value of the given scope, created with the initial value if the scope doesn't have one.
+    /// The saved data that holds the value of the given scope, created with the initial value if the scope doesn't have a file.
+    ///
+    /// @param scope The server or level that holds the value.
+    ///
+    /// @return The saved data of the scope.
+    ///
+    /// @throws NexusCodecException If the scope has a file that could not be read.
     ///
     private SavedValueData<VALUE> getData(SCOPE scope) {
-        return this.scope.storage().apply(scope).computeIfAbsent(this.type);
+        SavedDataStorage storage = this.scope.storage().apply(scope);
+        SavedValueData<VALUE> existing = storage.get(this.type);
+        if (existing != null) {
+            return existing;
+        }
+
+        // If vanilla could not read the file, it returns null, so computeIfAbsent would overwrite the file on the next save.
+        Path file = this.type.id().withSuffix(".dat").resolveAgainst(SavedValue.getDataFolder(scope));
+        if (Files.exists(file)) {
+            throw CodecErrors.decodeFailure(this.type.id().toString(), CodecFormat.NBT.name(), new NexusCodecException("The file " + file + " could not be read"));
+        }
+
+        return storage.computeIfAbsent(this.type);
     }
     
     ///
@@ -130,6 +181,8 @@ public final class SavedValue<SCOPE, VALUE> {
     /// @param operator The operator, called with the current value of the scope.
     ///
     /// @return The new value.
+    ///
+    /// @throws NexusCodecException If the scope has a saved value that could not be read.
     ///
     @CanIgnoreReturnValue
     public VALUE update(SCOPE scope, UnaryOperator<VALUE> operator) {
@@ -166,6 +219,10 @@ public final class SavedValue<SCOPE, VALUE> {
     
     ///
     /// Sends the value of the scope a player joined to that player.
+    ///
+    /// @param event The event that is fired when a player joins the scope.
+    ///
+    /// @throws NexusCodecException If the scope the player joined has a saved value that could not be read.
     ///
     private void onJoin(EntityEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
