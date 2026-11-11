@@ -9,6 +9,7 @@ import dev.satherov.nexus.api.codec.key.MapKey;
 import dev.satherov.nexus.api.codec.result.NexusCodecException;
 import dev.satherov.nexus.api.codec.struct.StructCodec;
 import dev.satherov.nexus.api.codec.vanilla.VanillaCodecs;
+import dev.satherov.nexus.api.persistence.format.Format;
 
 import net.neoforged.neoforge.common.CommonHooks;
 import net.neoforged.neoforge.fluids.FluidStack;
@@ -80,6 +81,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.UnaryOperator;
 
 ///
 /// The parity fixture, every Nexus codec next to its DFU codec, its vanilla stream codec, and the values to compare them on.
@@ -168,6 +170,8 @@ public class ParityCases {
             NexusCodec.FLOAT.optionalField("range", SoundEvent::fixedRange),
             SoundEvent::new
     );
+    
+    private static final Format<Listing> LISTING_FORMAT = Format.of(ParityCases.LISTING).upgradeFrom(1, UnaryOperator.identity());
     
     public static final List<Case<?>> ALL = List.of(
             new Case<>("BOOL", NexusCodec.BOOL, Codec.BOOL, ByteBufCodecs.BOOL, List.of(true, false)),
@@ -416,6 +420,22 @@ public class ParityCases {
                     NexusCodec.ofVanilla(ParityCases.LISTING_DFU.codec(), ParityCases.LISTING_STREAM),
                     ParityCases.LISTING_DFU.codec(),
                     ParityCases.LISTING_STREAM,
+                    List.of(new Listing("stone", 1, Optional.empty()), new Listing("dirt", 64, Optional.of("cheap")))
+            ),
+            new Case<>(
+                    "Format.codec()",
+                    ParityCases.LISTING_FORMAT.codec(),
+                    RecordCodecBuilder.create(instance -> instance.group(
+                            Codec.INT.fieldOf("version").forGetter((Listing _) -> ParityCases.LISTING_FORMAT.getVersion()),
+                            ParityCases.LISTING_DFU.codec().fieldOf("data").forGetter(Function.identity())
+                    ).apply(instance, (_, listing) -> listing)),
+                    StreamCodec.composite(
+                            ByteBufCodecs.VAR_INT,
+                            (Listing _) -> ParityCases.LISTING_FORMAT.getVersion(),
+                            ParityCases.LISTING_STREAM,
+                            Function.identity(),
+                            (_, listing) -> listing
+                    ),
                     List.of(new Listing("stone", 1, Optional.empty()), new Listing("dirt", 64, Optional.of("cheap")))
             ),
             new Case<>(

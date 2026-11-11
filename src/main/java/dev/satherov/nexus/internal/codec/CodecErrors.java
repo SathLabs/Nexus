@@ -137,7 +137,44 @@ public class CodecErrors {
     public static NexusCodecException refused(IllegalArgumentException failure) {
         return new NexusCodecException(Objects.requireNonNullElse(failure.getMessage(), failure.toString()));
     }
-    
+
+    ///
+    /// Creates a failure for a tag whose version is newer than the current version of its format.
+    ///
+    /// @param current The current version of the format.
+    /// @param found   The version of the tag.
+    ///
+    /// @return The failure, with one error at an empty path.
+    ///
+    public static NexusCodecException tooNew(int current, int found) {
+        return new NexusCodecException("Expected version " + current + " or older, found " + found);
+    }
+
+    ///
+    /// Creates a failure for a version that no upgrade step of its format starts from.
+    ///
+    /// @param version The version of the tag.
+    ///
+    /// @return The failure, with one error at an empty path.
+    ///
+    public static NexusCodecException missingStep(int version) {
+        return new NexusCodecException("Could not upgrade from version '" + version + "', the format has no step for it");
+    }
+
+    ///
+    /// Creates a failure for an upgrade step that threw the given exception.
+    ///
+    /// The message will end with the string form of the given exception.
+    ///
+    /// @param version The version the step upgrades from.
+    /// @param failure The exception that the step threw.
+    ///
+    /// @return The failure, with one error at an empty path.
+    ///
+    public static NexusCodecException failedStep(int version, RuntimeException failure) {
+        return new NexusCodecException("Could not upgrade from version '" + version + "', " + failure);
+    }
+
     ///
     /// Creates the failure for a step of a component path that no value of a codec can hold.
     ///
