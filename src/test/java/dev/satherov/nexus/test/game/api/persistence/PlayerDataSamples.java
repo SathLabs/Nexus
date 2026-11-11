@@ -159,6 +159,7 @@ public class PlayerDataSamples {
                     StreamSupport.stream(server.getAllLevels().spliterator(), false).allMatch(level -> level.getEntity(uuid) == null),
                     "The detached copy is in the entity list of a level"
             );
+            player.snapTo(player.position().add(16.0, 0.0, 16.0));
             counter.set(player, new Counter(2));
             edited.set(player);
         });

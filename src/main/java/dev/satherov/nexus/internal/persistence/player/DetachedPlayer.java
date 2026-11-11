@@ -43,7 +43,7 @@ public final class DetachedPlayer extends ServerPlayer implements AutoCloseable 
     ///
     /// The keys of the loaded player tag that a save writes back unchanged.
     ///
-    private static final List<String> CARRIED_KEYS = List.of(ServerPlayer.ENDER_PEARLS_TAG, "RootVehicle", "Dimension");
+    private static final List<String> CARRIED_KEYS = List.of(ServerPlayer.ENDER_PEARLS_TAG, "RootVehicle", "Dimension", "Pos");
     
     ///
     /// The player tag the player was loaded from.
