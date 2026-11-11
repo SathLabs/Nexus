@@ -126,6 +126,17 @@ public class CodecErrors {
     public static CodecError unknownKey(String key) {
         return new CodecError(key, "Unknown key");
     }
+
+    ///
+    /// Creates a failure for a key that an encoded object already holds, although the codec around it writes its own value under that key.
+    ///
+    /// @param key The key that the object already holds.
+    ///
+    /// @return The failure, with one error at the key.
+    ///
+    public static NexusCodecException reservedKey(String key) {
+        return new NexusCodecException(List.of(new CodecError(key, "Reserved key")));
+    }
     
     ///
     /// Creates a failure with the message of the given exception, which a constructor or a factory threw to refuse a decoded value.

@@ -19,6 +19,7 @@ import net.minecraft.nbt.NumericTag;
 import net.minecraft.nbt.Tag;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.UnaryOperator;
 import java.util.stream.Stream;
@@ -67,6 +68,11 @@ public final class Format<VALUE> {
     private final Versioned versioned = new Versioned();
 
     ///
+    /// The codec of the flat form.
+    ///
+    private final Flat flat = new Flat();
+
+    ///
     /// Creates a new format of the given codec at version `1`.
     ///
     /// @param codec The codec of the value.
@@ -93,6 +99,20 @@ public final class Format<VALUE> {
         if (!unknown.isEmpty()) {
             throw new NexusCodecException(unknown);
         }
+    }
+
+    ///
+    /// Copies every entry of the given object other than the version into a new object.
+    ///
+    private static <V> V copyWithoutVersion(Operations<V> operations, V object) {
+        V copy = operations.emptyObject();
+        for (String key : operations.keys(object)) {
+            if (!key.equals(Format.VERSION)) {
+                operations.put(copy, key, Objects.requireNonNull(operations.get(object, key)));
+            }
+        }
+
+        return copy;
     }
 
     ///
@@ -187,6 +207,23 @@ public final class Format<VALUE> {
     }
 
     ///
+    /// The codec of the flat form, for storing the value as an attachment.
+    ///
+    /// In JSON and NBT, the current version will be added under `version` to the object the value encodes to,
+    /// and on the network the version will be written as a VarInt in front of the value.
+    /// Encoding will fail if the value does not encode to an object or if that object already holds `version`.
+    ///
+    /// Older versions can only be read from NBT,
+    /// in which case they will be upgraded the same way as with [#read(Tag, HolderLookup.Provider)].
+    /// In NBT, an object without `version` will be read as version `0`.
+    ///
+    /// @return The codec of the flat form.
+    ///
+    public NexusCodec<VALUE, Access.Registries> flatCodec() {
+        return this.flat;
+    }
+
+    ///
     /// Runs every step from the given version up to the current one on a copy of the given data.
     ///
     private Tag upgrade(int version, Tag data) {
@@ -203,6 +240,26 @@ public final class Format<VALUE> {
         }
 
         return upgraded;
+    }
+
+    ///
+    /// Fails if the given version is not the current one.
+    ///
+    private void requireCurrent(int version) {
+        if (version != this.getVersion()) {
+            throw CodecErrors.mismatch("version " + this.getVersion(), version);
+        }
+    }
+
+    ///
+    /// Reads the given version, with a failure at its key.
+    ///
+    private <V> int readVersion(Operations<V> operations, V version) {
+        try {
+            return operations.asVarInt(version);
+        } catch (NexusCodecException failure) {
+            throw CodecErrors.prefixKey(failure, Format.VERSION);
+        }
     }
 
     ///
@@ -249,7 +306,7 @@ public final class Format<VALUE> {
             }
 
             if (operations.isPositional()) {
-                this.requireCurrent(operations.asVarInt(input));
+                Format.this.requireCurrent(operations.asVarInt(input));
                 return Format.this.codec.read(operations, input);
             }
 
@@ -258,7 +315,7 @@ public final class Format<VALUE> {
             if (version == null) throw CodecErrors.missing(Format.VERSION);
             if (data == null) throw CodecErrors.missing(Format.DATA);
             Format.refuseUnknown(operations, input);
-            this.requireCurrent(this.readVersion(operations, version));
+            Format.this.requireCurrent(Format.this.readVersion(operations, version));
             return this.readData(operations, data);
         }
 
@@ -268,30 +325,10 @@ public final class Format<VALUE> {
         private VALUE readTag(Operations<Tag> nbt, Tag input) {
             if (input instanceof CompoundTag compound && compound.get(Format.VERSION) instanceof NumericTag version && compound.get(Format.DATA) instanceof Tag data) {
                 Format.refuseUnknown(nbt, input);
-                return this.readData(nbt, Format.this.upgrade(this.readVersion(nbt, version), data));
+                return this.readData(nbt, Format.this.upgrade(Format.this.readVersion(nbt, version), data));
             }
 
             return Format.this.codec.read(nbt, Format.this.upgrade(0, input));
-        }
-
-        ///
-        /// Fails if the given version is not the current one.
-        ///
-        private void requireCurrent(int version) {
-            if (version != Format.this.getVersion()) {
-                throw CodecErrors.mismatch("version " + Format.this.getVersion(), version);
-            }
-        }
-
-        ///
-        /// Reads the given version, with a failure at its key.
-        ///
-        private <V> int readVersion(Operations<V> operations, V version) {
-            try {
-                return operations.asVarInt(version);
-            } catch (NexusCodecException failure) {
-                throw CodecErrors.prefixKey(failure, Format.VERSION);
-            }
         }
 
         ///
@@ -303,6 +340,61 @@ public final class Format<VALUE> {
             } catch (NexusCodecException failure) {
                 throw CodecErrors.prefixKey(failure, Format.DATA);
             }
+        }
+    }
+
+    ///
+    /// The codec of the flat form of this format.
+    ///
+    private final class Flat extends Traversal<VALUE, Access.Registries> {
+
+        ///
+        /// Creates the codec of the flat form.
+        ///
+        private Flat() {
+            super("format");
+        }
+
+        ///
+        /// Writes the versioned form on the network, and adds the current version to a copy of the encoded object otherwise.
+        ///
+        /// Fails if the encoded value is not an object or if it already holds the version.
+        ///
+        @Override
+        public <V> V write(Operations<V> operations, VALUE value) {
+            if (operations.isPositional()) {
+                return Format.this.versioned.write(operations, value);
+            }
+
+            V encoded = Format.this.codec.write(operations, value);
+            if (operations.get(encoded, Format.VERSION) != null) {
+                throw CodecErrors.reservedKey(Format.VERSION);
+            }
+
+            return operations.put(Format.copyWithoutVersion(operations, encoded), Format.VERSION, operations.ofVarInt(Format.this.getVersion()));
+        }
+
+        ///
+        /// Reads the versioned form on the network, upgrades older versions in NBT, and reads the current version only in JSON.
+        ///
+        /// In NBT, an object without the version will be read as version `0`.
+        ///
+        @Override
+        public <V> VALUE read(Operations<V> operations, V input) {
+            if (operations.isPositional()) {
+                return Format.this.versioned.read(operations, input);
+            }
+
+            V version = operations.get(input, Format.VERSION);
+            V data = Format.copyWithoutVersion(operations, input);
+            if (operations instanceof NbtOperations<?> nbt) {
+                int from = version == null ? 0 : Format.this.readVersion(operations, version);
+                return Format.this.codec.read(nbt, Format.this.upgrade(from, (Tag) data));
+            }
+
+            if (version == null) throw CodecErrors.missing(Format.VERSION);
+            Format.this.requireCurrent(Format.this.readVersion(operations, version));
+            return Format.this.codec.read(operations, data);
         }
     }
 }

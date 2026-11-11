@@ -22,7 +22,7 @@ import java.util.Objects;
 import java.util.function.UnaryOperator;
 
 ///
-/// Checks that a format upgrades old tags step by step, refuses steps that leave a gap, and nests through its codec.
+/// Checks that a format upgrades old tags step by step, refuses steps that leave a gap, nests through its codec, and stores a value flat beside its version.
 ///
 public class FormatTest {
     
@@ -145,7 +145,59 @@ public class FormatTest {
         Assertions.assertThat(FormatTest.FORMAT.codec().decode(FormatTest.JSON, current)).isEqualTo(FormatTest.STEVE);
         Assertions.assertThatThrownBy(() -> FormatTest.FORMAT.codec().decode(FormatTest.JSON, old)).isInstanceOf(NexusCodecException.class);
     }
-    
+
+    @Test
+    public void flatCodecWritesTheKeysOfTheValueBesideTheVersion() {
+        Tag written = FormatTest.FORMAT.flatCodec().encode(FormatTest.NBT, FormatTest.STEVE);
+
+        Assertions.assertThat(written).isEqualTo(FormatTest.flat(2, FormatTest.grave("owner", "count")));
+        Assertions.assertThat(FormatTest.FORMAT.flatCodec().decode(FormatTest.NBT, written)).isEqualTo(FormatTest.STEVE);
+    }
+
+    @Test
+    public void flatCodecReadsEveryVersionThroughTheSteps() {
+        NexusCodec<Grave, Access.Registries> flat = FormatTest.FORMAT.flatCodec();
+
+        Assertions.assertThat(flat.decode(FormatTest.NBT, FormatTest.grave("name", "stacks"))).isEqualTo(FormatTest.STEVE);
+        Assertions.assertThat(flat.decode(FormatTest.NBT, FormatTest.flat(1, FormatTest.grave("owner", "stacks")))).isEqualTo(FormatTest.STEVE);
+    }
+
+    @Test
+    public void flatCodecRefusesANewerVersion() {
+        Tag newer = FormatTest.flat(7, FormatTest.grave("owner", "count"));
+
+        Assertions.assertThatThrownBy(() -> FormatTest.FORMAT.flatCodec().decode(FormatTest.NBT, newer))
+                .isInstanceOf(NexusCodecException.class)
+                .hasMessageContaining("7");
+    }
+
+    @Test
+    public void flatCodecRefusesAValueThatIsNotAMap() {
+        NexusCodec<Integer, Access.Registries> flat = Format.of(NexusCodec.INT).flatCodec();
+
+        Assertions.assertThatThrownBy(() -> flat.encode(FormatTest.NBT, 3)).isInstanceOf(NexusCodecException.class);
+    }
+
+    @Test
+    public void flatCodecRefusesAMapThatHasAVersion() {
+        StructCodec<Versioned, Access.Plain> versioned = NexusCodec.struct("versioned", NexusCodec.INT.field("version", Versioned::version), Versioned::new);
+        NexusCodec<Versioned, Access.Registries> flat = Format.of(versioned).flatCodec();
+
+        Assertions.assertThatThrownBy(() -> flat.encode(FormatTest.NBT, new Versioned(4))).isInstanceOf(NexusCodecException.class);
+    }
+
+    @Test
+    public void flatCodecOnJsonRefusesAnOldVersion() {
+        JsonElement current = JsonParser.parseString("{\"version\": 2, \"owner\": \"Steve\", \"count\": 3}");
+        JsonElement old = JsonParser.parseString("{\"version\": 1, \"owner\": \"Steve\", \"stacks\": 3}");
+        JsonElement unversioned = JsonParser.parseString("{\"name\": \"Steve\", \"stacks\": 3}");
+        NexusCodec<Grave, Access.Registries> flat = FormatTest.FORMAT.flatCodec();
+
+        Assertions.assertThat(flat.decode(FormatTest.JSON, current)).isEqualTo(FormatTest.STEVE);
+        Assertions.assertThatThrownBy(() -> flat.decode(FormatTest.JSON, old)).isInstanceOf(NexusCodecException.class);
+        Assertions.assertThatThrownBy(() -> flat.decode(FormatTest.JSON, unversioned)).isInstanceOf(NexusCodecException.class);
+    }
+
     private static CompoundTag grave(String ownerKey, String countKey) {
         CompoundTag grave = new CompoundTag();
         grave.putString(ownerKey, "Steve");
@@ -159,7 +211,13 @@ public class FormatTest {
         versioned.put("data", data);
         return versioned;
     }
-    
+
+    private static CompoundTag flat(int version, CompoundTag map) {
+        CompoundTag flat = map.copy();
+        flat.putInt("version", version);
+        return flat;
+    }
+
     private static Tag rename(Tag tag, String from, String to) {
         CompoundTag renamed = ((CompoundTag) tag).copy();
         renamed.put(to, Objects.requireNonNull(renamed.get(from)));
@@ -170,4 +228,6 @@ public class FormatTest {
     public record Grave(String owner, int count) { }
     
     public record Plot(String name, Grave grave) { }
+
+    public record Versioned(int version) { }
 }
