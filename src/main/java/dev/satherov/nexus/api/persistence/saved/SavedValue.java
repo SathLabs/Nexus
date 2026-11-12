@@ -14,12 +14,8 @@ import dev.satherov.nexus.internal.persistence.saved.client.SyncedValue;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.EntityEvent;
 
-import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.level.saveddata.SavedDataType;
-import net.minecraft.world.level.storage.LevelResource;
 import net.minecraft.world.level.storage.SavedDataStorage;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
@@ -92,23 +88,6 @@ public final class SavedValue<SCOPE, VALUE> {
     }
 
     ///
-    /// The folder that the data storage of the given server or level keeps its files in.
-    ///
-    /// @param scope The server or level.
-    ///
-    /// @return The data folder of the scope.
-    ///
-    /// @throws IllegalArgumentException If the scope is neither a server nor a level.
-    ///
-    private static Path getDataFolder(Object scope) {
-        return switch (scope) {
-            case MinecraftServer server -> server.getWorldPath(LevelResource.DATA);
-            case ServerLevel level -> DimensionType.getStorageFolder(level.dimension(), level.getServer().getWorldPath(LevelResource.ROOT)).resolve("data");
-            default -> throw new IllegalArgumentException("The scope " + scope + " is neither a server nor a level");
-        };
-    }
-
-    ///
     /// The value of the given scope.
     ///
     /// If the scope doesn't have a saved value, the initial value will be saved and returned.
@@ -155,7 +134,7 @@ public final class SavedValue<SCOPE, VALUE> {
         }
 
         // If vanilla could not read the file, it returns null, so computeIfAbsent would overwrite the file on the next save.
-        Path file = this.type.id().withSuffix(".dat").resolveAgainst(SavedValue.getDataFolder(scope));
+        Path file = storage.getDataFile(this.type.id());
         if (Files.exists(file)) {
             throw CodecErrors.decodeFailure(this.type.id().toString(), CodecFormat.NBT.name(), new NexusCodecException("The file " + file + " could not be read"));
         }

@@ -86,16 +86,17 @@ public final class Format<VALUE> {
     ///
     /// Refuses every key of the given object other than the version and the data if the format is strict.
     ///
+    /// @param operations The operations of the format.
+    /// @param object     The object to check.
+    ///
+    /// @throws NexusCodecException If the format is strict and the object has a key other than the version and the data.
+    ///
     private static <V> void refuseUnknown(Operations<V> operations, V object) {
         if (!operations.isStrict()) {
             return;
         }
 
-        List<CodecError> unknown = operations.keys(object).stream()
-                .filter(key -> !Format.KEYS.contains(key))
-                .map(CodecErrors::unknownKey)
-                .toList();
-
+        List<CodecError> unknown = CodecErrors.unknownKeys(operations.keys(object), Format.KEYS::contains);
         if (!unknown.isEmpty()) {
             throw new NexusCodecException(unknown);
         }

@@ -4,9 +4,6 @@ import dev.satherov.nexus.api.persistence.Persistence;
 import dev.satherov.nexus.api.persistence.format.Format;
 import dev.satherov.nexus.internal.persistence.archive.ArchiveStore;
 
-import net.minecraft.resources.Identifier;
-import net.minecraft.world.level.storage.LevelResource;
-
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 
 import org.jetbrains.annotations.ApiStatus;
@@ -57,14 +54,9 @@ public final class ArchiveBuilder<KEY extends ArchiveKey<KEY>, VALUE> {
     private Retention<KEY> retired = Retention.forever();
 
     ///
-    /// The folder of the older layout relative to the world folder, or `null` if there is none.
+    /// The older layout to import once per world, or `null` if [#legacy(String, Function)] wasn't called.
     ///
-    private @Nullable String legacyFolder;
-
-    ///
-    /// The reader of the files of the older layout, or `null` if there is none.
-    ///
-    private @Nullable Function<Path, Optional<Archive.Imported<KEY>>> legacyReader;
+    private ArchiveStore.@Nullable Legacy<KEY> legacy;
 
     ///
     /// Should only ever be called from [Persistence#archive(String, ArchiveKey.Parser, Format)].
@@ -133,30 +125,20 @@ public final class ArchiveBuilder<KEY extends ArchiveKey<KEY>, VALUE> {
     ///
     @CanIgnoreReturnValue
     public ArchiveBuilder<KEY, VALUE> legacy(String folder, Function<Path, Optional<Archive.Imported<KEY>>> reader) {
-        this.legacyFolder = folder;
-        this.legacyReader = reader;
+        this.legacy = new ArchiveStore.Legacy<>(folder, reader);
         return this;
     }
 
     ///
     /// Declares and creates the archive.
     ///
+    /// Later calls on this builder will leave the registered archive as it was.
+    ///
     /// @return The new archive.
     ///
     /// @throws IllegalStateException If a server already started, or if the mod already declared a saved value or an archive with the same name.
     ///
     public Archive<KEY, VALUE> register() {
-        Identifier id = this.persistence.declare(this.name);
-        return new Archive<>(id, server -> new ArchiveStore<>(
-                server.getWorldPath(LevelResource.DATA).resolve(id.getNamespace()).resolve(id.getPath()),
-                server.getWorldPath(LevelResource.ROOT),
-                this.keys,
-                this.format,
-                server.registryAccess(),
-                this.active,
-                this.retired,
-                this.legacyFolder,
-                this.legacyReader
-        ));
+        return new Archive<>(new ArchiveStore.Declaration<>(this.persistence.declare(this.name), this.keys, this.format, this.active, this.retired, this.legacy));
     }
 }

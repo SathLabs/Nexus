@@ -9,13 +9,14 @@ import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.world.level.storage.LevelResource;
 
 import java.io.UncheckedIOException;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
 import java.util.function.Predicate;
 
 ///
@@ -35,14 +36,9 @@ import java.util.function.Predicate;
 public final class Archive<KEY extends ArchiveKey<KEY>, VALUE> {
 
     ///
-    /// The identifier `<modid>:<name>` of the archive.
+    /// The declaration of the archive.
     ///
-    private final Identifier id;
-
-    ///
-    /// The function that opens the store of a server.
-    ///
-    private final Function<MinecraftServer, ArchiveStore<KEY, VALUE>> opener;
+    private final ArchiveStore.Declaration<KEY, VALUE> declaration;
 
     ///
     /// The store of every running server.
@@ -52,12 +48,10 @@ public final class Archive<KEY extends ArchiveKey<KEY>, VALUE> {
     ///
     /// Should only ever be called from [ArchiveBuilder#register()].
     ///
-    /// @param id     The identifier `<modid>:<name>` of the archive.
-    /// @param opener The function that opens the store of a server, called once the server is about to start.
+    /// @param declaration The declaration of the archive.
     ///
-    Archive(Identifier id, Function<MinecraftServer, ArchiveStore<KEY, VALUE>> opener) {
-        this.id = id;
-        this.opener = opener;
+    Archive(ArchiveStore.Declaration<KEY, VALUE> declaration) {
+        this.declaration = declaration;
         NeoForge.EVENT_BUS.addListener(ServerAboutToStartEvent.class, this::onServerAboutToStart);
         NeoForge.EVENT_BUS.addListener(ServerStoppedEvent.class, this::onServerStopped);
     }
@@ -229,7 +223,7 @@ public final class Archive<KEY extends ArchiveKey<KEY>, VALUE> {
     private ArchiveStore<KEY, VALUE> getStore(MinecraftServer server) {
         ArchiveStore<KEY, VALUE> store = this.stores.get(server);
         if (store == null) {
-            throw new IllegalStateException("The archive '" + this.id + "' is not open on the server");
+            throw new IllegalStateException("The archive '" + this.declaration.id() + "' is not open on the server");
         }
 
         return store;
@@ -241,7 +235,10 @@ public final class Archive<KEY extends ArchiveKey<KEY>, VALUE> {
     /// @param event The event of the server that is about to start.
     ///
     private void onServerAboutToStart(ServerAboutToStartEvent event) {
-        this.stores.put(event.getServer(), this.opener.apply(event.getServer()));
+        MinecraftServer server = event.getServer();
+        Identifier id = this.declaration.id();
+        Path folder = server.getWorldPath(LevelResource.DATA).resolve(id.getNamespace()).resolve(id.getPath());
+        this.stores.put(server, new ArchiveStore<>(folder, server.getWorldPath(LevelResource.ROOT), server.registryAccess(), this.declaration));
     }
 
     ///

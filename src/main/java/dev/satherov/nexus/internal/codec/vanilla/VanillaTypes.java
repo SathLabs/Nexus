@@ -205,7 +205,7 @@ public class VanillaTypes {
             }
             
             if (operations.isStrict()) {
-                errors.addAll(VanillaTypes.unknownKeys(keys, key -> key.equals(VanillaTypes.NAME) || (key.equals(VanillaTypes.PROPERTIES) && !singleton)));
+                errors.addAll(CodecErrors.unknownKeys(keys, key -> key.equals(VanillaTypes.NAME) || (key.equals(VanillaTypes.PROPERTIES) && !singleton)));
             }
             
             if (!errors.isEmpty()) {
@@ -415,7 +415,7 @@ public class VanillaTypes {
         }
         
         if (operations.isStrict()) {
-            errors.addAll(VanillaTypes.unknownKeys(keys, key -> definition.getProperty(key) != null));
+            errors.addAll(CodecErrors.unknownKeys(keys, key -> definition.getProperty(key) != null));
         }
         
         if (!errors.isEmpty()) throw new NexusCodecException(errors);
@@ -464,16 +464,6 @@ public class VanillaTypes {
         }
         
         return value;
-    }
-    
-    ///
-    /// Creates an error at every one of the given keys that the given check refuses.
-    ///
-    private static List<CodecError> unknownKeys(Set<String> keys, Predicate<String> known) {
-        return keys.stream()
-                .filter(known.negate())
-                .map(key -> new CodecError(key, "Unknown key"))
-                .toList();
     }
     
     ///
@@ -897,7 +887,7 @@ public class VanillaTypes {
                     VanillaTypes.collect(errors, StackCodec.COMPONENTS, () -> VanillaTypes.PATCH.read(operations, components));
             
             if (present != null) {
-                errors.addAll(VanillaTypes.unknownKeys(present, this.keys::contains));
+                errors.addAll(CodecErrors.unknownKeys(present, this.keys::contains));
             }
             
             if (!errors.isEmpty()) {

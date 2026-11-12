@@ -1,5 +1,5 @@
 ///
-/// The store that keeps the entries of an archive on disk.
+/// The store that keeps the entries of an archive on disk, and the folder that lays out their files.
 ///
 @NullMarked
 @CheckReturnValue

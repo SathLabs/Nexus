@@ -15,6 +15,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
+import net.minecraft.resources.Identifier;
 
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -49,6 +50,8 @@ public class ArchiveStoreTest {
     private static final String BACKUPS = "data/nexus/backups";
     private static final String BLUEPRINTS = "data/nexus/blueprints";
     private static final String LEGACY = "data/epitaphs";
+    private static final Identifier BACKUP_ARCHIVE = Identifier.fromNamespaceAndPath("nexus", "backups");
+    private static final Identifier BLUEPRINT_ARCHIVE = Identifier.fromNamespaceAndPath("nexus", "blueprints");
 
     private static final Pattern STAMP = Pattern.compile("(\\d+)-([a-z]+)");
     private static final Pattern LEGACY_NAME = Pattern.compile("(\\d+)-([a-z]+)\\.dat(-old)?");
@@ -503,39 +506,37 @@ public class ArchiveStoreTest {
     }
 
     private static ArchiveStore<BackupKey, CompoundTag> open(Path world, Retention<BackupKey> active, Retention<BackupKey> retired) {
-        return new ArchiveStore<>(world.resolve(ArchiveStoreTest.BACKUPS), world, BackupKey::parse, ArchiveStoreTest.FORMAT, ArchiveStoreTest.REGISTRIES, active, retired, null, null);
+        ArchiveStore.Declaration<BackupKey, CompoundTag> declaration = new ArchiveStore.Declaration<>(ArchiveStoreTest.BACKUP_ARCHIVE, BackupKey::parse, ArchiveStoreTest.FORMAT, active, retired, null);
+        return new ArchiveStore<>(world.resolve(ArchiveStoreTest.BACKUPS), world, ArchiveStoreTest.REGISTRIES, declaration);
     }
 
     private static ArchiveStore<BackupKey, CompoundTag> openLegacy(Path world) {
-        return new ArchiveStore<>(
-                world.resolve(ArchiveStoreTest.BACKUPS),
-                world,
+        ArchiveStore.Declaration<BackupKey, CompoundTag> declaration = new ArchiveStore.Declaration<>(
+                ArchiveStoreTest.BACKUP_ARCHIVE,
                 BackupKey::parse,
                 ArchiveStoreTest.FORMAT,
-                ArchiveStoreTest.REGISTRIES,
                 Retention.forever(),
                 Retention.forever(),
-                ArchiveStoreTest.LEGACY,
-                ArchiveStoreTest::readLegacy
+                new ArchiveStore.Legacy<>(ArchiveStoreTest.LEGACY, ArchiveStoreTest::readLegacy)
         );
+        return new ArchiveStore<>(world.resolve(ArchiveStoreTest.BACKUPS), world, ArchiveStoreTest.REGISTRIES, declaration);
     }
 
     private static ArchiveStore<NameKey, CompoundTag> openNames(Path world) {
-        return new ArchiveStore<>(world.resolve(ArchiveStoreTest.BLUEPRINTS), world, NameKey::parse, ArchiveStoreTest.FORMAT, ArchiveStoreTest.REGISTRIES, Retention.forever(), Retention.forever(), null, null);
+        ArchiveStore.Declaration<NameKey, CompoundTag> declaration = new ArchiveStore.Declaration<>(ArchiveStoreTest.BLUEPRINT_ARCHIVE, NameKey::parse, ArchiveStoreTest.FORMAT, Retention.forever(), Retention.forever(), null);
+        return new ArchiveStore<>(world.resolve(ArchiveStoreTest.BLUEPRINTS), world, ArchiveStoreTest.REGISTRIES, declaration);
     }
 
     private static ArchiveStore<PathKey, CompoundTag> openPaths(Path world) {
-        return new ArchiveStore<PathKey, CompoundTag>(
-                world.resolve(ArchiveStoreTest.BLUEPRINTS),
-                world,
+        ArchiveStore.Declaration<PathKey, CompoundTag> declaration = new ArchiveStore.Declaration<PathKey, CompoundTag>(
+                ArchiveStoreTest.BLUEPRINT_ARCHIVE,
                 segments -> Optional.of(new PathKey(segments)),
                 ArchiveStoreTest.FORMAT,
-                ArchiveStoreTest.REGISTRIES,
                 Retention.forever(),
                 Retention.forever(),
-                null,
                 null
         );
+        return new ArchiveStore<>(world.resolve(ArchiveStoreTest.BLUEPRINTS), world, ArchiveStoreTest.REGISTRIES, declaration);
     }
 
     private static Optional<Archive.Imported<BackupKey>> readLegacy(Path file) {

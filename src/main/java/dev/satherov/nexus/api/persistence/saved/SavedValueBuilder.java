@@ -15,6 +15,8 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
+
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
 
@@ -110,6 +112,7 @@ public final class SavedValueBuilder<SCOPE, VALUE> {
     ///
     /// @see SavedValue#getOnClient()
     ///
+    @CanIgnoreReturnValue
     public SavedValueBuilder<SCOPE, VALUE> sync(NexusCodec<VALUE, ? super Access.Registries> codec) {
         this.codec = codec;
         return this;

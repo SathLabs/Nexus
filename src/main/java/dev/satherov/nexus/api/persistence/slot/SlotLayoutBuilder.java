@@ -8,6 +8,8 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 
 import com.google.common.base.Suppliers;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 
 import org.jetbrains.annotations.ApiStatus;
@@ -96,6 +98,17 @@ public final class SlotLayoutBuilder<HOLDER> {
         String candidate = slash < 0 ? name : name.substring(0, slash);
         Identifier id = Identifier.tryParse(candidate);
         return id != null && id.toString().equals(candidate) ? id : null;
+    }
+
+    ///
+    /// @param groups The layout's own groups by their name.
+    /// @param name   The name of the group in the layout.
+    /// @param ids    The identifiers of the sources that the group may belong to.
+    ///
+    /// @return `true` if the name is one of the layout's own groups or could be the name of a group of one of the sources.
+    ///
+    private static boolean couldHave(Map<String, ?> groups, String name, Collection<Identifier> ids) {
+        return groups.containsKey(name) || ids.stream().anyMatch(id -> name.equals(id.toString()) || name.startsWith(id + "/"));
     }
 
     ///
@@ -191,46 +204,47 @@ public final class SlotLayoutBuilder<HOLDER> {
     ///
     /// Builds the layout.
     ///
+    /// Later calls on this builder will leave the built layout as it was.
+    ///
     /// @return The layout.
     ///
     /// @throws IllegalArgumentException If a group given to [#refuse(String, Predicate)] or [#fallback(String...)] can't be a group of the layout,
     /// as far as that can be told before the registered sources are looked up.
     ///
     public SlotLayout<HOLDER> build() {
-        for (String name : this.referenced()) {
-            Collection<Identifier> ids = this.excluded == null ? this.sources : Stream.ofNullable(SlotLayoutBuilder.sourceOf(name)).toList();
-            if (!this.couldHave(name, ids)) {
+        Map<String, Function<HOLDER, SlotAccess>> groups = ImmutableMap.copyOf(this.groups);
+        Set<Identifier> sources = ImmutableSet.copyOf(this.sources);
+        Map<String, Predicate<ItemStack>> refusals = Map.copyOf(this.refusals);
+        List<String> fallbacks = List.copyOf(this.fallbacks);
+        @Nullable Set<Identifier> excluded = this.excluded != null ? Set.copyOf(this.excluded) : null;
+        Set<String> referenced = ImmutableSet.<String>builder().addAll(this.refusals.keySet()).addAll(fallbacks).build();
+        for (String name : referenced) {
+            Collection<Identifier> ids = excluded == null ? sources : Stream.ofNullable(SlotLayoutBuilder.sourceOf(name)).toList();
+            if (!SlotLayoutBuilder.couldHave(groups, name, ids)) {
                 throw new IllegalArgumentException("The slot layout of '" + this.holder.getName() + "' can't have the group '" + name + "'");
             }
         }
 
-        Supplier<Map<Identifier, SlotSource<?>>> resolved = Suppliers.memoize(this::resolve);
-        return new SlotLayout<>(holder -> this.groupsOf(holder, resolved.get()), Map.copyOf(this.refusals), List.copyOf(this.fallbacks));
-    }
-
-    ///
-    /// Gets the name of every group given to [#refuse(String, Predicate)] or [#fallback(String...)].
-    ///
-    private Set<String> referenced() {
-        Set<String> names = new LinkedHashSet<>(this.refusals.keySet());
-        names.addAll(this.fallbacks);
-        return names;
-    }
-
-    ///
-    /// If the given group name belongs to a group of the layout's own or could belong to a source of one of the given identifiers.
-    ///
-    private boolean couldHave(String name, Collection<Identifier> ids) {
-        return this.groups.containsKey(name) || ids.stream().anyMatch(id -> name.equals(id.toString()) || name.startsWith(id + "/"));
+        Supplier<Map<Identifier, SlotSource<?>>> resolved = Suppliers.memoize(() -> this.resolve(groups, sources, excluded, referenced));
+        return new SlotLayout<>(holder -> this.groupsOf(holder, groups, resolved.get()), refusals, fallbacks);
     }
 
     ///
     /// Looks up the sources of the layout among the registered sources.
     ///
-    private Map<Identifier, SlotSource<?>> resolve() {
+    /// @param groups     The functions that get the slots of the layout's own groups, by the name of the group.
+    /// @param sources    The identifiers of the sources added through [#source(Identifier)].
+    /// @param excluded   The identifiers of the registered sources that are left out, or `null` if [#registered(Identifier...)] wasn't called.
+    /// @param referenced The names of the groups given to [#refuse(String, Predicate)] and [#fallback(String...)].
+    ///
+    /// @return The sources of the layout by their identifier.
+    ///
+    /// @throws IllegalStateException If a source added through [#source(Identifier)] isn't registered or is for another class of holders, or if one of the referenced groups can't be a group of the layout.
+    ///
+    private Map<Identifier, SlotSource<?>> resolve(Map<String, Function<HOLDER, SlotAccess>> groups, Set<Identifier> sources, @Nullable Set<Identifier> excluded, Set<String> referenced) {
         Map<Identifier, SlotSource<?>> registered = SlotSources.getAll();
         Map<Identifier, SlotSource<?>> chosen = new LinkedHashMap<>();
-        for (Identifier id : this.sources) {
+        for (Identifier id : sources) {
             SlotSource<?> source = registered.get(id);
             if (source == null) {
                 throw new IllegalStateException("The slot layout of '" + this.holder.getName() + "' uses the slot source '" + id + "', which isn't registered");
@@ -243,17 +257,16 @@ public final class SlotLayoutBuilder<HOLDER> {
             chosen.put(id, source);
         }
 
-        Set<Identifier> except = this.excluded;
-        if (except != null) {
+        if (excluded != null) {
             registered.forEach((id, source) -> {
-                if (!except.contains(id) && source.holder().isAssignableFrom(this.holder)) {
+                if (!excluded.contains(id) && source.holder().isAssignableFrom(this.holder)) {
                     chosen.putIfAbsent(id, source);
                 }
             });
         }
 
-        for (String name : this.referenced()) {
-            if (!this.couldHave(name, chosen.keySet())) {
+        for (String name : referenced) {
+            if (!SlotLayoutBuilder.couldHave(groups, name, chosen.keySet())) {
                 throw new IllegalStateException("The slot layout of '" + this.holder.getName() + "' doesn't have a source for the group '" + name + "'");
             }
         }
@@ -264,9 +277,17 @@ public final class SlotLayoutBuilder<HOLDER> {
     ///
     /// Gets the groups of the given holder by their name in the layout.
     ///
-    private Map<String, SlotAccess> groupsOf(HOLDER holder, Map<Identifier, SlotSource<?>> sources) {
+    /// @param holder  The holder of the slots.
+    /// @param own     The functions that get the slots of the layout's own groups, by the name of the group.
+    /// @param sources The sources of the layout by their identifier.
+    ///
+    /// @return The groups of the holder by their name in the layout.
+    ///
+    /// @throws IllegalStateException If two groups of the holder have the same name in the layout.
+    ///
+    private Map<String, SlotAccess> groupsOf(HOLDER holder, Map<String, Function<HOLDER, SlotAccess>> own, Map<Identifier, SlotSource<?>> sources) {
         Map<String, SlotAccess> groups = new LinkedHashMap<>();
-        this.groups.forEach((name, access) -> groups.put(name, access.apply(holder)));
+        own.forEach((name, access) -> groups.put(name, access.apply(holder)));
         sources.forEach((id, source) -> SlotLayoutBuilder.sourceGroups(source, holder).forEach((group, access) -> {
             String name = group.isEmpty() ? id.toString() : id + "/" + group;
             if (groups.putIfAbsent(name, access) != null) {

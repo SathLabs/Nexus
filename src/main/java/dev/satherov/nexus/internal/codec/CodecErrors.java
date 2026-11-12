@@ -24,6 +24,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 ///
@@ -125,6 +127,21 @@ public class CodecErrors {
     ///
     public static CodecError unknownKey(String key) {
         return new CodecError(key, "Unknown key");
+    }
+
+    ///
+    /// Creates the error for every one of the given keys that the given check refuses.
+    ///
+    /// @param keys  The keys of an object.
+    /// @param known The check that accepts every key the codec knows.
+    ///
+    /// @return The errors at the unknown keys, or an empty list if every key is known.
+    ///
+    public static List<CodecError> unknownKeys(Set<String> keys, Predicate<String> known) {
+        return keys.stream()
+                .filter(known.negate())
+                .map(CodecErrors::unknownKey)
+                .toList();
     }
 
     ///

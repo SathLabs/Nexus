@@ -17,6 +17,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.ReportedNbtException;
+import net.minecraft.resources.Identifier;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
@@ -26,10 +27,8 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -39,8 +38,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Function;
 import java.util.function.Predicate;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -62,44 +59,14 @@ import java.util.stream.Stream;
 public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements AutoCloseable {
 
     ///
-    /// The suffix of the file of an active entry.
-    ///
-    private static final String ACTIVE = ".dat";
-
-    ///
-    /// The suffix of the file of a retired entry.
-    ///
-    private static final String RETIRED = ".retired";
-
-    ///
     /// The name of the file that marks the import as done, which no key can produce since no escaped segment starts with `.`.
     ///
     private static final String MARKER = ".imported";
 
     ///
-    /// The pattern of one escaped character, which is `%` and the four lowercase hex digits of the character.
+    /// The folder of the archive.
     ///
-    private static final Pattern ESCAPED = Pattern.compile("%([0-9a-f]{4})");
-
-    ///
-    /// The pattern of a segment that is a device name reserved by Windows, alone or followed by `.` and anything.
-    ///
-    private static final Pattern DEVICE = Pattern.compile("(con|prn|aux|nul|com[1-9]|lpt[1-9])(\\..*)?", Pattern.DOTALL);
-
-    ///
-    /// The folder of the archive, absolute and normalized.
-    ///
-    private final Path folder;
-
-    ///
-    /// The parser of the keys.
-    ///
-    private final ArchiveKey.Parser<KEY> keys;
-
-    ///
-    /// The format the values are saved in.
-    ///
-    private final Format<VALUE> format;
+    private final ArchiveFolder folder;
 
     ///
     /// The registry lookup provider of the server.
@@ -107,14 +74,9 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     private final HolderLookup.Provider registries;
 
     ///
-    /// The retention of the active entries.
+    /// The declaration of the archive.
     ///
-    private final Retention<KEY> activeRetention;
-
-    ///
-    /// The retention of the retired entries.
-    ///
-    private final Retention<KEY> retiredRetention;
+    private final Declaration<KEY, VALUE> declaration;
 
     ///
     /// The key of every active entry by its segments.
@@ -139,88 +101,35 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     ///
     /// Opens the archive in the given folder, imports the older layout once, and then runs the retention of every group.
     ///
-    /// @param folder       The folder of the archive.
-    /// @param world        The world folder, which the legacy folder is relative to.
-    /// @param keys         The parser of the keys.
-    /// @param format       The format the values are saved in.
-    /// @param registries   The registry lookup provider of the server.
-    /// @param active       The retention of the active entries.
-    /// @param retired      The retention of the retired entries.
-    /// @param legacyFolder The folder of the older layout, or `null` if there is none.
-    /// @param legacyReader The reader of the files of the older layout, or `null` if there is none.
+    /// @param folder      The folder of the archive.
+    /// @param world       The world folder, which the legacy folder is relative to.
+    /// @param registries  The registry lookup provider of the server.
+    /// @param declaration The declaration of the archive.
     ///
-    /// @throws UncheckedIOException If the folder of the archive or the legacy folder could not be walked, or if the marker could not be written.
+    /// @throws UncheckedIOException If the folder of the archive or the legacy folder could not be walked,
+    /// or if the marker could not be written.
     ///
-    public ArchiveStore(
-            Path folder,
-            Path world,
-            ArchiveKey.Parser<KEY> keys,
-            Format<VALUE> format,
-            HolderLookup.Provider registries,
-            Retention<KEY> active,
-            Retention<KEY> retired,
-            @Nullable String legacyFolder,
-            @Nullable Function<Path, Optional<Archive.Imported<KEY>>> legacyReader
-    ) {
-        this.folder = folder.toAbsolutePath().normalize();
-        this.keys = keys;
-        this.format = format;
+    public ArchiveStore(Path folder, Path world, HolderLookup.Provider registries, Declaration<KEY, VALUE> declaration) {
+        this.folder = new ArchiveFolder(folder.toAbsolutePath().normalize());
         this.registries = registries;
-        this.activeRetention = active;
-        this.retiredRetention = retired;
+        this.declaration = declaration;
 
-        this.executor = Executors.newSingleThreadExecutor(Thread.ofVirtual().name("Nexus Archive " + this.folder.getFileName()).factory());
+        Path root = this.folder.root();
+        this.executor = Executors.newSingleThreadExecutor(Thread.ofVirtual().name("Nexus Archive " + root.getFileName()).factory());
         try {
-            if (legacyFolder != null && legacyReader != null && Files.notExists(this.folder.resolve(ArchiveStore.MARKER))) {
-                this.importLegacy(world.resolve(legacyFolder).toAbsolutePath().normalize(), legacyReader);
+            Legacy<KEY> legacy = declaration.legacy();
+            if (legacy != null && Files.notExists(root.resolve(ArchiveStore.MARKER))) {
+                this.importLegacy(world.resolve(legacy.folder()).toAbsolutePath().normalize(), legacy.reader());
             }
 
-            if (Files.isDirectory(this.folder)) {
+            if (Files.isDirectory(root)) {
                 this.index();
             }
         } catch (IOException failure) {
-            throw new UncheckedIOException("Could not open the archive in '" + this.folder + "'", failure);
+            throw new UncheckedIOException("Could not open the archive in '" + root + "'", failure);
         }
 
         this.prune();
-    }
-
-    ///
-    /// Escapes every character of the given segment other than lowercase letters, digits, `_`, `-`, and inner `.`, and escapes the following as well:
-    /// - The `.` that starts a trailing `.dat` or `.retired`.
-    /// - The first character of a device name reserved by Windows.
-    ///
-    /// @param segment The segment to escape.
-    ///
-    /// @return The escaped segment.
-    ///
-    private static String escape(String segment) {
-        boolean device = ArchiveStore.DEVICE.matcher(segment).matches();
-        StringBuilder escaped = new StringBuilder();
-        for (int i = 0; i < segment.length(); i++) {
-            char character = segment.charAt(i);
-            boolean plain = (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9') || character == '_' || character == '-';
-            boolean innerDot = character == '.' && i > 0 && i < segment.length() - 1 && !List.of(ArchiveStore.ACTIVE, ArchiveStore.RETIRED).contains(segment.substring(i));
-            if ((plain || innerDot) && !(device && i == 0)) {
-                escaped.append(character);
-            } else {
-                escaped.append('%').append(HexFormat.of().toHexDigits(character));
-            }
-        }
-
-        return escaped.toString();
-    }
-
-    ///
-    /// Unescapes the given name of a file or folder.
-    ///
-    /// @param name The escaped name, without its suffix.
-    ///
-    /// @return The segment, or `null` if no segment escapes to exactly that name.
-    ///
-    private static @Nullable String unescape(String name) {
-        String segment = ArchiveStore.ESCAPED.matcher(name).replaceAll(match -> Matcher.quoteReplacement(String.valueOf((char) HexFormat.fromHexDigits(match.group(1)))));
-        return !segment.isEmpty() && ArchiveStore.escape(segment).equals(name) ? segment : null;
     }
 
     ///
@@ -242,7 +151,7 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     }
 
     ///
-    /// Makes the given key active with the given value, queues the write of its file, and then runs the retention of its group.
+    /// Queues the write of the given value under the given key, makes the key active, and then runs the retention of its group.
     ///
     /// @param key   The key of the entry.
     /// @param value The value to write.
@@ -252,12 +161,10 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     ///
     public synchronized void write(KEY key, VALUE value) {
         List<String> segments = this.checkedSegments(key);
-        this.retiredBySegments.remove(segments);
-        this.activeBySegments.put(segments, key);
         Queued<VALUE> queued = new Queued<>(value);
         this.queuedBySegments.put(segments, queued);
         this.executor.execute(() -> this.writeQueued(key, segments, queued));
-        this.retain(key.group()::equals);
+        this.activate(key, segments);
     }
 
     ///
@@ -277,7 +184,7 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
                 this.writeFile(segments, tag);
             }
         } catch (IOException | RuntimeException failure) {
-            ArchiveStore.log.error("Could not write the entry '{}' of the archive in '{}'", key, this.folder, failure);
+            ArchiveStore.log.error("Could not write the entry '{}' of the archive in '{}'", key, this.folder.root(), failure);
         } finally {
             this.queuedBySegments.remove(segments, queued);
         }
@@ -301,13 +208,23 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
             try {
                 this.writeFile(segments, this.encode(value));
             } catch (IOException failure) {
-                throw new UncheckedIOException("Could not write the entry '" + key + "' of the archive in '" + this.folder + "'", failure);
+                throw new UncheckedIOException("Could not write the entry '" + key + "' of the archive in '" + this.folder.root() + "'", failure);
             }
 
-            this.retiredBySegments.remove(segments);
-            this.activeBySegments.put(segments, key);
-            this.retain(key.group()::equals);
+            this.activate(key, segments);
         }
+    }
+
+    ///
+    /// Makes the given key active under the given segments and then runs the retention of its group.
+    ///
+    /// @param key      The key of the entry.
+    /// @param segments The segments of the key.
+    ///
+    private void activate(KEY key, List<String> segments) {
+        this.retiredBySegments.remove(segments);
+        this.activeBySegments.put(segments, key);
+        this.retain(key.group()::equals);
     }
 
     ///
@@ -345,7 +262,7 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     /// @return The key, or empty if the parser refuses the segments or gives back a key with other segments.
     ///
     private Optional<KEY> parse(List<String> segments) {
-        return this.keys.parse(segments).filter(key -> key.segments().equals(segments));
+        return this.declaration.keys().parse(segments).filter(key -> key.segments().equals(segments));
     }
 
     ///
@@ -356,7 +273,7 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     /// @return The versioned form of the value.
     ///
     private CompoundTag encode(VALUE value) {
-        return (CompoundTag) this.format.write(value, this.registries);
+        return (CompoundTag) this.declaration.format().write(value, this.registries);
     }
 
     ///
@@ -368,13 +285,13 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     /// @throws IOException If the file could not be written.
     ///
     private void writeFile(List<String> segments, CompoundTag tag) throws IOException {
-        Path file = this.file(segments, ArchiveStore.ACTIVE);
+        Path file = this.folder.file(segments, ArchiveFolder.State.ACTIVE);
         // No escaped segment starts with '.', so the temporary file can't be the file of a key.
         Path temporary = file.resolveSibling("." + file.getFileName());
         Files.createDirectories(file.getParent());
         NbtIo.writeCompressed(tag, temporary);
         Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        Files.deleteIfExists(this.file(segments, ArchiveStore.RETIRED));
+        Files.deleteIfExists(this.folder.file(segments, ArchiveFolder.State.RETIRED));
     }
 
     ///
@@ -398,9 +315,9 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
             return Optional.of(queued.value);
         }
 
-        Path retiredFile = this.file(segments, ArchiveStore.RETIRED);
+        Path retiredFile = this.folder.file(segments, ArchiveFolder.State.RETIRED);
         // A retired entry is still in its active file while the retire is queued.
-        Path file = retired && Files.exists(retiredFile) ? retiredFile : this.file(segments, ArchiveStore.ACTIVE);
+        Path file = retired && Files.exists(retiredFile) ? retiredFile : this.folder.file(segments, ArchiveFolder.State.ACTIVE);
         return Files.exists(file) ? Optional.of(this.decode(file)) : Optional.empty();
     }
 
@@ -422,7 +339,7 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
         }
 
         try {
-            return this.format.read(tag, this.registries);
+            return this.declaration.format().read(tag, this.registries);
         } catch (NexusCodecException failure) {
             throw CodecErrors.decodeFailure(file.toString(), CodecFormat.NBT.name(), failure);
         }
@@ -471,8 +388,8 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     ///
     private void retain(Predicate<Object> groups) {
         List<KEY> dropped = Stream.concat(
-                ArchiveStore.drops(this.activeBySegments.values(), this.activeRetention, groups),
-                ArchiveStore.drops(this.retiredBySegments.values(), this.retiredRetention, groups)
+                ArchiveStore.drops(this.activeBySegments.values(), this.declaration.active(), groups),
+                ArchiveStore.drops(this.retiredBySegments.values(), this.declaration.retired(), groups)
         ).toList();
 
         dropped.forEach(this::delete);
@@ -514,13 +431,13 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     /// @param segments The segments of the key.
     ///
     private synchronized void retireQueued(KEY key, List<String> segments) {
-        Path file = this.file(segments, ArchiveStore.ACTIVE);
+        Path file = this.folder.file(segments, ArchiveFolder.State.ACTIVE);
         try {
             if (Files.exists(file)) {
-                Files.move(file, this.file(segments, ArchiveStore.RETIRED), StandardCopyOption.REPLACE_EXISTING);
+                Files.move(file, this.folder.file(segments, ArchiveFolder.State.RETIRED), StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (IOException failure) {
-            ArchiveStore.log.error("Could not retire the entry '{}' of the archive in '{}'", key, this.folder, failure);
+            ArchiveStore.log.error("Could not retire the entry '{}' of the archive in '{}'", key, this.folder.root(), failure);
         }
     }
 
@@ -552,29 +469,11 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     ///
     private synchronized void deleteQueued(KEY key, List<String> segments) {
         try {
-            Files.deleteIfExists(this.file(segments, ArchiveStore.ACTIVE));
-            Files.deleteIfExists(this.file(segments, ArchiveStore.RETIRED));
+            Files.deleteIfExists(this.folder.file(segments, ArchiveFolder.State.ACTIVE));
+            Files.deleteIfExists(this.folder.file(segments, ArchiveFolder.State.RETIRED));
         } catch (IOException failure) {
-            ArchiveStore.log.error("Could not delete the entry '{}' of the archive in '{}'", key, this.folder, failure);
+            ArchiveStore.log.error("Could not delete the entry '{}' of the archive in '{}'", key, this.folder.root(), failure);
         }
-    }
-
-    ///
-    /// Resolves the file of the given segments with the given suffix.
-    ///
-    /// Every escaped segment will be a folder except the last one, which will be the name of the file.
-    ///
-    /// @param segments The segments of the key.
-    /// @param suffix   The suffix of the file.
-    ///
-    /// @return The file below the folder of the archive.
-    ///
-    private Path file(List<String> segments, String suffix) {
-        String path = segments.stream()
-                .map(ArchiveStore::escape)
-                .collect(Collectors.joining("/"));
-
-        return this.folder.resolve(path + suffix);
     }
 
     ///
@@ -601,25 +500,25 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
             List<Path> files;
             try (Stream<Path> walk = Files.walk(legacy)) {
                 files = walk.filter(Files::isRegularFile)
-                        .filter(file -> !file.startsWith(this.folder))
+                        .filter(file -> !file.startsWith(this.folder.root()))
                         .toList();
             }
 
             for (Path file : files) {
                 if (reader.apply(file).orElse(null) instanceof Archive.Imported(KEY key, boolean retired)) {
-                    Path target = this.file(this.checkedSegments(key), retired ? ArchiveStore.RETIRED : ArchiveStore.ACTIVE);
+                    Path target = this.folder.file(this.checkedSegments(key), retired ? ArchiveFolder.State.RETIRED : ArchiveFolder.State.ACTIVE);
                     try {
                         Files.createDirectories(target.getParent());
                         Files.move(file, target);
                     } catch (IOException failure) {
-                        ArchiveStore.log.warn("Could not import the file '{}' as the entry '{}' of the archive in '{}'", file, key, this.folder, failure);
+                        ArchiveStore.log.warn("Could not import the file '{}' as the entry '{}' of the archive in '{}'", file, key, this.folder.root(), failure);
                     }
                 }
             }
         }
 
-        Files.createDirectories(this.folder);
-        Files.write(this.folder.resolve(ArchiveStore.MARKER), new byte[0]);
+        Files.createDirectories(this.folder.root());
+        Files.write(this.folder.root().resolve(ArchiveStore.MARKER), new byte[0]);
     }
 
     ///
@@ -631,7 +530,7 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     ///
     private void index() throws IOException {
         List<Path> files;
-        try (Stream<Path> walk = Files.walk(this.folder)) {
+        try (Stream<Path> walk = Files.walk(this.folder.root())) {
             files = walk.filter(Files::isRegularFile).toList();
         }
 
@@ -651,27 +550,8 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     /// @param file The file below the folder of the archive.
     ///
     private void indexFile(Path file) {
-        String name = file.getFileName().toString();
-        String suffix = name.endsWith(ArchiveStore.RETIRED) ? ArchiveStore.RETIRED : ArchiveStore.ACTIVE;
-        if (!name.endsWith(suffix)) {
-            return;
-        }
-
-        List<String> names = new ArrayList<>();
-        this.folder.relativize(file).forEach(part -> names.add(part.toString()));
-        names.set(names.size() - 1, name.substring(0, name.length() - suffix.length()));
-        List<String> segments = new ArrayList<>();
-        for (String escaped : names) {
-            String segment = ArchiveStore.unescape(escaped);
-            if (segment == null) {
-                return;
-            }
-
-            segments.add(segment);
-        }
-
-        Map<List<String>, KEY> entries = suffix.equals(ArchiveStore.RETIRED) ? this.retiredBySegments : this.activeBySegments;
-        this.parse(segments).ifPresent(key -> entries.put(List.copyOf(segments), key));
+        Map<List<String>, KEY> entries = file.getFileName().toString().endsWith(ArchiveFolder.State.RETIRED.getSuffix()) ? this.retiredBySegments : this.activeBySegments;
+        this.folder.segments(file).ifPresent(segments -> this.parse(segments).ifPresent(key -> entries.put(segments, key)));
     }
 
     ///
@@ -689,4 +569,34 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
         ///
         private final VALUE value;
     }
+
+    ///
+    /// A declaration of one archive.
+    ///
+    /// @param id      The identifier `<modid>:<name>` of the archive.
+    /// @param keys    The parser of the keys.
+    /// @param format  The format the values are saved in.
+    /// @param active  The retention of the active entries.
+    /// @param retired The retention of the retired entries.
+    /// @param legacy  The older layout to import once per world, or `null` if there is none.
+    /// @param <KEY>   The type of the keys.
+    /// @param <VALUE> The type of the values.
+    ///
+    public record Declaration<KEY extends ArchiveKey<KEY>, VALUE>(
+            Identifier id,
+            ArchiveKey.Parser<KEY> keys,
+            Format<VALUE> format,
+            Retention<KEY> active,
+            Retention<KEY> retired,
+            @Nullable Legacy<KEY> legacy
+    ) { }
+
+    ///
+    /// An older layout of an archive.
+    ///
+    /// @param folder The folder of the older layout, relative to the world folder.
+    /// @param reader The reader of one file, called with its path.
+    /// @param <KEY>  The type of the keys.
+    ///
+    public record Legacy<KEY>(String folder, Function<Path, Optional<Archive.Imported<KEY>>> reader) { }
 }
