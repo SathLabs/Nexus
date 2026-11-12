@@ -159,6 +159,7 @@ public class PlayerDataSamples {
                     StreamSupport.stream(server.getAllLevels().spliterator(), false).allMatch(level -> level.getEntity(uuid) == null),
                     "The detached copy is in the entity list of a level"
             );
+            helper.assertValueEqual(player.level().dimension(), Level.NETHER, "dimension of the detached copy");
             player.snapTo(player.position().add(16.0, 0.0, 16.0));
             counter.set(player, new Counter(2));
             edited.set(player);
@@ -285,6 +286,7 @@ public class PlayerDataSamples {
         ServerPlayer live = client.serverLevel().players().getFirst();
         Vec3 target = live.position().add(8.0D, 2.0D, 8.0D);
         CompoundTag tag = PlayerDataSamples.onServer(client, () -> data.inspect(server, data.snapshot(live), copy -> {
+            copy.setServerLevel(Objects.requireNonNull(server.getLevel(Level.NETHER)));
             copy.snapTo(target);
             copy.setHealth(PlayerDataSamples.REPLACED_HEALTH);
             copy.getFoodData().setFoodLevel(PlayerDataSamples.FOOD_LEVEL_BELOW_REGENERATION);
@@ -304,6 +306,7 @@ public class PlayerDataSamples {
         
         Assertions.assertThat(replaced).isNotSameAs(live);
         Assertions.assertThat(replaced.connection).isSameAs(live.connection);
+        Assertions.assertThat(replaced.level().dimension()).isEqualTo(Level.NETHER);
         Assertions.assertThat(replaced.position().closerThan(target, PlayerDataSamples.POSITION_TOLERANCE)).isTrue();
         Assertions.assertThat(replaced.getHealth()).isEqualTo(PlayerDataSamples.REPLACED_HEALTH);
         Assertions.assertThat(replaced.getInventory().getItem(0).is(Items.DIAMOND)).isTrue();
@@ -312,7 +315,7 @@ public class PlayerDataSamples {
         Assertions.assertThat(PlayerDataSamples.CLONED).isEmpty();
         Assertions.assertThat(PlayerDataSamples.RESPAWNED).isEmpty();
 
-        client.until("the client to take the position, health and inventory of the tag", () -> {
+        client.until("the client to take the dimension, position, health and inventory of the tag", () -> {
             LocalPlayer player = client.minecraft().player;
             if (player == null) {
                 return false;
@@ -320,6 +323,7 @@ public class PlayerDataSamples {
 
             ItemStack first = player.getInventory().getItem(0);
             return (
+                    player.level().dimension() == Level.NETHER &&
                     player.position().closerThan(target, PlayerDataSamples.POSITION_TOLERANCE) &&
                     player.getHealth() == PlayerDataSamples.REPLACED_HEALTH &&
                     first.is(Items.DIAMOND) &&

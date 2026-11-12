@@ -17,6 +17,9 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerChunkCache;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BarrelBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -33,6 +36,7 @@ public class AttachmentEntrySamples {
 
     private static final StructCodec<Counter, Access.Plain> CODEC = NexusCodec.struct("counter", NexusCodec.INT.field("count", Counter::count), Counter::new);
     private static final Format<Counter> FORMAT = Format.of(AttachmentEntrySamples.CODEC).upgradeFrom(0, AttachmentEntrySamples::renameStacks);
+    private static final String BLOCK_ENTITIES_TAG = "block_entities";
 
     private static @Nullable AttachmentEntry<Counter> counter;
 
@@ -49,6 +53,29 @@ public class AttachmentEntrySamples {
         BlockEntity loaded = AttachmentEntrySamples.load(helper, barrel, saved);
         helper.assertTrue(counter.has(loaded), "The loaded block entity has no value of the attachment");
         helper.assertValueEqual(counter.get(loaded), new Counter(5), "loaded attachment");
+        helper.succeed();
+    }
+
+    @ServerTest
+    public static void blockEntityWritesTheFormattedValueWithItsChunk(GameTestHelper helper) {
+        AttachmentEntry<Counter> counter = AttachmentEntrySamples.counter();
+        BarrelBlockEntity barrel = AttachmentEntrySamples.placeBarrel(helper);
+        counter.set(barrel, new Counter(5));
+        ServerChunkCache chunks = helper.getLevel().getChunkSource();
+        chunks.save(true);
+
+        ChunkPos pos = ChunkPos.containing(barrel.getBlockPos());
+        CompoundTag chunk = chunks.chunkMap.read(pos)
+                .join()
+                .orElseThrow(() -> helper.assertionException(Component.literal("The saved chunk has no tag in the region storage")));
+        CompoundTag written = chunk.getListOrEmpty(AttachmentEntrySamples.BLOCK_ENTITIES_TAG)
+                .compoundStream()
+                .filter(tag -> BlockEntity.getPosFromTag(pos, tag).equals(barrel.getBlockPos()))
+                .findFirst()
+                .orElseThrow(() -> helper.assertionException(Component.literal("The saved chunk holds no tag of the barrel")));
+        CompoundTag expected = AttachmentEntrySamples.tag("count", 5);
+        expected.putInt("version", 1);
+        helper.assertValueEqual(written.getCompoundOrEmpty(AttachmentHolder.ATTACHMENTS_NBT_KEY).get(counter.getId().toString()), expected, "attachment in the saved chunk");
         helper.succeed();
     }
 
