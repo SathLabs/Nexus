@@ -2,6 +2,7 @@ package dev.satherov.nexus.api.persistence;
 
 import lombok.extern.slf4j.Slf4j;
 
+import dev.satherov.nexus.api.player.PlayerNames;
 import dev.satherov.nexus.internal.persistence.player.DetachedPlayer;
 
 import net.neoforged.neoforge.attachment.AttachmentSync;
@@ -63,8 +64,8 @@ public final class PlayerData {
     public PlayerData() { }
     
     ///
-    /// Looks up the name of the given player in the name cache of the server,
-    /// or uses the UUID as the name if the cache doesn't hold it.
+    /// Looks up the last known name of the given player,
+    /// or uses the UUID as the name if no cache holds the player.
     ///
     /// @param server The server that holds the name cache.
     /// @param player The UUID of the player.
@@ -72,10 +73,7 @@ public final class PlayerData {
     /// @return The UUID and the name of the player.
     ///
     private static NameAndId nameAndId(MinecraftServer server, UUID player) {
-        return server.services()
-                .nameToIdCache()
-                .get(player)
-                .orElseGet(() -> new NameAndId(player, player.toString()));
+        return PlayerNames.find(server, player).orElseGet(() -> new NameAndId(player, player.toString()));
     }
     
     ///
