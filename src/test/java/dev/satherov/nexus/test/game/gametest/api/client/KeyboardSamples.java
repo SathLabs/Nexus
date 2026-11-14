@@ -2,12 +2,18 @@ package dev.satherov.nexus.test.game.gametest.api.client;
 
 import dev.satherov.nexus.gametest.api.client.Client;
 import dev.satherov.nexus.gametest.api.client.ClientTest;
+import dev.satherov.nexus.gametest.api.client.Keyboard;
+import dev.satherov.nexus.gametest.api.client.TextBoxScreen;
 
-import net.minecraft.client.gui.components.EditBox;
+import net.neoforged.neoforge.client.settings.KeyModifier;
+
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
+
+import com.mojang.blaze3d.platform.InputConstants;
+import com.mojang.blaze3d.platform.Window;
 
 import org.assertj.core.api.Assertions;
 import org.lwjgl.glfw.GLFW;
@@ -45,11 +51,49 @@ public class KeyboardSamples {
     }
     
     @ClientTest
+    public static void holdMakesShiftDown(Client client) {
+        Window window = client.minecraft().getWindow();
+        client.keyboard().hold(GLFW.GLFW_KEY_LEFT_SHIFT);
+        Assertions.assertThat(InputConstants.isKeyDown(window, GLFW.GLFW_KEY_LEFT_SHIFT)).isTrue();
+        client.keyboard().release(GLFW.GLFW_KEY_LEFT_SHIFT);
+        Assertions.assertThat(InputConstants.isKeyDown(window, GLFW.GLFW_KEY_LEFT_SHIFT)).isFalse();
+    }
+    
+    @ClientTest
+    public static void holdMakesLetterDown(Client client) {
+        Window window = client.minecraft().getWindow();
+        client.keyboard().hold(GLFW.GLFW_KEY_K);
+        Assertions.assertThat(InputConstants.isKeyDown(window, GLFW.GLFW_KEY_K)).isTrue();
+        client.keyboard().release(GLFW.GLFW_KEY_K);
+        Assertions.assertThat(InputConstants.isKeyDown(window, GLFW.GLFW_KEY_K)).isFalse();
+    }
+    
+    @ClientTest
+    public static void releaseAllMakesKeysUp(Client client) {
+        Window window = client.minecraft().getWindow();
+        Keyboard keyboard = client.keyboard();
+        keyboard.hold(GLFW.GLFW_KEY_LEFT_SHIFT);
+        keyboard.hold(GLFW.GLFW_KEY_K);
+        keyboard.releaseAll();
+        
+        Assertions.assertThat(InputConstants.isKeyDown(window, GLFW.GLFW_KEY_LEFT_SHIFT)).isFalse();
+        Assertions.assertThat(InputConstants.isKeyDown(window, GLFW.GLFW_KEY_K)).isFalse();
+    }
+    
+    @ClientTest
+    public static void shiftModifierFollowsHeldShift(Client client) {
+        client.keyboard().hold(GLFW.GLFW_KEY_LEFT_SHIFT);
+        Assertions.assertThat(KeyModifier.SHIFT.isActive(null)).isTrue();
+        client.keyboard().release(GLFW.GLFW_KEY_LEFT_SHIFT);
+        Assertions.assertThat(KeyModifier.SHIFT.isActive(null)).isFalse();
+    }
+    
+    @ClientTest
     public static void typeIntoTextField(Client client) {
-        TextFieldScreen screen = new TextFieldScreen();
+        TextBoxScreen screen = new TextBoxScreen();
         client.minecraft().setScreen(screen);
         client.keyboard().type("nexus");
-        Assertions.assertThat(screen.field.getValue()).isEqualTo("nexus");
+        Assertions.assertThat(screen.getBox().getValue()).isEqualTo("nexus");
     }
     
     private static final class RecordingScreen extends Screen {
@@ -64,21 +108,6 @@ public class KeyboardSamples {
         public boolean keyPressed(KeyEvent event) {
             this.presses.add(event);
             return true;
-        }
-    }
-    
-    private static final class TextFieldScreen extends Screen {
-        
-        private final EditBox field = new EditBox(this.font, 200, 20, Component.empty());
-        
-        private TextFieldScreen() {
-            super(Component.empty());
-        }
-        
-        @Override
-        protected void init() {
-            this.addRenderableWidget(this.field);
-            this.setInitialFocus(this.field);
         }
     }
 }

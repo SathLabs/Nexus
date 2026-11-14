@@ -11,9 +11,11 @@ import net.minecraft.client.input.KeyEvent;
 import com.mojang.blaze3d.platform.InputConstants;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jspecify.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 
 ///
@@ -27,6 +29,11 @@ import java.util.Set;
 public final class Keyboard {
     
     ///
+    /// The keyboard of the client that was created last, or `null` if no client was created yet.
+    ///
+    private static @Nullable Keyboard current;
+    
+    ///
     /// The client that this keyboard belongs to.
     ///
     private final Client client;
@@ -37,6 +44,11 @@ public final class Keyboard {
     private final Set<Integer> held = new HashSet<>();
     
     ///
+    /// The key whose press event is being sent by [#press(int)], or `null` if there is none.
+    ///
+    private @Nullable Integer pressed;
+    
+    ///
     /// Creates the keyboard of the given client.
     ///
     /// @param client The client the keyboard belongs to.
@@ -44,6 +56,7 @@ public final class Keyboard {
     @ApiStatus.Internal
     public Keyboard(Client client) {
         this.client = client;
+        Keyboard.current = this;
     }
     
     ///
@@ -65,12 +78,33 @@ public final class Keyboard {
     }
     
     ///
+    /// Checks if the given key is down on the keyboard of the client that was created last.
+    ///
+    /// @param key The key to check.
+    ///
+    /// @return `true` if the key is held, or if its press event is being sent by [#press(int)].
+    ///
+    @ApiStatus.Internal
+    public static boolean isDown(@InputConstants.Value int key) {
+        Keyboard keyboard = Keyboard.current;
+        return keyboard != null && (keyboard.isHeld(key) || Objects.equals(keyboard.pressed, key));
+    }
+    
+    ///
     /// Presses the given key and then releases it.
+    ///
+    /// The key is down while its press event is handled and up again once its release event is sent.
     ///
     /// @param key The key to press.
     ///
     public void press(@InputConstants.Value int key) {
-        this.send(key, GLFW.GLFW_PRESS);
+        this.pressed = key;
+        try {
+            this.send(key, GLFW.GLFW_PRESS);
+        } finally {
+            this.pressed = null;
+        }
+        
         this.send(key, GLFW.GLFW_RELEASE);
     }
     
@@ -82,6 +116,17 @@ public final class Keyboard {
     public void hold(@InputConstants.Value int key) {
         this.held.add(key);
         this.send(key, GLFW.GLFW_PRESS);
+    }
+    
+    ///
+    /// Checks if the given key is held down through [#hold(int)].
+    ///
+    /// @param key The key to check.
+    ///
+    /// @return `true` if the key is held down until [#release(int)] is called.
+    ///
+    public boolean isHeld(@InputConstants.Value int key) {
+        return this.held.contains(key);
     }
     
     ///
