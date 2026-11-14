@@ -1,9 +1,13 @@
 package dev.satherov.nexus.api.network.payload;
 
 import dev.satherov.nexus.api.network.ClientRecipients;
+import dev.satherov.nexus.api.network.PayloadBuilder;
 
 import net.neoforged.neoforge.common.extensions.ICommonPacketListener;
 
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.common.ClientCommonPacketListener;
+import net.minecraft.network.protocol.game.ClientboundBundlePacket;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -30,7 +34,20 @@ public interface ClientboundPayload<VALUE> {
     /// @param recipients The recipients to deliver the value to.
     ///
     void send(VALUE value, ClientRecipients recipients);
-    
+
+    ///
+    /// Wraps the given value into the packet of the payload.
+    ///
+    /// The packet can be sent inside a [ClientboundBundlePacket] with other packets of the play protocol.
+    /// Neoforge will leave it out of the bundle for every connection that doesn't have the payload.
+    /// A payload declared with [PayloadBuilder#onNetworkThread()] will be handled on the main thread of the client if it arrives in a bundle.
+    ///
+    /// @param value The value to wrap.
+    ///
+    /// @return The packet that holds the value.
+    ///
+    Packet<ClientCommonPacketListener> toPacket(VALUE value);
+
     ///
     /// If the client of the given player registered the payload for the play protocol.
     ///

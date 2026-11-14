@@ -7,12 +7,14 @@ import dev.satherov.nexus.api.network.PayloadBuilder;
 import dev.satherov.nexus.api.network.payload.ClientboundPayload;
 import dev.satherov.nexus.api.network.payload.Payload;
 import dev.satherov.nexus.api.network.payload.ServerboundPayload;
+import dev.satherov.nexus.internal.network.Envelope;
 
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLConstructModEvent;
 
 import net.minecraft.network.codec.ByteBufCodecs;
+import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
 import net.minecraft.resources.Identifier;
 
 import org.assertj.core.api.Assertions;
@@ -72,6 +74,22 @@ public class NetworkTest {
         Assertions.assertThat(clientbound.getDirection()).isEqualTo(Payload.Direction.CLIENTBOUND);
         Assertions.assertThat(bidirectional.getId()).isEqualTo(Identifier.fromNamespaceAndPath(Nexus.MOD_ID, "network_test_bidirectional"));
         Assertions.assertThat(bidirectional.getDirection()).isEqualTo(Payload.Direction.BIDIRECTIONAL);
+    }
+
+    @Test
+    public void wrapsAValueIntoAPacketOfItsPayload() {
+        ClientboundPayload<String> clientbound = Objects.requireNonNull(NetworkTest.clientbound);
+
+        Assertions.assertThat(clientbound.toPacket("hello")).isInstanceOfSatisfying(ClientboundCustomPayloadPacket.class, packet -> {
+            Assertions.assertThat(packet.payload().type().id()).isEqualTo(clientbound.getId());
+            Assertions.assertThat(packet.payload()).isInstanceOfSatisfying(Envelope.class, envelope -> Assertions.assertThat(envelope.value()).isEqualTo("hello"));
+        });
+    }
+
+    @Test
+    public void refusesAPacketOfAServerboundPayload() {
+        Payload<Integer> serverbound = (Payload<Integer>) Objects.requireNonNull(NetworkTest.serverbound);
+        Assertions.assertThatThrownBy(() -> serverbound.toPacket(1)).isInstanceOf(IllegalStateException.class);
     }
 
     @Test
