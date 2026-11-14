@@ -2,12 +2,13 @@ package dev.satherov.nexus.api.keybind;
 
 import dev.satherov.nexus.api.keybind.activation.Activation;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
-import dev.satherov.nexus.internal.keybind.KeyDefinition;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.google.errorprone.annotations.ForOverride;
 
 import org.jspecify.annotations.Nullable;
+
+import java.util.Objects;
 
 ///
 /// A builder of one key of a mod.
@@ -27,11 +28,6 @@ public abstract sealed class BindingBuilder<SELF extends BindingBuilder<SELF>> p
     private final String name;
     
     ///
-    /// The English default of the key's name.
-    ///
-    private final String english;
-    
-    ///
     /// The activation the key fires through.
     ///
     private Activation activation = Activation.press();
@@ -46,12 +42,10 @@ public abstract sealed class BindingBuilder<SELF extends BindingBuilder<SELF>> p
     ///
     /// @param keybinds The keybinds the key is registered in.
     /// @param name     The name of the key.
-    /// @param english  The English default of the key's name.
     ///
-    protected BindingBuilder(Keybinds keybinds, String name, String english) {
+    protected BindingBuilder(Keybinds keybinds, String name) {
         this.keybinds = keybinds;
         this.name = name;
-        this.english = english;
     }
     
     ///
@@ -100,13 +94,13 @@ public abstract sealed class BindingBuilder<SELF extends BindingBuilder<SELF>> p
     /// @throws IllegalStateException If the mod already registered a key of that name, or if the key mappings were already registered.
     ///
     public Keybind register() {
-        return this.keybinds.register(this.createDefinition(this.keybinds, this.name, this.activation, this.clientAction), this.english);
+        return this.keybinds.register(Objects.requireNonNull(this.createDefinition()), this.activation, this.clientAction);
     }
     
     ///
     /// This builder as its own type.
     ///
-    protected SELF self() {
+    private SELF self() {
         //noinspection unchecked Every builder is the type it declares as its own.
         return (SELF) this;
     }
@@ -114,13 +108,8 @@ public abstract sealed class BindingBuilder<SELF extends BindingBuilder<SELF>> p
     ///
     /// Creates the definition of the key from what this builder collected.
     ///
-    /// @param keybinds     The keybinds the key is registered in.
-    /// @param name         The name of the key.
-    /// @param activation   The activation the key fires through.
-    /// @param clientAction The client action, or `null` if none is set.
-    ///
-    /// @return The created definition.
+    /// @return The created definition, or `null` if the key has no mapping of its own.
     ///
     @ForOverride
-    protected abstract KeyDefinition createDefinition(Keybinds keybinds, String name, Activation activation, @Nullable ClientOnly<Runnable> clientAction);
+    protected abstract Keybind.@Nullable Definition createDefinition();
 }

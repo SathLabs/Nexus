@@ -6,14 +6,13 @@ import lombok.RequiredArgsConstructor;
 
 import dev.satherov.nexus.api.keybind.activation.Activation;
 import dev.satherov.nexus.api.keybind.activation.KeyTick;
-import dev.satherov.nexus.internal.keybind.KeyDefinition;
-import dev.satherov.nexus.internal.keybind.client.ClientKeys;
-
-import net.neoforged.fml.loading.FMLEnvironment;
+import dev.satherov.nexus.api.registry.client.ClientOnly;
 
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jspecify.annotations.Nullable;
 
 ///
 /// A key that a mod registered.
@@ -32,10 +31,27 @@ public final class Keybind {
     private final String name;
     
     ///
-    /// The definition the mapping of the key is built from.
+    /// The definition the mapping of the key is built from, or `null` if the key has no mapping of its own.
     ///
     @Getter(onMethod_ = @ApiStatus.Internal)
-    private final KeyDefinition definition;
+    private final Keybind.@Nullable Definition definition;
+    
+    ///
+    /// The activation the key fires through.
+    ///
+    @Getter(onMethod_ = @ApiStatus.Internal)
+    private final Activation activation;
+    
+    ///
+    /// The action run on the client when the key fires, or `null` if none is set.
+    ///
+    @Getter(onMethod_ = @ApiStatus.Internal)
+    private final @Nullable ClientOnly<Runnable> clientAction;
+    
+    ///
+    /// The key's tick on the last client tick, with the key up until the first one.
+    ///
+    private KeyTick tick = new KeyTick(false, false, 0, 0, false);
     
     ///
     /// The text of the key that is bound to the mapping right now, resolved by the client that shows it.
@@ -56,7 +72,7 @@ public final class Keybind {
     /// @return `true` if the key is down.
     ///
     public boolean isDown() {
-        return FMLEnvironment.getDist().isClient() && ClientKeys.getLastTick(this).down();
+        return this.tick.down();
     }
     
     ///
@@ -67,11 +83,7 @@ public final class Keybind {
     /// @return The number of client ticks the key has been down.
     ///
     public int getHeldTicks() {
-        if (!FMLEnvironment.getDist().isClient()) {
-            return 0;
-        }
-        
-        return ClientKeys.getLastTick(this).heldTicks();
+        return this.tick.heldTicks();
     }
     
     ///
@@ -84,11 +96,19 @@ public final class Keybind {
     /// @see Activation#progress(KeyTick)
     ///
     public float getProgress() {
-        if (!FMLEnvironment.getDist().isClient()) {
-            return 0.0F;
-        }
-        
-        return this.definition.activation().progress(ClientKeys.getLastTick(this));
+        return this.activation.progress(this.tick);
+    }
+    
+    ///
+    /// Moves the key on to the given tick.
+    ///
+    /// Should only ever be called on the client, once per client tick.
+    ///
+    /// @param tick The key's tick on the client tick that ended.
+    ///
+    @ApiStatus.Internal
+    public void update(KeyTick tick) {
+        this.tick = tick;
     }
     
     ///
@@ -130,4 +150,26 @@ public final class Keybind {
         ///
         EVERYWHERE
     }
+    
+    ///
+    /// The parts of a key that the mod declares itself, as its builder collected them.
+    ///
+    /// @param name       The name the key was declared with.
+    /// @param english    The English default of the key's name.
+    /// @param defaultKey The default GLFW key code or mouse button, or `-1` if the key is unbound.
+    /// @param mouse      If the default key is a mouse button.
+    /// @param modifier   The modifier, or `null` if the key takes none.
+    /// @param context    The context the key can be pressed in.
+    /// @param category   The identifier of the category the key is listed in.
+    ///
+    @ApiStatus.Internal
+    public record Definition(
+            String name,
+            String english,
+            int defaultKey,
+            boolean mouse,
+            Keybind.@Nullable Modifier modifier,
+            Keybind.Context context,
+            Identifier category
+    ) { }
 }

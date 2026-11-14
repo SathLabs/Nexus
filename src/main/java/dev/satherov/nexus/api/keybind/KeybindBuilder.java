@@ -1,9 +1,5 @@
 package dev.satherov.nexus.api.keybind;
 
-import dev.satherov.nexus.api.keybind.activation.Activation;
-import dev.satherov.nexus.api.registry.client.ClientOnly;
-import dev.satherov.nexus.internal.keybind.KeyDefinition;
-
 import net.minecraft.resources.Identifier;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
@@ -22,6 +18,16 @@ public final class KeybindBuilder extends BindingBuilder<KeybindBuilder> {
     /// The default key of a key that is unbound.
     ///
     private static final int UNBOUND = -1;
+    
+    ///
+    /// The name the key was declared with.
+    ///
+    private final String name;
+    
+    ///
+    /// The English default of the key's name.
+    ///
+    private final String english;
     
     ///
     /// The default GLFW key code or mouse button.
@@ -58,7 +64,9 @@ public final class KeybindBuilder extends BindingBuilder<KeybindBuilder> {
     ///
     @ApiStatus.Internal
     public KeybindBuilder(Keybinds keybinds, String name, String english, Identifier defaultCategory) {
-        super(keybinds, name, english);
+        super(keybinds, name);
+        this.name = name;
+        this.english = english;
         this.category = defaultCategory;
     }
     
@@ -136,10 +144,10 @@ public final class KeybindBuilder extends BindingBuilder<KeybindBuilder> {
     }
     
     ///
-    /// Creates the definition from the default key, the modifier, the context, and the category.
+    /// Creates the definition from the name, the English default, the default key, the modifier, the context, and the category.
     ///
     @Override
-    protected KeyDefinition createDefinition(Keybinds keybinds, String name, Activation activation, @Nullable ClientOnly<Runnable> clientAction) {
-        return new KeyDefinition(keybinds, name, this.defaultKey, this.mouse, this.modifier, this.context, this.category, activation, clientAction);
+    protected Keybind.Definition createDefinition() {
+        return new Keybind.Definition(this.name, this.english, this.defaultKey, this.mouse, this.modifier, this.context, this.category);
     }
 }

@@ -2,9 +2,9 @@ package dev.satherov.nexus.api.keybind;
 
 import lombok.Getter;
 
+import dev.satherov.nexus.api.keybind.activation.Activation;
 import dev.satherov.nexus.api.mod.NexusMod;
-import dev.satherov.nexus.api.text.Translation;
-import dev.satherov.nexus.internal.keybind.KeyDefinition;
+import dev.satherov.nexus.api.registry.client.ClientOnly;
 import dev.satherov.nexus.internal.keybind.client.ClientKeys;
 
 import net.neoforged.fml.loading.FMLEnvironment;
@@ -15,6 +15,7 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
+import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -47,7 +48,7 @@ public final class Keybinds {
     private final Identifier defaultCategory;
     
     ///
-    /// Every registered key by the name it was declared with, in the order they were registered.
+    /// Every registered key by the name of its mapping, in the order they were registered.
     ///
     private final Map<String, Keybind> keybindsByName = new LinkedHashMap<>();
     
@@ -160,36 +161,38 @@ public final class Keybinds {
     }
     
     ///
-    /// Registers the key of the given definition and declares its translation key with the given English default.
+    /// Registers the key of the given definition and declares its translation key `key.<modid>.<name>` with the English default of the definition.
     ///
     /// Declares the default category too if the key is the first one registered in it.
     ///
     /// Should only ever be called from [BindingBuilder#register()].
     ///
-    /// @param definition The definition of the key.
-    /// @param english    The English default of the key's name.
+    /// @param definition   The definition of the key.
+    /// @param activation   The activation the key fires through.
+    /// @param clientAction The action run on the client when the key fires, or `null` if none is set.
     ///
     /// @return The registered key.
     ///
     /// @throws IllegalStateException If the mod already registered a key of that name, or if the key mappings were already registered.
     ///
     @ApiStatus.Internal
-    public Keybind register(KeyDefinition definition, String english) {
+    public Keybind register(Keybind.Definition definition, Activation activation, @Nullable ClientOnly<Runnable> clientAction) {
         if (this.locked) {
             throw new IllegalStateException("Key '" + definition.name() + "' of mod '" + this.mod.getModId() + "' is registered after the key mappings were registered");
         }
         
-        if (this.keybindsByName.containsKey(definition.name())) {
+        String name = "key." + this.mod.getModId() + "." + definition.name();
+        if (this.keybindsByName.containsKey(name)) {
             throw new IllegalStateException("Key '" + definition.name() + "' of mod '" + this.mod.getModId() + "' is already registered");
         }
         
-        Translation translation = this.mod.getTranslations().define("key", definition.name(), english);
+        this.mod.getTranslations().defineKey(name, definition.english());
         if (definition.category().equals(this.defaultCategory) && !this.categories.contains(this.defaultCategory)) {
             this.declareCategory(Keybinds.DEFAULT_CATEGORY, this.mod.getContainer().getModInfo().getDisplayName());
         }
         
-        Keybind keybind = new Keybind(translation.getKey(), definition);
-        this.keybindsByName.put(definition.name(), keybind);
+        Keybind keybind = new Keybind(name, definition, activation, clientAction);
+        this.keybindsByName.put(name, keybind);
         return keybind;
     }
     

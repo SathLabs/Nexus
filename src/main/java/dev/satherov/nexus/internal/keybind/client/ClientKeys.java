@@ -7,8 +7,6 @@ import dev.satherov.nexus.api.keybind.Keybind;
 import dev.satherov.nexus.api.keybind.Keybinds;
 import dev.satherov.nexus.api.keybind.activation.KeyTick;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
-import dev.satherov.nexus.internal.keybind.KeyDefinition;
-import dev.satherov.zelqro.mapping.ObjectMapping;
 
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.InputEvent;
@@ -32,6 +30,7 @@ import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 ///
 /// The client listeners of one mod's keybinds.
@@ -55,9 +54,19 @@ public final class ClientKeys {
     private final Keybinds keybinds;
 
     ///
-    /// The mappings of the mod's keys, empty until the key mappings are registered.
+    /// The tracked keys of the mod, empty until the key mappings are registered.
     ///
-    private final List<ClientKeys.TrackedMapping> mappings = new ArrayList<>();
+    private final List<ClientKeys.TrackedKey> keys = new ArrayList<>();
+
+    ///
+    /// If a screen was open on the last client tick.
+    ///
+    private boolean inScreen;
+
+    ///
+    /// If the window had focus on the last client tick.
+    ///
+    private boolean focused;
 
     ///
     /// The NeoForge key modifier of the given modifier.
@@ -123,17 +132,6 @@ public final class ClientKeys {
     }
 
     ///
-    /// The tick the given key had on the last client tick, as Nexus tracks it.
-    ///
-    /// @param keybind The key to read.
-    ///
-    /// @return The last tick of the key, or a tick with the key up if its mapping was never built.
-    ///
-    public static KeyTick getLastTick(Keybind keybind) {
-        return ObjectMapping.mapIfInstanceOfOrElse(KeyMapping.get(keybind.getName()), ClientKeys.TrackedMapping.class, mapping -> mapping.lastTick, ClientKeys.IDLE);
-    }
-
-    ///
     /// Registers the categories the mod declared and one mapping per key of the mod, and then locks the keybinds.
     ///
     /// @param event The event to register the categories and mappings in.
@@ -144,16 +142,25 @@ public final class ClientKeys {
         }
 
         for (Keybind keybind : this.keybinds.getAll()) {
-            ClientKeys.TrackedMapping mapping = new ClientKeys.TrackedMapping(keybind);
+            Keybind.Definition definition = Objects.requireNonNull(keybind.getDefinition());
+            KeyMapping mapping = new KeyMapping(
+                    keybind.getName(),
+                    ClientKeys.toConflictContext(definition.context()),
+                    ClientKeys.toKeyModifier(definition.modifier()),
+                    definition.mouse() ? InputConstants.Type.MOUSE : InputConstants.Type.KEYSYM,
+                    definition.defaultKey(),
+                    new KeyMapping.Category(definition.category())
+            );
+
             event.register(mapping);
-            this.mappings.add(mapping);
+            this.keys.add(new ClientKeys.TrackedKey(keybind, mapping, definition.context()));
         }
 
         this.keybinds.lock();
     }
 
     ///
-    /// Moves every mapping on by one client tick.
+    /// Moves every tracked key on by one client tick.
     ///
     /// @param event The event of the client tick that ended.
     ///
@@ -161,44 +168,49 @@ public final class ClientKeys {
         Minecraft minecraft = Minecraft.getInstance();
         boolean inScreen = minecraft.screen != null;
         boolean focused = minecraft.isWindowActive();
-        for (ClientKeys.TrackedMapping mapping : this.mappings) {
-            mapping.tick(inScreen, focused);
+        boolean screenChanged = inScreen != this.inScreen;
+        boolean lostFocus = this.focused && !focused;
+        for (ClientKeys.TrackedKey key : this.keys) {
+            key.tick(inScreen, screenChanged, lostFocus);
         }
+
+        this.inScreen = inScreen;
+        this.focused = focused;
     }
 
     ///
-    /// Notes a press on every mapping that vanilla set down for the pressed key.
+    /// Notes a press on every tracked key whose mapping vanilla set down for the pressed key.
     ///
     /// @param event The event of the key.
     ///
     private void onKey(InputEvent.Key event) {
         if (event.getAction() == GLFW.GLFW_PRESS) {
-            this.mappings.forEach(ClientKeys.TrackedMapping::notePress);
+            this.keys.forEach(ClientKeys.TrackedKey::notePress);
         }
     }
 
     ///
-    /// Notes a press on every mapping that vanilla set down for the pressed button.
+    /// Notes a press on every tracked key whose mapping vanilla set down for the pressed button.
     ///
     /// @param event The event of the button.
     ///
     private void onMouseButton(InputEvent.MouseButton.Post event) {
         if (event.getAction() == GLFW.GLFW_PRESS) {
-            this.mappings.forEach(ClientKeys.TrackedMapping::notePress);
+            this.keys.forEach(ClientKeys.TrackedKey::notePress);
         }
     }
 
     ///
-    /// Keeps every [Keybind.Context#EVERYWHERE] mapping that is down in game down in the screen that opens.
+    /// Keeps every [Keybind.Context#EVERYWHERE] key that is down in game down in the screen that opens.
     ///
     /// @param event The event of the opening screen.
     ///
     private void onScreenOpening(ScreenEvent.Opening event) {
-        this.mappings.forEach(ClientKeys.TrackedMapping::carryIntoScreen);
+        this.keys.forEach(ClientKeys.TrackedKey::carryIntoScreen);
     }
 
     ///
-    /// Presses every mapping of the key in the screen, unless the screen's focused edit box takes key input.
+    /// Presses every tracked key bound to the key in the screen, unless the screen's focused edit box takes key input.
     ///
     /// @param event The event of a key press that the screen did not handle.
     ///
@@ -207,28 +219,28 @@ public final class ClientKeys {
             return;
         }
 
-        for (ClientKeys.TrackedMapping mapping : this.mappings) {
-            if (mapping.matches(event.getKeyEvent()) && mapping.isConflictContextAndModifierActive()) {
-                mapping.pressInScreen();
+        for (ClientKeys.TrackedKey key : this.keys) {
+            if (key.mapping.matches(event.getKeyEvent()) && key.mapping.isConflictContextAndModifierActive()) {
+                key.pressInScreen();
             }
         }
     }
 
     ///
-    /// Releases every mapping of the key in the screen.
+    /// Releases every tracked key bound to the key in the screen.
     ///
     /// @param event The event of the key release.
     ///
     private void onScreenKeyReleased(ScreenEvent.KeyReleased.Pre event) {
-        for (ClientKeys.TrackedMapping mapping : this.mappings) {
-            if (mapping.matches(event.getKeyEvent())) {
-                mapping.releaseInScreen();
+        for (ClientKeys.TrackedKey key : this.keys) {
+            if (key.mapping.matches(event.getKeyEvent())) {
+                key.releaseInScreen();
             }
         }
     }
 
     ///
-    /// Presses every mapping of the button in the screen, unless the screen handled the click.
+    /// Presses every tracked key bound to the button in the screen, unless the screen handled the click.
     ///
     /// @param event The event of the click.
     ///
@@ -237,35 +249,46 @@ public final class ClientKeys {
             return;
         }
 
-        for (ClientKeys.TrackedMapping mapping : this.mappings) {
-            if (mapping.matchesMouse(event.getMouseButtonEvent()) && mapping.isConflictContextAndModifierActive()) {
-                mapping.pressInScreen();
+        for (ClientKeys.TrackedKey key : this.keys) {
+            if (key.mapping.matchesMouse(event.getMouseButtonEvent()) && key.mapping.isConflictContextAndModifierActive()) {
+                key.pressInScreen();
             }
         }
     }
 
     ///
-    /// Releases every mapping of the button in the screen.
+    /// Releases every tracked key bound to the button in the screen.
     ///
     /// @param event The event of the button release.
     ///
     private void onScreenMouseButtonReleased(ScreenEvent.MouseButtonReleased.Pre event) {
-        for (ClientKeys.TrackedMapping mapping : this.mappings) {
-            if (mapping.matchesMouse(event.getMouseButtonEvent())) {
-                mapping.releaseInScreen();
+        for (ClientKeys.TrackedKey key : this.keys) {
+            if (key.mapping.matchesMouse(event.getMouseButtonEvent())) {
+                key.releaseInScreen();
             }
         }
     }
 
     ///
-    /// A key mapping built from a declared key, with the tick that Nexus tracks for it.
+    /// A key of the mod with its mapping and the state that Nexus tracks for it between client ticks.
     ///
-    private static final class TrackedMapping extends KeyMapping {
+    @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
+    private static final class TrackedKey {
 
         ///
-        /// The declared key the mapping is built from.
+        /// The key that is tracked.
         ///
-        private final KeyDefinition definition;
+        private final Keybind keybind;
+
+        ///
+        /// The mapping of the key.
+        ///
+        private final KeyMapping mapping;
+
+        ///
+        /// The context the key can be pressed in.
+        ///
+        private final Keybind.Context context;
 
         ///
         /// If the key was pressed since the last client tick.
@@ -283,45 +306,17 @@ public final class ClientKeys {
         private KeyTick lastTick = ClientKeys.IDLE;
 
         ///
-        /// If a screen was open on the last client tick.
-        ///
-        private boolean inScreen;
-
-        ///
-        /// If the window had focus on the last client tick.
-        ///
-        private boolean focused;
-
-        ///
-        /// Should only ever be called from [ClientKeys#onRegisterKeyMappings(RegisterKeyMappingsEvent)].
-        ///
-        /// @param keybind The declared key to build the mapping from.
-        ///
-        private TrackedMapping(Keybind keybind) {
-            KeyDefinition definition = keybind.getDefinition();
-            super(
-                    keybind.getName(),
-                    ClientKeys.toConflictContext(definition.context()),
-                    ClientKeys.toKeyModifier(definition.modifier()),
-                    definition.mouse() ? InputConstants.Type.MOUSE : InputConstants.Type.KEYSYM,
-                    definition.defaultKey(),
-                    new KeyMapping.Category(definition.category())
-            );
-            this.definition = definition;
-        }
-
-        ///
         /// Notes a press if vanilla set the mapping down, which it does only while no screen is open.
         ///
         private void notePress() {
-            this.pressed |= this.isDown();
+            this.pressed |= this.mapping.isDown();
         }
 
         ///
         /// Keeps the key down in the screen that opens if it is an [Keybind.Context#EVERYWHERE] key that is down in game.
         ///
         private void carryIntoScreen() {
-            this.heldInScreen |= this.definition.context() == Keybind.Context.EVERYWHERE && this.isDown();
+            this.heldInScreen |= this.context == Keybind.Context.EVERYWHERE && this.mapping.isDown();
         }
 
         ///
@@ -340,32 +335,32 @@ public final class ClientKeys {
         }
 
         ///
-        /// Moves the key on by one client tick and then runs the client action if the key's activation fires on the new tick.
+        /// Moves the key on by one client tick, updates the key with the new tick and then runs the client action if the key's activation fires on it.
         ///
         /// A key that is down goes up without the player letting go if the window lost focus, or if a screen opened over an
         /// [Keybind.Context#IN_GAME] key or closed under an [Keybind.Context#IN_SCREEN] key.
         ///
-        /// @param inScreen If a screen is open.
-        /// @param focused  If the window has focus.
+        /// @param inScreen      If a screen is open.
+        /// @param screenChanged If a screen opened or closed since the last client tick.
+        /// @param lostFocus     If the window lost focus since the last client tick.
         ///
-        private void tick(boolean inScreen, boolean focused) {
-            boolean lostFocus = this.focused && !focused;
+        private void tick(boolean inScreen, boolean screenChanged, boolean lostFocus) {
             if (lostFocus) {
-                this.release();
+                this.mapping.setDown(false);
                 this.pressed = false;
                 this.heldInScreen = false;
             }
 
             if (!inScreen) {
                 // Vanilla does not set a held key down again once the screen closes, so we do it here until its release comes in.
-                if (this.heldInScreen && this.definition.context() == Keybind.Context.EVERYWHERE) {
-                    this.setDown(true);
+                if (this.heldInScreen && this.context == Keybind.Context.EVERYWHERE) {
+                    this.mapping.setDown(true);
                 }
 
                 this.heldInScreen = false;
             }
 
-            boolean down = inScreen ? this.definition.context() != Keybind.Context.IN_GAME && (this.pressed || this.heldInScreen) : this.pressed || this.isDown();
+            boolean down = inScreen ? this.context != Keybind.Context.IN_GAME && (this.pressed || this.heldInScreen) : this.pressed || this.mapping.isDown();
             boolean wasDown = this.lastTick.down();
             int idleTicks = this.lastTick.idleTicks();
             if (!down) {
@@ -374,14 +369,13 @@ public final class ClientKeys {
                 idleTicks = 0;
             }
 
-            boolean interrupted = wasDown && !down && (lostFocus || inScreen != this.inScreen);
+            boolean interrupted = wasDown && !down && (lostFocus || screenChanged);
             this.lastTick = new KeyTick(down, wasDown, down ? this.lastTick.heldTicks() + 1 : 0, idleTicks, interrupted);
             this.pressed = false;
-            this.inScreen = inScreen;
-            this.focused = focused;
+            this.keybind.update(this.lastTick);
 
-            ClientOnly<Runnable> action = this.definition.clientAction();
-            if (this.definition.activation().fires(this.lastTick) && action != null) {
+            ClientOnly<Runnable> action = this.keybind.getClientAction();
+            if (this.keybind.getActivation().fires(this.lastTick) && action != null) {
                 action.get().run();
             }
         }
