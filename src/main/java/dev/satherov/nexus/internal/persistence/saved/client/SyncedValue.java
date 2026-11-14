@@ -40,6 +40,7 @@ public final class SyncedValue<VALUE> implements BiConsumer<VALUE, ClientHandler
     public SyncedValue(Supplier<VALUE> initial) {
         this.initial = initial;
         
+        // TODO: Evaluate if we want one event per value or one event draining a list.
         NeoForge.EVENT_BUS.addListener(ClientPlayerNetworkEvent.LoggingOut.class, this::onLoggingOut);
     }
     
@@ -66,7 +67,7 @@ public final class SyncedValue<VALUE> implements BiConsumer<VALUE, ClientHandler
     ///
     /// Drops the received value.
     ///
-    /// @param event The logging out event, not used here.
+    /// @param event The logging-out event, not used here.
     ///
     private void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
         this.received = null;

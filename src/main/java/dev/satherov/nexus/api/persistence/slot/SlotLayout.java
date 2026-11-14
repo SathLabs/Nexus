@@ -31,7 +31,7 @@ import java.util.function.Predicate;
 public final class SlotLayout<HOLDER> {
 
     ///
-    /// The function that gets the groups of a holder by their name in the layout,
+    /// The function that gets all groups of a holder, by their name in the layout,
     /// which looks up the sources on its first call.
     ///
     private final Function<HOLDER, Map<String, SlotAccess>> groups;

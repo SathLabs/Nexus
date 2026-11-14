@@ -51,12 +51,12 @@ public final class DetachedPlayer extends ServerPlayer implements AutoCloseable 
     private final CompoundTag tag;
     
     ///
-    /// If the construction of this player added the stats entry of its UUID to the player list.
+    /// If the construction of this player added the stats-entry of its UUID to the player list.
     ///
     private final boolean addedStats;
 
     ///
-    /// If the construction of this player added the advancements entry of its UUID to the player list.
+    /// If the construction of this player added the advancements-entry of its UUID to the player list.
     ///
     private final boolean addedAdvancements;
     

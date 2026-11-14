@@ -89,12 +89,12 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     private final Map<List<String>, KEY> retiredBySegments = new HashMap<>();
 
     ///
-    /// The last queued write of a key by its segments, until that write finished.
+    /// The last queued write-action of a key by its segments until that write-action finished.
     ///
     private final Map<List<String>, Queued<VALUE>> queuedBySegments = new ConcurrentHashMap<>();
 
     ///
-    /// The IO thread, which runs the queued writes, retires, and deletes in order.
+    /// The IO thread, which runs the queued write-actions, retires, and deletes in order.
     ///
     private final ExecutorService executor;
 
@@ -202,7 +202,7 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     ///
     public void writeNow(KEY key, VALUE value) {
         List<String> segments = this.checkedSegments(key);
-        // A queued write of the key that ran later would overwrite this one, so the queue has to be empty first.
+        // Kinda stupid, but the best way to just wait until every other queued action is done.
         CompletableFuture.runAsync(() -> { }, this.executor).join();
         synchronized (this) {
             try {
@@ -295,7 +295,7 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     }
 
     ///
-    /// Reads the value of the given key from its queued write or its file.
+    /// Reads the value of the given key from its queued write-action or its file.
     ///
     /// @param key The key of the entry.
     ///
@@ -316,7 +316,7 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
         }
 
         Path retiredFile = this.folder.file(segments, ArchiveFolder.State.RETIRED);
-        // A retired entry is still in its active file while the retire is queued.
+        // A retired entry is still in its active file while the retire-action is queued.
         Path file = retired && Files.exists(retiredFile) ? retiredFile : this.folder.file(segments, ArchiveFolder.State.ACTIVE);
         return Files.exists(file) ? Optional.of(this.decode(file)) : Optional.empty();
     }

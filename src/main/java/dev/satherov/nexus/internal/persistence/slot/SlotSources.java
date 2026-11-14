@@ -45,7 +45,7 @@ public class SlotSources {
     }
 
     ///
-    /// Registers the vanilla sources, posts the event and then freezes the table.
+    /// Registers the vanilla sources, posts the event, and then freezes the table.
     ///
     private static void collect() {
         Map<Identifier, SlotSource<?>> sources = new LinkedHashMap<>();

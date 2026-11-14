@@ -61,7 +61,7 @@ public final class ArchiveBuilder<KEY extends ArchiveKey<KEY>, VALUE> {
     ///
     /// Should only ever be called from [Persistence#archive(String, ArchiveKey.Parser, Format)].
     ///
-    /// @param persistence The persistence the archive is declared on.
+    /// @param persistence The persistence object that the archive is declared on.
     /// @param name        The name of the archive.
     /// @param keys        The parser of the keys.
     /// @param format      The format the values are saved in.
@@ -77,7 +77,7 @@ public final class ArchiveBuilder<KEY extends ArchiveKey<KEY>, VALUE> {
     ///
     /// Sets the retention of the active entries and keeps every retired entry.
     ///
-    /// The retention runs once when a server starts, over the group of a key after every write, and over every group when the archive is pruned.
+    /// The retention runs once when a server starts, over the group of a key after every write-action, and over every group when the archive is pruned.
     ///
     /// @param active The retention of the active entries.
     ///

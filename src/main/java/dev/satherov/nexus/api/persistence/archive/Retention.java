@@ -83,7 +83,7 @@ public interface Retention<KEY> {
     ///
     /// Creates a new rule that runs this rule over the keys that pass the given filter.
     ///
-    /// Every other key will be kept by the new rule.
+    /// The new rule will keep every other key.
     ///
     /// @param filter The filter of the keys this rule runs over.
     ///

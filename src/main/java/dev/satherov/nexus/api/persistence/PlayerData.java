@@ -42,7 +42,7 @@ import java.util.function.Function;
 ///
 /// Allows editing the saved data of every player of a server, whether the player is online or offline.
 ///
-/// An offline player is edited through a detached copy that never joins a level or the player list, and is never a [FakePlayer].
+/// An offline player is edited through a detached copy that never joins a level or the player list.
 /// [PlayerEvent.LoadFromFile] and [PlayerEvent.SaveToFile] will fire whenever a copy is loaded or saved.
 ///
 /// Should only be called on the server thread.
@@ -151,7 +151,7 @@ public final class PlayerData {
     }
     
     ///
-    /// Reads the player tag of the given player from its file, or creates a snapshot of the player if it is online.
+    /// Reads the player tag of the given player from its file or creates a snapshot of the player if it is online.
     ///
     /// @param server The server the player belongs to.
     /// @param player The UUID of the player.
@@ -258,6 +258,7 @@ public final class PlayerData {
             player.setHealth(player.getHealth());
             player.getRecipeBook().sendInitialRecipeBook(player);
             players.broadcastAll(new ClientboundPlayerInfoUpdatePacket(ClientboundPlayerInfoUpdatePacket.Action.UPDATE_GAME_MODE, player));
+            //noinspection UnstableApiUsage We gotta sync that stuff somehow ig.
             AttachmentSync.syncInitialPlayerAttachments(player);
             EventHooks.firePlayerLoggedIn(player);
             player.loadAndSpawnEnderPearls(input);
