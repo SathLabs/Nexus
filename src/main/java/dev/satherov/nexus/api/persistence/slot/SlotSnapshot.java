@@ -3,6 +3,7 @@ package dev.satherov.nexus.api.persistence.slot;
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.codec.key.MapKey;
+import dev.satherov.nexus.api.codec.vanilla.VanillaCodecs;
 import dev.satherov.nexus.api.persistence.format.Format;
 import dev.satherov.nexus.internal.codec.CodecErrors;
 import dev.satherov.nexus.internal.codec.CollectionCodecs;
@@ -37,7 +38,7 @@ public final class SlotSnapshot {
     private static final NexusCodec<List<ItemStack>, Access.Registries> GROUP = NexusCodec.struct(
             "slot_group",
             NexusCodec.INT.field("size", Group::size),
-            NexusCodec.ofDfu(ItemStackWithSlot.CODEC, Access.Registries.class).list().field("items", Group::items),
+            VanillaCodecs.ITEM_STACK_WITH_SLOT.list().field("items", Group::items),
             Group::new
     ).flatXmap(Group::stacks, Group::of);
 
