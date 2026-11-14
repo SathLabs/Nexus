@@ -112,7 +112,6 @@ public final class SavedValueBuilder<SCOPE, VALUE> {
     ///
     /// @see SavedValue#getOnClient()
     ///
-    @CanIgnoreReturnValue
     public SavedValueBuilder<SCOPE, VALUE> sync(NexusCodec<VALUE, ? super Access.Registries> codec) {
         this.codec = codec;
         return this;
@@ -128,7 +127,14 @@ public final class SavedValueBuilder<SCOPE, VALUE> {
     ///
     public SavedValue<SCOPE, VALUE> register() {
         Identifier id = this.persistence.declare(this.name);
-        PayloadBuilder<VALUE> sync = this.codec != null ? this.persistence.getMod().getNetwork().play("saved/" + this.name, this.codec).optional() : null;
+        PayloadBuilder<VALUE> sync = this.makePayloadBuilder();
         return new SavedValue<>(this.scope, SavedValueData.type(id, this.format, this.initial), this.initial, sync);
+    }
+    
+    ///
+    /// @return the payload builder for the value, if any.
+    ///
+    private @Nullable PayloadBuilder<VALUE> makePayloadBuilder() {
+        return this.codec != null ? this.persistence.getMod().getNetwork().play("saved/" + this.name, this.codec).optional() : null;
     }
 }

@@ -9,6 +9,7 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
+import org.jetbrains.annotations.UnmodifiableView;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -188,9 +189,8 @@ public final class SlotLayout<HOLDER> {
     /// - If a group given to a refusal or a fallback can't be a group of the layout.
     /// - If two groups of the given holder have the same name in the layout.
     ///
-    @Unmodifiable
     @CanIgnoreReturnValue
-    public List<ItemStack> restore(HOLDER holder, SlotSnapshot snapshot) {
+    public @UnmodifiableView List<ItemStack> restore(HOLDER holder, SlotSnapshot snapshot) {
         Map<String, SlotAccess> groups = this.groups.apply(holder);
         List<ItemStack> unplaced = new ArrayList<>();
         List<ItemStack> rest = new ArrayList<>();

@@ -1,5 +1,7 @@
 package dev.satherov.nexus.api.persistence.archive;
 
+import org.jetbrains.annotations.Unmodifiable;
+
 import java.util.List;
 import java.util.Optional;
 
@@ -29,7 +31,7 @@ public record NameKey(String name) implements ArchiveKey<NameKey> {
     /// @return The one segment.
     ///
     @Override
-    public List<String> segments() {
+    public @Unmodifiable List<String> segments() {
         return List.of(this.name);
     }
 

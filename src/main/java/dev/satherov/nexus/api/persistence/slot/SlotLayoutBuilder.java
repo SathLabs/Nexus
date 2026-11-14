@@ -216,7 +216,7 @@ public final class SlotLayoutBuilder<HOLDER> {
         Set<Identifier> sources = ImmutableSet.copyOf(this.sources);
         Map<String, Predicate<ItemStack>> refusals = Map.copyOf(this.refusals);
         List<String> fallbacks = List.copyOf(this.fallbacks);
-        @Nullable Set<Identifier> excluded = this.excluded != null ? Set.copyOf(this.excluded) : null;
+        Set<Identifier> excluded = this.excluded != null ? Set.copyOf(this.excluded) : null;
         Set<String> referenced = ImmutableSet.<String>builder().addAll(this.refusals.keySet()).addAll(fallbacks).build();
         for (String name : referenced) {
             Collection<Identifier> ids = excluded == null ? sources : Stream.ofNullable(SlotLayoutBuilder.sourceOf(name)).toList();
