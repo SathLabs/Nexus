@@ -2,6 +2,7 @@ package dev.satherov.nexus.api.mod;
 
 import lombok.Getter;
 
+import dev.satherov.nexus.api.keybind.Keybinds;
 import dev.satherov.nexus.api.network.Network;
 import dev.satherov.nexus.api.persistence.Persistence;
 import dev.satherov.nexus.api.registry.Registrations;
@@ -92,6 +93,12 @@ public final class NexusMod {
     ///
     @Getter(lazy = true)
     private final Persistence persistence = new Persistence(this);
+    
+    ///
+    /// The mod's keybinds, created when its getter is first called.
+    ///
+    @Getter(lazy = true)
+    private final Keybinds keybinds = new Keybinds(this);
     
     ///
     /// Creates the handle of the mod the given container belongs to.
