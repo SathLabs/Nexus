@@ -32,6 +32,7 @@ import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 ///
 /// The client listeners of one mod's keybinds.
@@ -359,7 +360,7 @@ public final class ClientKeys {
 
         ///
         /// Moves the key on by one client tick, updates the key with the new tick, sends the key going down or up if it syncs its held state,
-        /// and then runs the client action and sends the firing if the key's activation fires on it.
+        /// and then fires the key if its activation fires on it.
         ///
         /// A key that is down goes up without the player letting go if the window lost focus, or if a screen opened over an
         /// [Keybind.Context#IN_GAME] key or closed under an [Keybind.Context#IN_SCREEN] key.
@@ -404,18 +405,38 @@ public final class ClientKeys {
                 this.send(down ? KeySignal.Down.INSTANCE : KeySignal.Up.INSTANCE);
             }
 
-            if (!this.keybind.getActivation().fires(tick)) {
-                return;
+            if (this.keybind.getActivation().fires(tick)) {
+                this.fire();
             }
+        }
 
+        ///
+        /// Runs the client action, then the readers of the carried values in order,
+        /// and then sends the firing with the values if the key has a server action.
+        ///
+        /// Sends nothing if a reader returns `null`, and the readers after it do not run.
+        ///
+        private void fire() {
             ClientOnly<Runnable> action = this.keybind.getClientAction();
             if (action != null) {
                 action.get().run();
             }
 
-            if (this.keybind.hasServerAction()) {
-                this.send(new KeySignal.Fired(List.of()));
+            if (!this.keybind.hasServerAction()) {
+                return;
             }
+
+            List<Object> values = new ArrayList<>();
+            for (ClientOnly<? extends Supplier<?>> reader : this.keybind.getAllReaders()) {
+                Object value = reader.get().get();
+                if (value == null) {
+                    return;
+                }
+
+                values.add(value);
+            }
+
+            this.send(new KeySignal.Fired(values));
         }
 
         ///

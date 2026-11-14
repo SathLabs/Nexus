@@ -2,6 +2,7 @@ package dev.satherov.nexus.api.keybind;
 
 import lombok.Getter;
 
+import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.keybind.activation.Activation;
 import dev.satherov.nexus.api.mod.NexusMod;
 import dev.satherov.nexus.api.network.Network;
@@ -16,6 +17,8 @@ import dev.satherov.zelqro.mapping.ObjectMapping;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -32,6 +35,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.BiConsumer;
+import java.util.function.Supplier;
 
 ///
 /// The keys and key categories that one mod declares.
@@ -220,6 +224,8 @@ public final class Keybinds {
     /// @param definition   The definition of the key, or `null` if the key is on an existing mapping.
     /// @param activation   The activation the key fires through.
     /// @param clientAction The action run on the client when the key fires, or `null` if none is set.
+    /// @param codecs       The codecs of the carried values, in the order the values are read.
+    /// @param readers      The readers of the carried values on the client, one per codec.
     /// @param serverAction The action run on the server when a firing arrives, or `null` if none is set.
     /// @param syncHeld     If the key sends its going down and up to the server.
     ///
@@ -236,6 +242,8 @@ public final class Keybinds {
             Keybind.@Nullable Definition definition,
             Activation activation,
             @Nullable ClientOnly<Runnable> clientAction,
+            List<NexusCodec<?, ?>> codecs,
+            List<ClientOnly<? extends Supplier<?>>> readers,
             @Nullable BiConsumer<ServerPlayer, List<Object>> serverAction,
             boolean syncHeld
     ) {
@@ -249,7 +257,7 @@ public final class Keybinds {
         }
         
         String path = ObjectMapping.mapNonNullOrElseGet(definition, own -> "keybind/" + own.name(), () -> "keybind/existing/" + Keybinds.toPayloadName(name));
-        ServerboundPayload<KeySignal> payload = BooleanMapping.mapNonNullIfTrue(serverAction != null || syncHeld, () -> this.declarePayload(mappingName, path, serverAction));
+        ServerboundPayload<KeySignal> payload = BooleanMapping.mapNonNullIfTrue(serverAction != null || syncHeld, () -> this.declarePayload(mappingName, path, codecs, serverAction));
         if (definition != null) {
             this.mod.getTranslations().defineKey(mappingName, definition.english());
             if (definition.category().equals(this.defaultCategory) && !this.categories.contains(this.defaultCategory)) {
@@ -257,15 +265,15 @@ public final class Keybinds {
             }
         }
         
-        Keybind keybind = new Keybind(mappingName, definition, activation, clientAction, serverAction != null, syncHeld, payload, this.heldKeys);
+        Keybind keybind = new Keybind(mappingName, definition, activation, clientAction, readers, serverAction != null, syncHeld, payload, this.heldKeys);
         this.keybindsByName.put(mappingName, keybind);
         return keybind;
     }
     
     ///
-    /// Declares the optional payload of the key of the given mapping name, which runs the server action on a firing and marks the key as down or up for the sender.
+    /// Declares the optional payload of the key of the given mapping name, which runs the server action over the decoded values on a firing and marks the key as down or up for the sender.
     ///
-    private ServerboundPayload<KeySignal> declarePayload(String mappingName, String path, @Nullable BiConsumer<ServerPlayer, List<Object>> serverAction) {
+    private ServerboundPayload<KeySignal> declarePayload(String mappingName, String path, List<NexusCodec<?, ?>> codecs, @Nullable BiConsumer<ServerPlayer, List<Object>> serverAction) {
         Identifier id = this.mod.id(path);
         for (Keybind existing : this.keybindsByName.values()) {
             ServerboundPayload<KeySignal> payload = existing.getPayload();
@@ -276,7 +284,7 @@ public final class Keybinds {
         
         BiConsumer<ServerPlayer, List<Object>> action = Objects.requireNonNullElse(serverAction, (_, _) -> { });
         return this.mod.getNetwork()
-                .play(path, KeySignal.codec(List.of()))
+                .play(path, KeySignal.codec(codecs.stream().<StreamCodec<? super RegistryFriendlyByteBuf, ?>>map(NexusCodec::asStream).toList()))
                 .optional()
                 .toServer((signal, context) -> {
                     switch (signal) {

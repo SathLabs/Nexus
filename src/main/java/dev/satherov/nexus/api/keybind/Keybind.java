@@ -16,7 +16,11 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Unmodifiable;
 import org.jspecify.annotations.Nullable;
+
+import java.util.List;
+import java.util.function.Supplier;
 
 ///
 /// A key that a mod registered.
@@ -51,6 +55,11 @@ public final class Keybind {
     ///
     @Getter(onMethod_ = @ApiStatus.Internal)
     private final @Nullable ClientOnly<Runnable> clientAction;
+    
+    ///
+    /// The readers of the carried values on the client, in the order of their codecs.
+    ///
+    private final @Unmodifiable List<ClientOnly<? extends Supplier<?>>> readers;
     
     ///
     /// If a server action is set for the key.
@@ -181,6 +190,18 @@ public final class Keybind {
         }
         
         return this.activation.progress(new KeyTick(true, heldTicks > 1, heldTicks, 0, false));
+    }
+    
+    ///
+    /// Any readers of the carried values on the client, in the order of their codecs.
+    ///
+    /// Should only ever be resolved on the client.
+    ///
+    /// @return Any readers of the carried values.
+    ///
+    @ApiStatus.Internal
+    public @Unmodifiable List<ClientOnly<? extends Supplier<?>>> getAllReaders() {
+        return this.readers;
     }
     
     ///
