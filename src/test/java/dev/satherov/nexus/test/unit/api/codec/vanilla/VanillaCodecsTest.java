@@ -37,6 +37,7 @@ import net.minecraft.resources.RegistryOps;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.TagKey;
+import net.minecraft.world.ItemStackWithSlot;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -333,6 +334,44 @@ public class VanillaCodecsTest {
                 .containsExactly("components", "components['minecraft:damage']");
     }
     
+    @Test
+    public void itemStackWithSlotIsTheSlotAsAnUnsignedByteBesideTheStack() {
+        ItemStack dirt = new ItemStack(Items.DIRT, 64);
+        ItemStackWithSlot item = new ItemStackWithSlot(200, dirt);
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        bytes.write(0xC8);
+        bytes.writeBytes(VanillaCodecsTest.written(VanillaCodecs.ITEM_STACK, dirt));
+
+        Assertions.assertThat(VanillaCodecs.ITEM_STACK_WITH_SLOT.encode(VanillaCodecsTest.JSON, item)).hasToString("{\"Slot\":-56,\"id\":\"minecraft:dirt\",\"count\":64}");
+        Assertions.assertThat(VanillaCodecsTest.written(VanillaCodecs.ITEM_STACK_WITH_SLOT, item)).isEqualTo(bytes.toByteArray());
+        VanillaCodecsTest.assertMatchesVanilla(VanillaCodecs.ITEM_STACK_WITH_SLOT, ItemStackWithSlot.CODEC, ParityCases.ITEM_STACK_WITH_SLOT_STREAM, item);
+        VanillaCodecsTest.assertRoundTrips(
+                VanillaCodecs.ITEM_STACK_WITH_SLOT.xmap(ParityCases.MatchedSlot::new, ParityCases.MatchedSlot::item),
+                new ParityCases.MatchedSlot(item)
+        );
+    }
+
+    @Test
+    public void itemStackWithSlotFailsOnAMissingOrBadSlotAndAnEmptyStack() {
+        JsonElement missing = JsonParser.parseString("{\"id\":\"minecraft:dirt\",\"count\":1}");
+        JsonElement empty = JsonParser.parseString("{\"Slot\":3}");
+
+        Assertions.assertThat(VanillaCodecsTest.errors(() -> VanillaCodecs.ITEM_STACK_WITH_SLOT.decode(VanillaCodecsTest.JSON, missing)))
+                .extracting(CodecError::path)
+                .containsExactly("Slot");
+        Assertions.assertThatThrownBy(() -> VanillaCodecs.ITEM_STACK_WITH_SLOT.decode(VanillaCodecsTest.JSON, empty)).isInstanceOf(NexusCodecException.class);
+        for (int slot : List.of(-1, 256)) {
+            ItemStackWithSlot item = new ItemStackWithSlot(slot, new ItemStack(Items.DIRT));
+
+            Assertions.assertThat(VanillaCodecsTest.errors(() -> VanillaCodecs.ITEM_STACK_WITH_SLOT.encode(VanillaCodecsTest.NBT, item)))
+                    .extracting(CodecError::path)
+                    .containsExactly("Slot");
+        }
+
+        Assertions.assertThatThrownBy(() -> VanillaCodecs.ITEM_STACK_WITH_SLOT.encode(VanillaCodecsTest.NBT, new ItemStackWithSlot(0, ItemStack.EMPTY)))
+                .isInstanceOf(NexusCodecException.class);
+    }
+
     private static <T> void assertMatchesVanilla(NexusCodec<T, ? super Access.Registries> codec, Codec<T> dfu, StreamCodec<? super RegistryFriendlyByteBuf, T> stream, T value) {
         RegistryFriendlyByteBuf vanilla = VanillaCodecsTest.writable();
         stream.encode(vanilla, value);

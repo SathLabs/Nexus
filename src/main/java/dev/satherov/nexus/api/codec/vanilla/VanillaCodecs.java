@@ -24,6 +24,8 @@ import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.tags.TagKey;
+import net.minecraft.util.ExtraCodecs;
+import net.minecraft.world.ItemStackWithSlot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
@@ -172,7 +174,22 @@ public class VanillaCodecs {
     /// In JSON and NBT, a failure holds the errors of every field that failed, and a failure of a component is at its identifier inside `components`, such as `components['minecraft:damage']`.
     ///
     public static final StructCodec<ItemStack, Access.Registries> ITEM_STACK = VanillaTypes.ITEM_STACK;
-    
+
+    ///
+    /// The codec of an [ItemStackWithSlot], in the same form as vanilla's [ItemStackWithSlot#CODEC].
+    ///
+    /// In JSON and NBT, it writes the slot under `Slot` as an unsigned byte, the same as [ExtraCodecs#UNSIGNED_BYTE], and the fields of the stack the same as [#ITEM_STACK], in one object.
+    /// On the network, it writes the slot as an unsigned byte and then the stack the same as [ItemStack#STREAM_CODEC].
+    ///
+    /// Fails if `Slot` is missing, if the slot is not in `[0, 255]`, or if the stack is empty.
+    ///
+    public static final NexusCodec<ItemStackWithSlot, Access.Registries> ITEM_STACK_WITH_SLOT = NexusCodec.struct(
+            "ITEM_STACK_WITH_SLOT",
+            NexusCodec.BYTE.flatXmap(Byte::toUnsignedInt, VanillaCodecs::unsignedByte).field("Slot", ItemStackWithSlot::slot),
+            VanillaCodecs.ITEM_STACK.inline(ItemStackWithSlot::stack),
+            ItemStackWithSlot::new
+    ).flatXmap(VanillaCodecs::filled, VanillaCodecs::filled);
+
     ///
     /// The codec of a [FluidStack] that may be empty, in the same form as neoforge's [FluidStack#OPTIONAL_CODEC] and [FluidStack#OPTIONAL_STREAM_CODEC].
     ///
@@ -243,5 +260,27 @@ public class VanillaCodecs {
             throw CodecErrors.mismatch("'#' and an identifier", text);
         }
         return TagKey.create(registry, id);
+    }
+
+    ///
+    /// Gets the given slot as an unsigned byte, or throws if it's not in `[0, 255]`.
+    ///
+    private static byte unsignedByte(int slot) {
+        if (slot < 0 || slot > 255) {
+            throw CodecErrors.outOfRange(0, 255, slot);
+        }
+
+        return (byte) slot;
+    }
+
+    ///
+    /// Gets the given item stack with slot, or throws if its stack is empty.
+    ///
+    private static ItemStackWithSlot filled(ItemStackWithSlot item) {
+        if (item.stack().isEmpty()) {
+            throw CodecErrors.mismatch("an item stack that isn't empty", item.stack());
+        }
+
+        return item;
     }
 }

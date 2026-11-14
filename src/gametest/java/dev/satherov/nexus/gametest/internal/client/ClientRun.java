@@ -25,6 +25,7 @@ import net.minecraft.resources.Identifier;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Unmodifiable;
 import org.jspecify.annotations.Nullable;
 
 import java.nio.file.Files;
@@ -379,7 +380,7 @@ public class ClientRun {
     ///
     /// @return Every discovered client test that the current run selects.
     ///
-    private static List<Discovered> selected() {
+    private static @Unmodifiable List<Discovered> selected() {
         RunOptions options = RunOptions.fromProperties();
         return Discovered.all(ClientTest.class)
                 .stream()

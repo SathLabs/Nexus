@@ -20,6 +20,7 @@ import com.google.common.collect.Comparators;
 import com.mojang.datafixers.util.Either;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Unmodifiable;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -442,7 +443,7 @@ public class Combinators {
         /// The key and the keys of every subtype.
         ///
         @Override
-        public Set<String> keys() {
+        public @Unmodifiable Set<String> keys() {
             return this.keys;
         }
         

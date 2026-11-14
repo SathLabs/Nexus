@@ -24,6 +24,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.block.Rotation;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -192,7 +193,7 @@ public class ServerTests {
     ///
     /// @return Every discovered test that the run selects.
     ///
-    private static List<Discovered> selected() {
+    private static @Unmodifiable List<Discovered> selected() {
         RunOptions options = RunOptions.fromProperties();
         return Discovered.all(ServerTest.class)
                 .stream()

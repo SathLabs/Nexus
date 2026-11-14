@@ -50,6 +50,8 @@ public final class AttachmentEntry<VALUE> extends RegistryEntry<AttachmentType<?
     ///
     /// Sets this attachment on the given holder to the given value.
     ///
+    /// If the holder is a block entity or a chunk, it will be marked as changed.
+    ///
     /// @param holder The holder of the attachment.
     /// @param value  The value to set.
     ///
@@ -59,6 +61,8 @@ public final class AttachmentEntry<VALUE> extends RegistryEntry<AttachmentType<?
     
     ///
     /// Updates this attachment on the given holder with the given operator.
+    ///
+    /// If the value changed on a block entity or a chunk, the holder will be marked as changed.
     ///
     /// @param holder   The holder of the attachment.
     /// @param operator The operator to apply to the current value.
@@ -77,6 +81,8 @@ public final class AttachmentEntry<VALUE> extends RegistryEntry<AttachmentType<?
     
     ///
     /// Updates this attachment on the given holder by replacing it with the given value.
+    ///
+    /// If the value changed on a block entity or a chunk, the holder will be marked as changed.
     ///
     /// @param holder   The holder of the attachment.
     /// @param supplier The supplier to replace the value with.

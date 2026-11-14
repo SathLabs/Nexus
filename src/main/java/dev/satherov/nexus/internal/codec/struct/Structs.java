@@ -35,6 +35,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Unmodifiable;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -536,7 +537,7 @@ public class Structs {
         ///
         /// @return Every key this struct may write.
         ///
-        public abstract Set<String> keys();
+        public abstract @Unmodifiable Set<String> keys();
         
         ///
         /// Writes every field of the given value under its key into the given object.
@@ -653,7 +654,7 @@ public class Structs {
         /// The keys of every field, including the keys of the structs of inline fields.
         ///
         @Override
-        public Set<String> keys() {
+        public @Unmodifiable Set<String> keys() {
             return this.keys;
         }
         

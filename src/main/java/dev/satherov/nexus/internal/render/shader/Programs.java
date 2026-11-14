@@ -31,6 +31,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.VertexFormat;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Unmodifiable;
 import org.jspecify.annotations.Nullable;
 
 import java.io.IOException;
@@ -159,7 +160,7 @@ public final class Programs extends SimplePreparableReloadListener<Map<RenderPip
     ///
     /// @return The names of the uniform blocks, or an empty set if the pipeline was not created from a program file.
     ///
-    public static Set<String> blocks(RenderPipeline pipeline) {
+    public static @Unmodifiable Set<String> blocks(RenderPipeline pipeline) {
         ProgramFile file = Programs.FILE_BY_PIPELINE.get(pipeline);
         return file == null ? Set.of() : file.program().getBlocks();
     }

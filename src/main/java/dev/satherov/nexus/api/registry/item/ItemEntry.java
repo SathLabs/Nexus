@@ -15,7 +15,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ItemLike;
 
 import org.jetbrains.annotations.ApiStatus;
-import org.jetbrains.annotations.Unmodifiable;
+import org.jetbrains.annotations.UnmodifiableView;
 import org.jspecify.annotations.Nullable;
 
 import java.util.Collections;
@@ -109,7 +109,7 @@ public final class ItemEntry<ITEM extends Item> extends RegistryEntry<Item, ITEM
     ///
     /// @see TabEntry#getItems()
     ///
-    public @Unmodifiable Set<ResourceKey<CreativeModeTab>> getTabs() {
+    public @UnmodifiableView Set<ResourceKey<CreativeModeTab>> getTabs() {
         if (this.tabs != null) {
             return this.tabs;
         }

@@ -71,8 +71,7 @@ public final class NexusCodecException extends RuntimeException {
     ///
     /// @return The errors, in the order the message lists them.
     ///
-    @Unmodifiable
-    public List<CodecError> errors() {
+    public @Unmodifiable List<CodecError> errors() {
         return this.errors;
     }
     

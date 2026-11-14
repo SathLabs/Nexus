@@ -2,6 +2,7 @@ package dev.satherov.nexus.api.registry.attachment;
 
 import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.codec.struct.StructCodec;
+import dev.satherov.nexus.api.persistence.format.Format;
 import dev.satherov.nexus.api.registry.EntryBuilder;
 import dev.satherov.nexus.api.registry.Registrations;
 
@@ -44,7 +45,7 @@ public final class AttachmentBuilder<VALUE, PARENT>
     private final Supplier<VALUE> initial;
     
     ///
-    /// The map codec the attachment is saved with, or `null` if [#codec(StructCodec)] was not called.
+    /// The map codec the attachment is saved with, or `null` if neither [#codec(StructCodec)] nor [#format(Format)] was called.
     ///
     private @Nullable MapCodec<VALUE> codec;
     
@@ -76,6 +77,8 @@ public final class AttachmentBuilder<VALUE, PARENT>
     ///
     /// Saves the attachment with the map codec of the given codec.
     ///
+    /// Replaces previous calls of this and of [#format(Format)].
+    ///
     /// @param codec The codec of the values of the attachment.
     ///
     /// @return The builder for chaining.
@@ -86,6 +89,26 @@ public final class AttachmentBuilder<VALUE, PARENT>
     public AttachmentBuilder<VALUE, PARENT> codec(StructCodec<VALUE, ?> codec) {
         this.checkUnregistered();
         this.codec = codec.asMapCodec();
+        return this;
+    }
+
+    ///
+    /// Saves the attachment with the flat codec of the given format.
+    ///
+    /// If a saved attachment has no `version` key, it will be read as version `0` and upgraded to the current one.
+    ///
+    /// Replaces previous calls of this and of [#codec(StructCodec)].
+    ///
+    /// @param format The format of the values of the attachment.
+    ///
+    /// @return The builder for chaining.
+    ///
+    /// @throws IllegalStateException If [#register()] was already called or another builder took over this one.
+    ///
+    @CanIgnoreReturnValue
+    public AttachmentBuilder<VALUE, PARENT> format(Format<VALUE> format) {
+        this.checkUnregistered();
+        this.codec = MapCodec.assumeMapUnsafe(format.flatCodec().asDfu());
         return this;
     }
     
@@ -108,7 +131,7 @@ public final class AttachmentBuilder<VALUE, PARENT>
     ///
     /// Keeps the attachment when a player dies or a living entity converts into another.
     ///
-    /// If [#codec(StructCodec)] is not called as well, creating the type will throw an [IllegalStateException].
+    /// If neither [#codec(StructCodec)] nor [#format(Format)] is called as well, creating the type will throw an [IllegalStateException].
     ///
     /// @return The builder for chaining.
     ///

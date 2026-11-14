@@ -12,6 +12,7 @@ import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.extensions.ICommonPacketListener;
 
 import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.common.ClientCommonPacketListener;
 import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
@@ -86,11 +87,24 @@ public final class Payload<VALUE> implements ClientboundPayload<VALUE>, Serverbo
     ///
     @Override
     public void send(VALUE value, ClientRecipients recipients) {
-        this.checkClientbound();
-        Packet<?> packet = new ClientboundCustomPayloadPacket(new Envelope<>(this.type, value));
-        recipients.send(packet, this.optional ? listener -> listener.hasChannel(this.type) : _ -> true);
+        recipients.send(this.toPacket(value), this.optional ? listener -> listener.hasChannel(this.type) : _ -> true);
     }
-    
+
+    ///
+    /// Wraps the given value into an [Envelope] inside a custom payload packet.
+    ///
+    /// @param value The value to wrap.
+    ///
+    /// @return The packet that holds the value.
+    ///
+    /// @throws IllegalStateException If the payload is not client-bound.
+    ///
+    @Override
+    public Packet<ClientCommonPacketListener> toPacket(VALUE value) {
+        this.checkClientbound();
+        return new ClientboundCustomPayloadPacket(new Envelope<>(this.type, value));
+    }
+
     ///
     /// If the client of the given player has registered the payload for the play protocol.
     ///

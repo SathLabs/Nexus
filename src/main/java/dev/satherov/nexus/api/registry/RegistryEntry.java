@@ -10,6 +10,7 @@ import net.minecraft.tags.TagKey;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
+import org.jetbrains.annotations.UnmodifiableView;
 import org.jspecify.annotations.Nullable;
 
 import java.util.Map;
@@ -31,7 +32,7 @@ public class RegistryEntry<REGISTRY, VALUE extends REGISTRY> extends DeferredHol
     ///
     /// The tags the builder recorded, in call order.
     ///
-    private final @Unmodifiable Set<TagKey<REGISTRY>> tags;
+    private final @UnmodifiableView Set<TagKey<REGISTRY>> tags;
     
     ///
     /// The facts the builder recorded for datagen, by kind.
@@ -77,7 +78,7 @@ public class RegistryEntry<REGISTRY, VALUE extends REGISTRY> extends DeferredHol
     ///
     /// @return The recorded tags.
     ///
-    public @Unmodifiable Set<TagKey<REGISTRY>> getTags() {
+    public @UnmodifiableView Set<TagKey<REGISTRY>> getTags() {
         return this.tags;
     }
     

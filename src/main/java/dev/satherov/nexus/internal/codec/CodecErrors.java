@@ -18,12 +18,15 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Unmodifiable;
 import org.jspecify.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 ///
@@ -126,6 +129,32 @@ public class CodecErrors {
     public static CodecError unknownKey(String key) {
         return new CodecError(key, "Unknown key");
     }
+
+    ///
+    /// Creates the error for every one of the given keys that the given check refuses.
+    ///
+    /// @param keys  The keys of an object.
+    /// @param known The check that accepts every key the codec knows.
+    ///
+    /// @return The errors at the unknown keys, or an empty list if every key is known.
+    ///
+    public static @Unmodifiable List<CodecError> unknownKeys(Set<String> keys, Predicate<String> known) {
+        return keys.stream()
+                .filter(known.negate())
+                .map(CodecErrors::unknownKey)
+                .toList();
+    }
+
+    ///
+    /// Creates a failure for a key that an encoded object already holds, although the codec around it writes its own value under that key.
+    ///
+    /// @param key The key that the object already holds.
+    ///
+    /// @return The failure, with one error at the key.
+    ///
+    public static NexusCodecException reservedKey(String key) {
+        return new NexusCodecException(List.of(new CodecError(key, "Reserved key")));
+    }
     
     ///
     /// Creates a failure with the message of the given exception, which a constructor or a factory threw to refuse a decoded value.
@@ -137,7 +166,44 @@ public class CodecErrors {
     public static NexusCodecException refused(IllegalArgumentException failure) {
         return new NexusCodecException(Objects.requireNonNullElse(failure.getMessage(), failure.toString()));
     }
-    
+
+    ///
+    /// Creates a failure for a tag whose version is newer than the current version of its format.
+    ///
+    /// @param current The current version of the format.
+    /// @param found   The version of the tag.
+    ///
+    /// @return The failure, with one error at an empty path.
+    ///
+    public static NexusCodecException tooNew(int current, int found) {
+        return new NexusCodecException("Expected version " + current + " or older, found " + found);
+    }
+
+    ///
+    /// Creates a failure for a version that no upgrade step of its format starts from.
+    ///
+    /// @param version The version of the tag.
+    ///
+    /// @return The failure, with one error at an empty path.
+    ///
+    public static NexusCodecException missingStep(int version) {
+        return new NexusCodecException("Could not upgrade from version '" + version + "', the format has no step for it");
+    }
+
+    ///
+    /// Creates a failure for an upgrade step that threw the given exception.
+    ///
+    /// The message will end with the string form of the given exception.
+    ///
+    /// @param version The version the step upgrades from.
+    /// @param failure The exception that the step threw.
+    ///
+    /// @return The failure, with one error at an empty path.
+    ///
+    public static NexusCodecException failedStep(int version, RuntimeException failure) {
+        return new NexusCodecException("Could not upgrade from version '" + version + "', " + failure);
+    }
+
     ///
     /// Creates the failure for a step of a component path that no value of a codec can hold.
     ///

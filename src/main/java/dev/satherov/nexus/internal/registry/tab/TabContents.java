@@ -16,6 +16,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Unmodifiable;
 import org.jspecify.annotations.Nullable;
 
 import java.util.Comparator;
@@ -43,7 +44,7 @@ public final class TabContents {
     ///
     /// @return The item entries.
     ///
-    public static List<ItemEntry<? extends Item>> getItemEntries(Registrations registrations) {
+    public static @Unmodifiable List<ItemEntry<? extends Item>> getItemEntries(Registrations registrations) {
         return registrations.getAll(Registries.ITEM).stream()
                 .filter(ItemEntry.class::isInstance)
                 .<ItemEntry<? extends Item>>map(entry -> (ItemEntry<? extends Item>) entry)
@@ -64,7 +65,7 @@ public final class TabContents {
     ///
     /// @return The shown item entries.
     ///
-    public static List<ItemEntry<? extends Item>> select(
+    public static @Unmodifiable List<ItemEntry<? extends Item>> select(
             List<ItemEntry<? extends Item>> entries,
             ResourceKey<CreativeModeTab> tab,
             @Nullable Predicate<ItemEntry<? extends Item>> contents,
