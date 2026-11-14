@@ -19,6 +19,7 @@ import com.google.common.collect.Iterables;
 import com.mojang.serialization.Codec;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.UnmodifiableView;
 import org.jspecify.annotations.Nullable;
 
 import java.util.Collections;
@@ -53,7 +54,7 @@ public class PathReaders {
     ///
     /// Copies the given registrations into an unmodifiable map that compares its keys by identity.
     ///
-    private static <KEY> Map<KEY, List<Function<List<ComponentPath.Step>, ? extends @Nullable PathReader<?>>>> freeze(
+    private static <KEY> @UnmodifiableView Map<KEY, List<Function<List<ComponentPath.Step>, ? extends @Nullable PathReader<?>>>> freeze(
             Map<KEY, List<Function<List<ComponentPath.Step>, ? extends @Nullable PathReader<?>>>> registrations
     ) {
         Map<KEY, List<Function<List<ComponentPath.Step>, ? extends @Nullable PathReader<?>>>> frozen = new IdentityHashMap<>();

@@ -60,7 +60,7 @@ import net.minecraft.world.level.block.state.BlockBehaviour;
 import com.mojang.serialization.MapCodec;
 
 import org.jetbrains.annotations.ApiStatus;
-import org.jetbrains.annotations.UnmodifiableView;
+import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -168,7 +168,7 @@ public final class Registrations {
     ///
     /// @return Every entry registered so far.
     ///
-    public @UnmodifiableView List<RegistryEntry<?, ?>> getAll() {
+    public @Unmodifiable List<RegistryEntry<?, ?>> getAll() {
         return List.copyOf(this.entries);
     }
     
@@ -179,7 +179,7 @@ public final class Registrations {
     ///
     /// @return Every entry of the registry registered so far.
     ///
-    public <REGISTRY> @UnmodifiableView List<RegistryEntry<REGISTRY, ? extends REGISTRY>> getAll(ResourceKey<? extends Registry<REGISTRY>> registry) {
+    public <REGISTRY> @Unmodifiable List<RegistryEntry<REGISTRY, ? extends REGISTRY>> getAll(ResourceKey<? extends Registry<REGISTRY>> registry) {
         //noinspection unchecked An entry will always be of the registry that its key is for, obviously.
         return this.entries.stream()
                 .filter(entry -> entry.getKey().isFor(registry))

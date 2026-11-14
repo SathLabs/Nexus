@@ -20,6 +20,7 @@ import net.minecraft.nbt.ReportedNbtException;
 import net.minecraft.resources.Identifier;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Unmodifiable;
 import org.jspecify.annotations.Nullable;
 
 import java.io.IOException;
@@ -237,7 +238,7 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     /// @throws IllegalArgumentException If the key has no segments, if one of its segments is empty,
     /// or if the parser doesn't give back a key with the same segments.
     ///
-    private List<String> checkedSegments(KEY key) {
+    private @Unmodifiable List<String> checkedSegments(KEY key) {
         List<String> segments = List.copyOf(key.segments());
         if (segments.isEmpty()) {
             throw new IllegalArgumentException("The key '" + key + "' has no segments");
@@ -352,7 +353,7 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     ///
     /// @return The active keys that pass the filter.
     ///
-    public synchronized List<KEY> list(Predicate<? super KEY> filter) {
+    public synchronized @Unmodifiable List<KEY> list(Predicate<? super KEY> filter) {
         return this.activeBySegments.values().stream()
                 .filter(filter)
                 .sorted()
@@ -366,7 +367,7 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     ///
     /// @return The retired keys that pass the filter.
     ///
-    public synchronized List<KEY> listRetired(Predicate<? super KEY> filter) {
+    public synchronized @Unmodifiable List<KEY> listRetired(Predicate<? super KEY> filter) {
         return this.retiredBySegments.values().stream()
                 .filter(filter)
                 .sorted()

@@ -17,6 +17,7 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.UnmodifiableView;
 import org.jspecify.annotations.Nullable;
 
 import java.util.Collections;
@@ -74,7 +75,7 @@ public class SlotSources {
     ///
     /// @throws IllegalStateException If [RegisterSlotSourcesEvent] wasn't posted yet.
     ///
-    public static Map<Identifier, SlotSource<?>> getAll() {
+    public static @UnmodifiableView Map<Identifier, SlotSource<?>> getAll() {
         Map<Identifier, SlotSource<?>> sources = SlotSources.registered;
         if (sources == null) {
             throw new IllegalStateException("The slot sources are not registered yet");

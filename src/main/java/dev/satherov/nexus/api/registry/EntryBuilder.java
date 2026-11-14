@@ -175,7 +175,7 @@ public abstract class EntryBuilder
     ///
     /// @return The recorded tags.
     ///
-    public @Unmodifiable Set<TagKey<REGISTRY>> getTags() {
+    public @UnmodifiableView Set<TagKey<REGISTRY>> getTags() {
         return Collections.unmodifiableSequencedSet(new LinkedHashSet<>(this.tags));
     }
     
@@ -197,7 +197,7 @@ public abstract class EntryBuilder
     /// @return The recorded facts.
     ///
     @ApiStatus.Internal
-    public @UnmodifiableView Map<ProviderKind<?>, Object> getAllDatagen() {
+    public @Unmodifiable Map<ProviderKind<?>, Object> getAllDatagen() {
         return Map.copyOf(this.factsByKind);
     }
     

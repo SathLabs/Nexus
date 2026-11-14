@@ -13,6 +13,7 @@ import net.minecraft.world.item.ItemStack;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
+import org.jetbrains.annotations.UnmodifiableView;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -61,7 +62,7 @@ public final class SlotSnapshot {
     ///
     /// The item stacks of every group in slot order, with an empty item stack for every empty slot.
     ///
-    private final @Unmodifiable Map<String, List<ItemStack>> stacksByGroup;
+    private final @UnmodifiableView Map<String, List<ItemStack>> stacksByGroup;
 
     ///
     /// Should only ever be called by Nexus itself.
@@ -80,8 +81,7 @@ public final class SlotSnapshot {
     ///
     /// @return The name of every group.
     ///
-    @Unmodifiable
-    public List<String> groups() {
+    public @Unmodifiable List<String> groups() {
         return List.copyOf(this.stacksByGroup.keySet());
     }
 
@@ -103,8 +103,7 @@ public final class SlotSnapshot {
     ///
     /// @return One item stack for every slot including the empty ones, or an empty list if the snapshot doesn't have the group.
     ///
-    @Unmodifiable
-    public List<ItemStack> stacks(String group) {
+    public @Unmodifiable List<ItemStack> stacks(String group) {
         return this.stacksByGroup.getOrDefault(group, List.of())
                 .stream()
                 .map(ItemStack::copy)
@@ -116,8 +115,7 @@ public final class SlotSnapshot {
     ///
     /// @return The item stacks.
     ///
-    @Unmodifiable
-    public List<ItemStack> gather() {
+    public @Unmodifiable List<ItemStack> gather() {
         return this.stacksByGroup.values()
                 .stream()
                 .flatMap(List::stream)

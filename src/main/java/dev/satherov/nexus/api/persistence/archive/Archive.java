@@ -11,6 +11,8 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.storage.LevelResource;
 
+import org.jetbrains.annotations.Unmodifiable;
+
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.List;
@@ -123,7 +125,7 @@ public final class Archive<KEY extends ArchiveKey<KEY>, VALUE> {
     ///
     /// @throws IllegalStateException If the archive isn't open on the server.
     ///
-    public List<KEY> list(MinecraftServer server) {
+    public @Unmodifiable List<KEY> list(MinecraftServer server) {
         return this.getStore(server).list(_ -> true);
     }
 
@@ -137,7 +139,7 @@ public final class Archive<KEY extends ArchiveKey<KEY>, VALUE> {
     ///
     /// @throws IllegalStateException If the archive isn't open on the server.
     ///
-    public List<KEY> list(MinecraftServer server, Predicate<? super KEY> filter) {
+    public @Unmodifiable List<KEY> list(MinecraftServer server, Predicate<? super KEY> filter) {
         return this.getStore(server).list(filter);
     }
 
@@ -151,7 +153,7 @@ public final class Archive<KEY extends ArchiveKey<KEY>, VALUE> {
     ///
     /// @throws IllegalStateException If the archive isn't open on the server.
     ///
-    public List<KEY> listRetired(MinecraftServer server, Predicate<? super KEY> filter) {
+    public @Unmodifiable List<KEY> listRetired(MinecraftServer server, Predicate<? super KEY> filter) {
         return this.getStore(server).listRetired(filter);
     }
 

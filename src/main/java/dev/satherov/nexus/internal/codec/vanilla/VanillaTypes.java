@@ -50,6 +50,7 @@ import net.minecraft.world.level.material.Fluid;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Unmodifiable;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -786,7 +787,7 @@ public class VanillaTypes {
         /// The keys of the identifier, the amount, and the components.
         ///
         @Override
-        public Set<String> keys() {
+        public @Unmodifiable Set<String> keys() {
             return this.keys;
         }
         

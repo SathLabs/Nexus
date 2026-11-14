@@ -18,6 +18,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Unmodifiable;
 import org.jspecify.annotations.Nullable;
 
 import java.util.Collection;
@@ -137,7 +138,7 @@ public class CodecErrors {
     ///
     /// @return The errors at the unknown keys, or an empty list if every key is known.
     ///
-    public static List<CodecError> unknownKeys(Set<String> keys, Predicate<String> known) {
+    public static @Unmodifiable List<CodecError> unknownKeys(Set<String> keys, Predicate<String> known) {
         return keys.stream()
                 .filter(known.negate())
                 .map(CodecErrors::unknownKey)

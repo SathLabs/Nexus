@@ -13,6 +13,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.UnmodifiableView;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -241,7 +242,7 @@ public final class SlotLayoutBuilder<HOLDER> {
     ///
     /// @throws IllegalStateException If a source added through [#source(Identifier)] isn't registered or is for another class of holders, or if one of the referenced groups can't be a group of the layout.
     ///
-    private Map<Identifier, SlotSource<?>> resolve(Map<String, Function<HOLDER, SlotAccess>> groups, Set<Identifier> sources, @Nullable Set<Identifier> excluded, Set<String> referenced) {
+    private @UnmodifiableView Map<Identifier, SlotSource<?>> resolve(Map<String, Function<HOLDER, SlotAccess>> groups, Set<Identifier> sources, @Nullable Set<Identifier> excluded, Set<String> referenced) {
         Map<Identifier, SlotSource<?>> registered = SlotSources.getAll();
         Map<Identifier, SlotSource<?>> chosen = new LinkedHashMap<>();
         for (Identifier id : sources) {
