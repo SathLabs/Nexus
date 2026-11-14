@@ -47,6 +47,7 @@ import net.minecraft.tags.TagKey;
 import net.minecraft.util.ExtraCodecs;
 import net.minecraft.util.StringRepresentable;
 import net.minecraft.util.Unit;
+import net.minecraft.world.ItemStackWithSlot;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -172,7 +173,15 @@ public class ParityCases {
     );
     
     private static final Format<Listing> LISTING_FORMAT = Format.of(ParityCases.LISTING).upgradeFrom(1, UnaryOperator.identity());
-    
+
+    public static final StreamCodec<RegistryFriendlyByteBuf, ItemStackWithSlot> ITEM_STACK_WITH_SLOT_STREAM = StreamCodec.composite(
+            ByteBufCodecs.BYTE.map(Byte::toUnsignedInt, Integer::byteValue),
+            ItemStackWithSlot::slot,
+            ItemStack.STREAM_CODEC,
+            ItemStackWithSlot::stack,
+            ItemStackWithSlot::new
+    );
+
     public static final List<Case<?>> ALL = List.of(
             new Case<>("BOOL", NexusCodec.BOOL, Codec.BOOL, ByteBufCodecs.BOOL, List.of(true, false)),
             new Case<>("BYTE", NexusCodec.BYTE, Codec.BYTE, ByteBufCodecs.BYTE, List.of((byte) 0, (byte) 1, (byte) -1, Byte.MIN_VALUE, Byte.MAX_VALUE)),
@@ -482,6 +491,13 @@ public class ParityCases {
                     ParityCases.itemStacks().stream().map(MatchedItem::new).toList()
             ),
             new Case<>(
+                    "ITEM_STACK_WITH_SLOT",
+                    VanillaCodecs.ITEM_STACK_WITH_SLOT.xmap(MatchedSlot::new, MatchedSlot::item),
+                    ItemStackWithSlot.CODEC.xmap(MatchedSlot::new, MatchedSlot::item),
+                    ParityCases.ITEM_STACK_WITH_SLOT_STREAM.map(MatchedSlot::new, MatchedSlot::item),
+                    ParityCases.itemStacksWithSlot().stream().map(MatchedSlot::new).toList()
+            ),
+            new Case<>(
                     "FLUID_STACK",
                     VanillaCodecs.FLUID_STACK.xmap(MatchedFluid::new, MatchedFluid::stack),
                     FluidStack.OPTIONAL_CODEC.xmap(MatchedFluid::new, MatchedFluid::stack),
@@ -557,6 +573,16 @@ public class ParityCases {
     public static List<ItemStack> itemStacks() {
         ParityCases.bindDefaultComponents();
         return List.of(ItemStack.EMPTY, new ItemStack(Items.DIRT, 64), ParityCases.namedSword(), ParityCases.inedibleApple());
+    }
+    
+    public static List<ItemStackWithSlot> itemStacksWithSlot() {
+        ParityCases.bindDefaultComponents();
+        return List.of(
+                new ItemStackWithSlot(0, new ItemStack(Items.DIRT, 64)),
+                new ItemStackWithSlot(5, ParityCases.namedSword()),
+                new ItemStackWithSlot(200, ParityCases.inedibleApple()),
+                new ItemStackWithSlot(255, new ItemStack(Items.STONE))
+        );
     }
     
     public static List<FluidStack> fluidStacks() {
@@ -660,6 +686,19 @@ public class ParityCases {
         @Override
         public int hashCode() {
             return ItemStack.hashItemAndComponents(this.stack);
+        }
+    }
+    
+    public record MatchedSlot(ItemStackWithSlot item) {
+        
+        @Override
+        public boolean equals(@Nullable Object other) {
+            return other instanceof MatchedSlot(ItemStackWithSlot that) && this.item.slot() == that.slot() && ItemStack.matches(this.item.stack(), that.stack());
+        }
+        
+        @Override
+        public int hashCode() {
+            return 31 * this.item.slot() + ItemStack.hashItemAndComponents(this.item.stack());
         }
     }
     
