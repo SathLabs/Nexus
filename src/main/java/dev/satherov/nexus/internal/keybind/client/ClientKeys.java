@@ -5,8 +5,10 @@ import lombok.RequiredArgsConstructor;
 
 import dev.satherov.nexus.api.keybind.Keybind;
 import dev.satherov.nexus.api.keybind.Keybinds;
+import dev.satherov.nexus.api.keybind.activation.KeyTick;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
 import dev.satherov.nexus.internal.keybind.KeyDefinition;
+import dev.satherov.zelqro.mapping.ObjectMapping;
 
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.InputEvent;
@@ -34,13 +36,18 @@ import java.util.List;
 ///
 /// The client listeners of one mod's keybinds.
 ///
-/// Builds the key mappings of the mod's keys and tracks whether each key is down, in game and in screens.
+/// Builds the key mappings of the mod's keys, tracks each key's tick in game and in screens, and fires each key through its activation.
 ///
 /// Should only ever be loaded on the client.
 ///
 @ApiStatus.Internal
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class ClientKeys {
+
+    ///
+    /// The tick of a key that has not gone down yet.
+    ///
+    private static final KeyTick IDLE = new KeyTick(false, false, 0, 0, false);
 
     ///
     /// The keybinds the mappings are built from.
@@ -116,14 +123,14 @@ public final class ClientKeys {
     }
 
     ///
-    /// If the given key is down as Nexus tracks it.
+    /// The tick the given key had on the last client tick, as Nexus tracks it.
     ///
-    /// @param keybind The key to check.
+    /// @param keybind The key to read.
     ///
-    /// @return `true` if the key was down on the last client tick, or `false` if its mapping was never built.
+    /// @return The last tick of the key, or a tick with the key up if its mapping was never built.
     ///
-    public static boolean isDown(Keybind keybind) {
-        return KeyMapping.get(keybind.getName()) instanceof ClientKeys.TrackedMapping mapping && mapping.down;
+    public static KeyTick getLastTick(Keybind keybind) {
+        return ObjectMapping.mapIfInstanceOfOrElse(KeyMapping.get(keybind.getName()), ClientKeys.TrackedMapping.class, mapping -> mapping.lastTick, ClientKeys.IDLE);
     }
 
     ///
@@ -251,7 +258,7 @@ public final class ClientKeys {
     }
 
     ///
-    /// A key mapping built from a declared key, with the down state that Nexus tracks for it.
+    /// A key mapping built from a declared key, with the tick that Nexus tracks for it.
     ///
     private static final class TrackedMapping extends KeyMapping {
 
@@ -271,29 +278,9 @@ public final class ClientKeys {
         private boolean heldInScreen;
 
         ///
-        /// If the key was down on the last client tick.
+        /// The key's tick on the last client tick.
         ///
-        private boolean down;
-
-        ///
-        /// If the key was down on the client tick before the last.
-        ///
-        private boolean wasDown;
-
-        ///
-        /// The number of ticks the key has been down, `0` while it is up.
-        ///
-        private int heldTicks;
-
-        ///
-        /// The number of ticks the key has been up, or the length of the gap that ended on the tick it went down.
-        ///
-        private int idleTicks;
-
-        ///
-        /// If the key went up on the last client tick without the player letting go.
-        ///
-        private boolean interrupted;
+        private KeyTick lastTick = ClientKeys.IDLE;
 
         ///
         /// If a screen was open on the last client tick.
@@ -353,7 +340,7 @@ public final class ClientKeys {
         }
 
         ///
-        /// Moves the key on by one client tick and then runs the client action if the key went down on it.
+        /// Moves the key on by one client tick and then runs the client action if the key's activation fires on the new tick.
         ///
         /// A key that is down goes up without the player letting go if the window lost focus, or if a screen opened over an
         /// [Keybind.Context#IN_GAME] key or closed under an [Keybind.Context#IN_SCREEN] key.
@@ -379,22 +366,22 @@ public final class ClientKeys {
             }
 
             boolean down = inScreen ? this.definition.context() != Keybind.Context.IN_GAME && (this.pressed || this.heldInScreen) : this.pressed || this.isDown();
-            this.interrupted = this.down && !down && (lostFocus || inScreen != this.inScreen);
-            this.wasDown = this.down;
-            this.down = down;
-            this.heldTicks = down ? this.heldTicks + 1 : 0;
+            boolean wasDown = this.lastTick.down();
+            int idleTicks = this.lastTick.idleTicks();
             if (!down) {
-                this.idleTicks = this.wasDown ? 1 : this.idleTicks + 1;
-            } else if (this.wasDown) {
-                this.idleTicks = 0;
+                idleTicks = wasDown ? 1 : idleTicks + 1;
+            } else if (wasDown) {
+                idleTicks = 0;
             }
 
+            boolean interrupted = wasDown && !down && (lostFocus || inScreen != this.inScreen);
+            this.lastTick = new KeyTick(down, wasDown, down ? this.lastTick.heldTicks() + 1 : 0, idleTicks, interrupted);
             this.pressed = false;
             this.inScreen = inScreen;
             this.focused = focused;
 
             ClientOnly<Runnable> action = this.definition.clientAction();
-            if (down && !this.wasDown && action != null) {
+            if (this.definition.activation().fires(this.lastTick) && action != null) {
                 action.get().run();
             }
         }

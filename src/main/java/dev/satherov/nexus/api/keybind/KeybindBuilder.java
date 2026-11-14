@@ -1,5 +1,6 @@
 package dev.satherov.nexus.api.keybind;
 
+import dev.satherov.nexus.api.keybind.activation.Activation;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
 import dev.satherov.nexus.internal.keybind.KeyDefinition;
 
@@ -138,7 +139,7 @@ public final class KeybindBuilder extends BindingBuilder<KeybindBuilder> {
     /// Creates the definition from the default key, the modifier, the context, and the category.
     ///
     @Override
-    protected KeyDefinition createDefinition(Keybinds keybinds, String name, @Nullable ClientOnly<Runnable> clientAction) {
-        return new KeyDefinition(keybinds, name, this.defaultKey, this.mouse, this.modifier, this.context, this.category, clientAction);
+    protected KeyDefinition createDefinition(Keybinds keybinds, String name, Activation activation, @Nullable ClientOnly<Runnable> clientAction) {
+        return new KeyDefinition(keybinds, name, this.defaultKey, this.mouse, this.modifier, this.context, this.category, activation, clientAction);
     }
 }

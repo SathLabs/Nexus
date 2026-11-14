@@ -1,5 +1,6 @@
 package dev.satherov.nexus.api.keybind;
 
+import dev.satherov.nexus.api.keybind.activation.Activation;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
 import dev.satherov.nexus.internal.keybind.KeyDefinition;
 
@@ -31,6 +32,11 @@ public abstract sealed class BindingBuilder<SELF extends BindingBuilder<SELF>> p
     private final String english;
     
     ///
+    /// The activation the key fires through.
+    ///
+    private Activation activation = Activation.press();
+    
+    ///
     /// The client action, or `null` if none is set.
     ///
     private @Nullable ClientOnly<Runnable> clientAction;
@@ -49,7 +55,22 @@ public abstract sealed class BindingBuilder<SELF extends BindingBuilder<SELF>> p
     }
     
     ///
-    /// Runs the given action on the client thread each time the key fires, which is on the tick it goes down.
+    /// Sets when the key fires.
+    ///
+    /// The key fires through [Activation#press()] unless this is called.
+    ///
+    /// @param activation The activation the key fires through.
+    ///
+    /// @return The builder for chaining.
+    ///
+    @CanIgnoreReturnValue
+    public SELF activation(Activation activation) {
+        this.activation = activation;
+        return this.self();
+    }
+    
+    ///
+    /// Runs the given action on the client thread each time the key fires.
     ///
     /// The action also runs while the client is connected to a server without the mod.
     ///
@@ -58,6 +79,8 @@ public abstract sealed class BindingBuilder<SELF extends BindingBuilder<SELF>> p
     /// @return The builder for chaining.
     ///
     /// @throws IllegalStateException If a client action is already set.
+    ///
+    /// @see #activation(Activation)
     ///
     @CanIgnoreReturnValue
     public SELF onClient(ClientOnly<Runnable> action) {
@@ -77,7 +100,7 @@ public abstract sealed class BindingBuilder<SELF extends BindingBuilder<SELF>> p
     /// @throws IllegalStateException If the mod already registered a key of that name, or if the key mappings were already registered.
     ///
     public Keybind register() {
-        return this.keybinds.register(this.createDefinition(this.keybinds, this.name, this.clientAction), this.english);
+        return this.keybinds.register(this.createDefinition(this.keybinds, this.name, this.activation, this.clientAction), this.english);
     }
     
     ///
@@ -93,10 +116,11 @@ public abstract sealed class BindingBuilder<SELF extends BindingBuilder<SELF>> p
     ///
     /// @param keybinds     The keybinds the key is registered in.
     /// @param name         The name of the key.
+    /// @param activation   The activation the key fires through.
     /// @param clientAction The client action, or `null` if none is set.
     ///
     /// @return The created definition.
     ///
     @ForOverride
-    protected abstract KeyDefinition createDefinition(Keybinds keybinds, String name, @Nullable ClientOnly<Runnable> clientAction);
+    protected abstract KeyDefinition createDefinition(Keybinds keybinds, String name, Activation activation, @Nullable ClientOnly<Runnable> clientAction);
 }

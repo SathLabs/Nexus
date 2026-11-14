@@ -4,6 +4,8 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
+import dev.satherov.nexus.api.keybind.activation.Activation;
+import dev.satherov.nexus.api.keybind.activation.KeyTick;
 import dev.satherov.nexus.internal.keybind.KeyDefinition;
 import dev.satherov.nexus.internal.keybind.client.ClientKeys;
 
@@ -54,7 +56,39 @@ public final class Keybind {
     /// @return `true` if the key is down.
     ///
     public boolean isDown() {
-        return FMLEnvironment.getDist().isClient() && ClientKeys.isDown(this);
+        return FMLEnvironment.getDist().isClient() && ClientKeys.getLastTick(this).down();
+    }
+    
+    ///
+    /// The number of client ticks the key has been down on this client, `0` while it is up.
+    ///
+    /// Will always return `0` on a dedicated server.
+    ///
+    /// @return The number of client ticks the key has been down.
+    ///
+    public int getHeldTicks() {
+        if (!FMLEnvironment.getDist().isClient()) {
+            return 0;
+        }
+        
+        return ClientKeys.getLastTick(this).heldTicks();
+    }
+    
+    ///
+    /// How far the key is toward firing on this client, from `0` to `1`, as its activation reports it for the last client tick.
+    ///
+    /// Will always return `0` on a dedicated server.
+    ///
+    /// @return The progress of the key toward firing.
+    ///
+    /// @see Activation#progress(KeyTick)
+    ///
+    public float getProgress() {
+        if (!FMLEnvironment.getDist().isClient()) {
+            return 0.0F;
+        }
+        
+        return this.definition.activation().progress(ClientKeys.getLastTick(this));
     }
     
     ///
