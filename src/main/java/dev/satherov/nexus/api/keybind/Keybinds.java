@@ -3,6 +3,7 @@ package dev.satherov.nexus.api.keybind;
 import lombok.Getter;
 
 import dev.satherov.nexus.api.codec.NexusCodec;
+import dev.satherov.nexus.api.event.keybind.KeyReceivedEvent;
 import dev.satherov.nexus.api.keybind.activation.Activation;
 import dev.satherov.nexus.api.mod.NexusMod;
 import dev.satherov.nexus.api.network.Network;
@@ -15,6 +16,7 @@ import dev.satherov.zelqro.mapping.BooleanMapping;
 import dev.satherov.zelqro.mapping.ObjectMapping;
 
 import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -273,6 +275,8 @@ public final class Keybinds {
     ///
     /// Declares the optional payload of the key of the given mapping name, which runs the server action over the decoded values on a firing and marks the key as down or up for the sender.
     ///
+    /// A firing posts a [KeyReceivedEvent] first and skips the server action if the event is cancelled.
+    ///
     private ServerboundPayload<KeySignal> declarePayload(String mappingName, String path, List<NexusCodec<?, ?>> codecs, @Nullable BiConsumer<ServerPlayer, List<Object>> serverAction) {
         Identifier id = this.mod.id(path);
         for (Keybind existing : this.keybindsByName.values()) {
@@ -288,7 +292,14 @@ public final class Keybinds {
                 .optional()
                 .toServer((signal, context) -> {
                     switch (signal) {
-                        case KeySignal.Fired(List<Object> values) -> action.accept(context.getPlayer(), values);
+                        case KeySignal.Fired(List<Object> values) -> {
+                            // The key is put into the map right after its payload is declared, so it is there once a firing arrives.
+                            Keybind keybind = Objects.requireNonNull(this.keybindsByName.get(mappingName));
+                            ServerPlayer player = context.getPlayer();
+                            if (!NeoForge.EVENT_BUS.post(new KeyReceivedEvent(keybind, player)).isCanceled()) {
+                                action.accept(player, values);
+                            }
+                        }
                         case KeySignal.Down _ -> this.heldKeys.press(context.getPlayer(), mappingName);
                         case KeySignal.Up _ -> this.heldKeys.release(context.getPlayer(), mappingName);
                     }

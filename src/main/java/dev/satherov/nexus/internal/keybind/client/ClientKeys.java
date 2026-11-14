@@ -3,6 +3,7 @@ package dev.satherov.nexus.internal.keybind.client;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 
+import dev.satherov.nexus.api.event.keybind.KeyActivatedEvent;
 import dev.satherov.nexus.api.keybind.Keybind;
 import dev.satherov.nexus.api.keybind.Keybinds;
 import dev.satherov.nexus.api.keybind.activation.KeyTick;
@@ -411,12 +412,16 @@ public final class ClientKeys {
         }
 
         ///
-        /// Runs the client action, then the readers of the carried values in order,
+        /// Posts a [KeyActivatedEvent] and then, unless it is cancelled, runs the client action, then the readers of the carried values in order,
         /// and then sends the firing with the values if the key has a server action.
         ///
         /// Sends nothing if a reader returns `null`, and the readers after it do not run.
         ///
         private void fire() {
+            if (NeoForge.EVENT_BUS.post(new KeyActivatedEvent(this.keybind)).isCanceled()) {
+                return;
+            }
+
             ClientOnly<Runnable> action = this.keybind.getClientAction();
             if (action != null) {
                 action.get().run();
