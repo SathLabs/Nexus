@@ -111,14 +111,14 @@ public class TooltipBuilderTest {
     }
 
     @Test
-    public void hintsAtTheSneakKeyWithoutShift() {
+    public void hintsAtShiftWithoutShift() {
         this.builder(TooltipFlag.NORMAL).onShift(section -> section.line(Component.literal("Details")));
         Assertions.assertThat(this.lines).hasSize(1);
         Component hint = this.lines.getFirst();
         Assertions.assertThat(hint.getStyle().getColor()).isEqualTo(TextColor.fromLegacyFormat(ChatFormatting.DARK_GRAY));
         Assertions.assertThat(hint.getContents()).isInstanceOfSatisfying(TranslatableContents.class, contents -> {
             Assertions.assertThat(contents.getKey()).isEqualTo("tooltip.nexus.hold_shift");
-            Assertions.assertThat(contents.getArgs()).containsExactly(Component.keybind("key.sneak"));
+            Assertions.assertThat(contents.getArgs()).isEmpty();
         });
     }
 
