@@ -6,10 +6,14 @@ import lombok.RequiredArgsConstructor;
 
 import dev.satherov.nexus.api.keybind.activation.Activation;
 import dev.satherov.nexus.api.keybind.activation.KeyTick;
+import dev.satherov.nexus.api.network.payload.ServerboundPayload;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
+import dev.satherov.nexus.internal.keybind.HeldKeys;
+import dev.satherov.nexus.internal.keybind.KeySignal;
 
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ServerPlayer;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
@@ -25,13 +29,13 @@ public final class Keybind {
     ///
     /// The name of the mapping, which is also the translation key of its label.
     ///
-    /// @return The name `key.<modid>.<name>`.
+    /// @return The name `key.<modid>.<name>`, or the mapping name passed to [Keybinds#existing(String)].
     ///
     @Getter
     private final String name;
     
     ///
-    /// The definition the mapping of the key is built from, or `null` if the key has no mapping of its own.
+    /// The definition the mapping of the key is built from, or `null` if the key is on an existing mapping.
     ///
     @Getter(onMethod_ = @ApiStatus.Internal)
     private final Keybind.@Nullable Definition definition;
@@ -49,8 +53,31 @@ public final class Keybind {
     private final @Nullable ClientOnly<Runnable> clientAction;
     
     ///
+    /// If a server action is set for the key.
+    ///
+    private final boolean hasServerAction;
+    
+    ///
+    /// If the key sends its going down and up to the server.
+    ///
+    @Getter(onMethod_ = @ApiStatus.Internal)
+    private final boolean syncHeld;
+    
+    ///
+    /// The payload the key sends to the server on, or `null` if the key has neither a server action nor syncs its held state.
+    ///
+    @Getter(onMethod_ = @ApiStatus.Internal)
+    private final @Nullable ServerboundPayload<KeySignal> payload;
+    
+    ///
+    /// The held keys of the mod, read on the server.
+    ///
+    private final HeldKeys heldKeys;
+    
+    ///
     /// The key's tick on the last client tick, with the key up until the first one.
     ///
+    @Getter(onMethod_ = @ApiStatus.Internal)
     private KeyTick tick = new KeyTick(false, false, 0, 0, false);
     
     ///
@@ -67,12 +94,27 @@ public final class Keybind {
     ///
     /// A key in the context [Context#IN_SCREEN] or [Context#EVERYWHERE] is tracked while a screen is open too.
     ///
-    /// Will always return `false` on a dedicated server.
+    /// Will always return `false` on a dedicated server, and for a key on an existing mapping that no mod on this client declares.
     ///
     /// @return `true` if the key is down.
     ///
     public boolean isDown() {
         return this.tick.down();
+    }
+    
+    ///
+    /// If the given player's key is down on the server.
+    ///
+    /// @param player The player whose key is read.
+    ///
+    /// @return `true` if the key is down, or `false` if the player logged out.
+    ///
+    /// @throws IllegalStateException If the key does not sync its held state.
+    ///
+    /// @see BindingBuilder#syncHeld()
+    ///
+    public boolean isDown(ServerPlayer player) {
+        return this.getHeldTicks(player) > 0;
     }
     
     ///
@@ -87,6 +129,25 @@ public final class Keybind {
     }
     
     ///
+    /// The number of server ticks since the given player's key went down, `1` on the tick it arrives and `0` while it is up.
+    ///
+    /// @param player The player whose key is read.
+    ///
+    /// @return The number of server ticks the key has been down, or `0` if the player logged out.
+    ///
+    /// @throws IllegalStateException If the key does not sync its held state.
+    ///
+    /// @see BindingBuilder#syncHeld()
+    ///
+    public int getHeldTicks(ServerPlayer player) {
+        if (!this.syncHeld) {
+            throw new IllegalStateException("Key '" + this.name + "' does not sync its held state, so the server cannot read it");
+        }
+        
+        return this.heldKeys.getHeldTicks(player, this.name);
+    }
+    
+    ///
     /// How far the key is toward firing on this client, from `0` to `1`, as its activation reports it for the last client tick.
     ///
     /// Will always return `0` on a dedicated server.
@@ -97,6 +158,39 @@ public final class Keybind {
     ///
     public float getProgress() {
         return this.activation.progress(this.tick);
+    }
+    
+    ///
+    /// How far the given player's key is toward firing on the server, from `0` to `1`, as its activation reports it for the player's held ticks.
+    ///
+    /// Will always return `0` while the key is up.
+    ///
+    /// @param player The player whose key is read.
+    ///
+    /// @return The progress of the key toward firing.
+    ///
+    /// @throws IllegalStateException If the key does not sync its held state.
+    ///
+    /// @see Activation#progress(KeyTick)
+    /// @see BindingBuilder#syncHeld()
+    ///
+    public float getProgress(ServerPlayer player) {
+        int heldTicks = this.getHeldTicks(player);
+        if (heldTicks == 0) {
+            return 0.0F;
+        }
+        
+        return this.activation.progress(new KeyTick(true, heldTicks > 1, heldTicks, 0, false));
+    }
+    
+    ///
+    /// If a server action is set for the key.
+    ///
+    /// @return `true` if a server action is set.
+    ///
+    @ApiStatus.Internal
+    public boolean hasServerAction() {
+        return this.hasServerAction;
     }
     
     ///

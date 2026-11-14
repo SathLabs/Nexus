@@ -6,7 +6,9 @@ import lombok.RequiredArgsConstructor;
 import dev.satherov.nexus.api.keybind.Keybind;
 import dev.satherov.nexus.api.keybind.Keybinds;
 import dev.satherov.nexus.api.keybind.activation.KeyTick;
+import dev.satherov.nexus.api.network.payload.ServerboundPayload;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
+import dev.satherov.nexus.internal.keybind.KeySignal;
 
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.InputEvent;
@@ -30,23 +32,18 @@ import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
 ///
 /// The client listeners of one mod's keybinds.
 ///
-/// Builds the key mappings of the mod's keys, tracks each key's tick in game and in screens, and fires each key through its activation.
+/// Builds the key mappings of the mod's keys, tracks each key's tick in game and in screens, fires each key through its activation,
+/// and sends the key to the server.
 ///
 /// Should only ever be loaded on the client.
 ///
 @ApiStatus.Internal
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class ClientKeys {
-
-    ///
-    /// The tick of a key that has not gone down yet.
-    ///
-    private static final KeyTick IDLE = new KeyTick(false, false, 0, 0, false);
 
     ///
     /// The keybinds the mappings are built from.
@@ -57,6 +54,11 @@ public final class ClientKeys {
     /// The tracked keys of the mod, empty until the key mappings are registered.
     ///
     private final List<ClientKeys.TrackedKey> keys = new ArrayList<>();
+
+    ///
+    /// If the keys on existing mappings are tracked, which they are from the first client tick on.
+    ///
+    private boolean existingTracked;
 
     ///
     /// If a screen was open on the last client tick.
@@ -132,7 +134,7 @@ public final class ClientKeys {
     }
 
     ///
-    /// Registers the categories the mod declared and one mapping per key of the mod, and then locks the keybinds.
+    /// Registers the categories the mod declared and one mapping per key the mod declared itself, and then locks the keybinds.
     ///
     /// @param event The event to register the categories and mappings in.
     ///
@@ -142,7 +144,11 @@ public final class ClientKeys {
         }
 
         for (Keybind keybind : this.keybinds.getAll()) {
-            Keybind.Definition definition = Objects.requireNonNull(keybind.getDefinition());
+            Keybind.Definition definition = keybind.getDefinition();
+            if (definition == null) {
+                continue;
+            }
+
             KeyMapping mapping = new KeyMapping(
                     keybind.getName(),
                     ClientKeys.toConflictContext(definition.context()),
@@ -160,11 +166,15 @@ public final class ClientKeys {
     }
 
     ///
-    /// Moves every tracked key on by one client tick.
+    /// Tracks the keys on existing mappings if this is the first client tick, and then moves every tracked key on by one client tick.
     ///
     /// @param event The event of the client tick that ended.
     ///
     private void onClientTick(ClientTickEvent.Post event) {
+        if (!this.existingTracked) {
+            this.trackExistingMappings();
+        }
+
         Minecraft minecraft = Minecraft.getInstance();
         boolean inScreen = minecraft.screen != null;
         boolean focused = minecraft.isWindowActive();
@@ -176,6 +186,24 @@ public final class ClientKeys {
 
         this.inScreen = inScreen;
         this.focused = focused;
+    }
+
+    ///
+    /// Tracks every key on an existing mapping in the context [Keybind.Context#IN_GAME], and leaves a key inert whose mapping does not exist.
+    ///
+    private void trackExistingMappings() {
+        for (Keybind keybind : this.keybinds.getAll()) {
+            if (keybind.getDefinition() != null) {
+                continue;
+            }
+
+            KeyMapping mapping = KeyMapping.get(keybind.getName());
+            if (mapping != null) {
+                this.keys.add(new ClientKeys.TrackedKey(keybind, mapping, Keybind.Context.IN_GAME));
+            }
+        }
+
+        this.existingTracked = true;
     }
 
     ///
@@ -301,11 +329,6 @@ public final class ClientKeys {
         private boolean heldInScreen;
 
         ///
-        /// The key's tick on the last client tick.
-        ///
-        private KeyTick lastTick = ClientKeys.IDLE;
-
-        ///
         /// Notes a press if vanilla set the mapping down, which it does only while no screen is open.
         ///
         private void notePress() {
@@ -335,7 +358,8 @@ public final class ClientKeys {
         }
 
         ///
-        /// Moves the key on by one client tick, updates the key with the new tick and then runs the client action if the key's activation fires on it.
+        /// Moves the key on by one client tick, updates the key with the new tick, sends the key going down or up if it syncs its held state,
+        /// and then runs the client action and sends the firing if the key's activation fires on it.
         ///
         /// A key that is down goes up without the player letting go if the window lost focus, or if a screen opened over an
         /// [Keybind.Context#IN_GAME] key or closed under an [Keybind.Context#IN_SCREEN] key.
@@ -361,8 +385,9 @@ public final class ClientKeys {
             }
 
             boolean down = inScreen ? this.context != Keybind.Context.IN_GAME && (this.pressed || this.heldInScreen) : this.pressed || this.mapping.isDown();
-            boolean wasDown = this.lastTick.down();
-            int idleTicks = this.lastTick.idleTicks();
+            KeyTick last = this.keybind.getTick();
+            boolean wasDown = last.down();
+            int idleTicks = last.idleTicks();
             if (!down) {
                 idleTicks = wasDown ? 1 : idleTicks + 1;
             } else if (wasDown) {
@@ -370,13 +395,38 @@ public final class ClientKeys {
             }
 
             boolean interrupted = wasDown && !down && (lostFocus || screenChanged);
-            this.lastTick = new KeyTick(down, wasDown, down ? this.lastTick.heldTicks() + 1 : 0, idleTicks, interrupted);
+            KeyTick tick = new KeyTick(down, wasDown, down ? last.heldTicks() + 1 : 0, idleTicks, interrupted);
             this.pressed = false;
-            this.keybind.update(this.lastTick);
+            this.keybind.update(tick);
+
+            // If the firing went first, the server action would read the key as up on the tick it goes down.
+            if (down != wasDown && this.keybind.isSyncHeld()) {
+                this.send(down ? KeySignal.Down.INSTANCE : KeySignal.Up.INSTANCE);
+            }
+
+            if (!this.keybind.getActivation().fires(tick)) {
+                return;
+            }
 
             ClientOnly<Runnable> action = this.keybind.getClientAction();
-            if (this.keybind.getActivation().fires(this.lastTick) && action != null) {
+            if (action != null) {
                 action.get().run();
+            }
+
+            if (this.keybind.hasServerAction()) {
+                this.send(new KeySignal.Fired(List.of()));
+            }
+        }
+
+        ///
+        /// Sends the given signal if the client is connected to a server that registered the key's payload.
+        ///
+        /// @param signal The signal to send.
+        ///
+        private void send(KeySignal signal) {
+            ServerboundPayload<KeySignal> payload = this.keybind.getPayload();
+            if (payload != null && Minecraft.getInstance().getConnection() != null && payload.canSendToServer()) {
+                payload.sendToServer(signal);
             }
         }
     }

@@ -97,6 +97,8 @@ public final class NexusMod {
     ///
     /// The mod's keybinds, created when its getter is first called.
     ///
+    /// Keybinds first reached after the payload handlers event ran refuse every key and category.
+    ///
     @Getter(lazy = true)
     private final Keybinds keybinds = new Keybinds(this);
     
