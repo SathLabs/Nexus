@@ -11,10 +11,6 @@ import dev.satherov.nexus.internal.persistence.saved.SavedScope;
 import dev.satherov.nexus.internal.persistence.saved.SavedValueData;
 import dev.satherov.nexus.internal.persistence.saved.client.SyncedValue;
 
-import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.entity.EntityEvent;
-
-import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.saveddata.SavedDataType;
 import net.minecraft.world.level.storage.SavedDataStorage;
 
@@ -81,9 +77,10 @@ public final class SavedValue<SCOPE, VALUE> {
         this.scope = scope;
         this.type = type;
         this.initial = initial;
-        this.payload = sync != null ? sync.toClient(this::openSynced) : null;
-        if (this.payload != null) {
-            NeoForge.EVENT_BUS.addListener(scope.joinEvent(), this::onJoin);
+        ClientboundPayload<VALUE> payload = sync != null ? sync.toClient(this::openSynced) : null;
+        this.payload = payload;
+        if (payload != null) {
+            scope.sync(player -> payload.toPacket(this.get(scope.playerScope().apply(player))));
         }
     }
 
@@ -194,18 +191,5 @@ public final class SavedValue<SCOPE, VALUE> {
         SyncedValue<VALUE> synced = new SyncedValue<>(this.initial);
         this.synced = synced;
         return synced;
-    }
-    
-    ///
-    /// Sends the value of the scope a player joined to that player.
-    ///
-    /// @param event The event that is fired when a player joins the scope.
-    ///
-    /// @throws NexusCodecException If the scope the player joined has a saved value that could not be read.
-    ///
-    private void onJoin(EntityEvent event) {
-        if (event.getEntity() instanceof ServerPlayer player) {
-            this.send(this.get(this.scope.playerScope().apply(player)), ClientRecipients.player(player));
-        }
     }
 }
