@@ -108,6 +108,8 @@ public final class SavedValueData<VALUE> extends SavedData {
     /// @throws NexusCodecException If the file could not be read.
     ///
     private void requireRead() {
-        if (this.refusal != null) throw this.refusal;
+        if (this.refusal != null) {
+            throw this.refusal;
+        }
     }
 }

@@ -164,11 +164,20 @@ public final class SlotSnapshot {
         /// Fails if the size is out of range, a slot is outside the group, or a slot holds two item stacks.
         ///
         private List<ItemStack> stacks() {
-            if (this.size < 0 || this.size > CollectionCodecs.LIMIT) throw CodecErrors.outOfRange(0, CollectionCodecs.LIMIT, this.size);
+            if (this.size < 0 || this.size > CollectionCodecs.LIMIT) {
+                throw CodecErrors.outOfRange(0, CollectionCodecs.LIMIT, this.size);
+            }
+            
             List<ItemStack> stacks = new ArrayList<>(Collections.nCopies(this.size, ItemStack.EMPTY));
             for (ItemStackWithSlot item : this.items) {
-                if (!item.isValidInContainer(this.size)) throw CodecErrors.outOfRange(0, this.size - 1L, item.slot());
-                if (!stacks.get(item.slot()).isEmpty()) throw CodecErrors.mismatch("a slot without a stack", item.slot());
+                if (!item.isValidInContainer(this.size)) {
+                    throw CodecErrors.outOfRange(0, this.size - 1L, item.slot());
+                }
+                
+                if (!stacks.get(item.slot()).isEmpty()) {
+                    throw CodecErrors.mismatch("a slot without a stack", item.slot());
+                }
+                
                 stacks.set(item.slot(), item.stack());
             }
 

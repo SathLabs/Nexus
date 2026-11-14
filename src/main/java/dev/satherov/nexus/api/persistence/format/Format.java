@@ -229,8 +229,14 @@ public final class Format<VALUE> {
     ///
     private Tag upgrade(int version, Tag data) {
         int current = this.getVersion();
-        if (version > current) throw CodecErrors.tooNew(current, version);
-        if (version < this.oldest) throw CodecErrors.missingStep(version);
+        if (version > current) {
+            throw CodecErrors.tooNew(current, version);
+        }
+        
+        if (version < this.oldest) {
+            throw CodecErrors.missingStep(version);
+        }
+        
         Tag upgraded = version == current ? data : data.copy();
         for (int from = version; from < current; from++) {
             try {
@@ -313,8 +319,14 @@ public final class Format<VALUE> {
 
             V version = operations.get(input, Format.VERSION);
             V data = operations.get(input, Format.DATA);
-            if (version == null) throw CodecErrors.missing(Format.VERSION);
-            if (data == null) throw CodecErrors.missing(Format.DATA);
+            if (version == null) {
+                throw CodecErrors.missing(Format.VERSION);
+            }
+            
+            if (data == null) {
+                throw CodecErrors.missing(Format.DATA);
+            }
+            
             Format.refuseUnknown(operations, input);
             Format.this.requireCurrent(Format.this.readVersion(operations, version));
             return this.readData(operations, data);
@@ -393,7 +405,10 @@ public final class Format<VALUE> {
                 return Format.this.codec.read(nbt, Format.this.upgrade(from, (Tag) data));
             }
 
-            if (version == null) throw CodecErrors.missing(Format.VERSION);
+            if (version == null) {
+                throw CodecErrors.missing(Format.VERSION);
+            }
+            
             Format.this.requireCurrent(Format.this.readVersion(operations, version));
             return Format.this.codec.read(operations, data);
         }
