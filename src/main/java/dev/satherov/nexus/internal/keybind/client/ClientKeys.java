@@ -33,34 +33,40 @@ import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Supplier;
 
 ///
-/// The client listeners of one mod's keybinds.
+/// The client listeners of the keybinds of every mod.
 ///
-/// Builds the key mappings of the mod's keys, tracks each key's tick in game and in screens, fires each key through its activation,
+/// Builds the key mappings of each mod's keys, tracks each key's tick in game and in screens, fires each key through its activation,
 /// and sends the key to the server.
 ///
 /// Should only ever be loaded on the client.
 ///
 @ApiStatus.Internal
-@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class ClientKeys {
 
     ///
-    /// The keybinds the mappings are built from.
+    /// The client listeners of the client, created on the first attach.
     ///
-    private final Keybinds keybinds;
+    private static final ClientKeys INSTANCE = new ClientKeys();
 
     ///
-    /// The tracked keys of the mod, empty until the key mappings are registered.
+    /// The tracked keys of every mod, filled as the key mappings are registered and on the first client tick.
     ///
     private final List<ClientKeys.TrackedKey> keys = new ArrayList<>();
 
     ///
-    /// If the keys on existing mappings are tracked, which they are from the first client tick on.
+    /// The keybinds whose keys on existing mappings are not tracked yet, added to from the threads the mods are constructed on.
     ///
-    private boolean existingTracked;
+    private final Queue<Keybinds> untracked = new ConcurrentLinkedQueue<>();
+
+    ///
+    /// How many client ticks have ended so far.
+    ///
+    private int clientTick;
 
     ///
     /// If a screen was open on the last client tick.
@@ -71,6 +77,20 @@ public final class ClientKeys {
     /// If the window had focus on the last client tick.
     ///
     private boolean focused;
+
+    ///
+    /// Adds the listeners on the game bus for the client tick, the screen opening and the key and mouse events.
+    ///
+    private ClientKeys() {
+        NeoForge.EVENT_BUS.addListener(ClientTickEvent.Post.class, this::onClientTick);
+        NeoForge.EVENT_BUS.addListener(InputEvent.Key.class, this::onKey);
+        NeoForge.EVENT_BUS.addListener(InputEvent.MouseButton.Post.class, this::onMouseButton);
+        NeoForge.EVENT_BUS.addListener(ScreenEvent.Opening.class, this::onScreenOpening);
+        NeoForge.EVENT_BUS.addListener(ScreenEvent.KeyPressed.Post.class, this::onScreenKeyPressed);
+        NeoForge.EVENT_BUS.addListener(ScreenEvent.KeyReleased.Pre.class, this::onScreenKeyReleased);
+        NeoForge.EVENT_BUS.addListener(ScreenEvent.MouseButtonPressed.Post.class, this::onScreenMouseButtonPressed);
+        NeoForge.EVENT_BUS.addListener(ScreenEvent.MouseButtonReleased.Pre.class, this::onScreenMouseButtonReleased);
+    }
 
     ///
     /// The NeoForge key modifier of the given modifier.
@@ -115,37 +135,29 @@ public final class ClientKeys {
     }
 
     ///
-    /// Creates the client listeners of the given keybinds.
+    /// Adds the client listeners of the given keybinds.
     ///
-    /// Listens on the mod's bus for [RegisterKeyMappingsEvent], and on the game bus for the client tick, the screen opening and
-    /// the key and mouse events.
+    /// Listens on the mod's bus for [RegisterKeyMappingsEvent], and tracks the mod's keys on existing mappings on the next client tick.
     ///
     /// @param keybinds The keybinds of one mod.
     ///
     public static void attach(Keybinds keybinds) {
-        ClientKeys keys = new ClientKeys(keybinds);
-        keybinds.getMod().getEventBus().addListener(RegisterKeyMappingsEvent.class, keys::onRegisterKeyMappings);
-        NeoForge.EVENT_BUS.addListener(ClientTickEvent.Post.class, keys::onClientTick);
-        NeoForge.EVENT_BUS.addListener(InputEvent.Key.class, keys::onKey);
-        NeoForge.EVENT_BUS.addListener(InputEvent.MouseButton.Post.class, keys::onMouseButton);
-        NeoForge.EVENT_BUS.addListener(ScreenEvent.Opening.class, keys::onScreenOpening);
-        NeoForge.EVENT_BUS.addListener(ScreenEvent.KeyPressed.Post.class, keys::onScreenKeyPressed);
-        NeoForge.EVENT_BUS.addListener(ScreenEvent.KeyReleased.Pre.class, keys::onScreenKeyReleased);
-        NeoForge.EVENT_BUS.addListener(ScreenEvent.MouseButtonPressed.Post.class, keys::onScreenMouseButtonPressed);
-        NeoForge.EVENT_BUS.addListener(ScreenEvent.MouseButtonReleased.Pre.class, keys::onScreenMouseButtonReleased);
+        keybinds.getMod().getEventBus().addListener(RegisterKeyMappingsEvent.class, event -> ClientKeys.INSTANCE.onRegisterKeyMappings(keybinds, event));
+        ClientKeys.INSTANCE.untracked.add(keybinds);
     }
 
     ///
-    /// Registers the categories the mod declared and one mapping per key the mod declared itself, and then locks the keybinds.
+    /// Registers the categories the given keybinds declared and one mapping per key they declared themselves, and then locks the keybinds.
     ///
-    /// @param event The event to register the categories and mappings in.
+    /// @param keybinds The keybinds of one mod.
+    /// @param event    The event to register the categories and mappings in.
     ///
-    private void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
-        for (Identifier category : this.keybinds.getCategories()) {
+    private void onRegisterKeyMappings(Keybinds keybinds, RegisterKeyMappingsEvent event) {
+        for (Identifier category : keybinds.getCategories()) {
             event.registerCategory(new KeyMapping.Category(category));
         }
 
-        for (Keybind keybind : this.keybinds.getAll()) {
+        for (Keybind keybind : keybinds.getAll()) {
             Keybind.Definition definition = keybind.getDefinition();
             if (definition == null) {
                 continue;
@@ -161,29 +173,31 @@ public final class ClientKeys {
             );
 
             event.register(mapping);
-            this.keys.add(new ClientKeys.TrackedKey(keybind, mapping, definition.context()));
+            this.track(keybind, mapping, definition.context());
         }
 
-        this.keybinds.lock();
+        keybinds.lock();
     }
 
     ///
-    /// Tracks the keys on existing mappings if this is the first client tick, and then moves every tracked key on by one client tick.
+    /// Tracks the keys on existing mappings of every keybinds that are not tracked yet, and then moves every tracked key on by one client tick.
     ///
     /// @param event The event of the client tick that ended.
     ///
     private void onClientTick(ClientTickEvent.Post event) {
-        if (!this.existingTracked) {
-            this.trackExistingMappings();
+        // The keys are tracked before the count goes up, so a key tracked here has been up for one tick once this tick ends.
+        for (Keybinds keybinds = this.untracked.poll(); keybinds != null; keybinds = this.untracked.poll()) {
+            this.trackExistingMappings(keybinds);
         }
 
+        this.clientTick++;
         Minecraft minecraft = Minecraft.getInstance();
         boolean inScreen = minecraft.screen != null;
         boolean focused = minecraft.isWindowActive();
         boolean screenChanged = inScreen != this.inScreen;
         boolean lostFocus = this.focused && !focused;
         for (ClientKeys.TrackedKey key : this.keys) {
-            key.tick(inScreen, screenChanged, lostFocus);
+            key.tick(this.clientTick, inScreen, screenChanged, lostFocus);
         }
 
         this.inScreen = inScreen;
@@ -191,21 +205,34 @@ public final class ClientKeys {
     }
 
     ///
-    /// Tracks every key on an existing mapping in the context [Keybind.Context#IN_GAME], and leaves a key inert whose mapping does not exist.
+    /// Tracks every key of the given keybinds on an existing mapping in the context [Keybind.Context#IN_GAME],
+    /// and leaves a key inert whose mapping does not exist.
     ///
-    private void trackExistingMappings() {
-        for (Keybind keybind : this.keybinds.getAll()) {
+    /// @param keybinds The keybinds of one mod.
+    ///
+    private void trackExistingMappings(Keybinds keybinds) {
+        for (Keybind keybind : keybinds.getAll()) {
             if (keybind.getDefinition() != null) {
                 continue;
             }
 
             KeyMapping mapping = KeyMapping.get(keybind.getName());
             if (mapping != null) {
-                this.keys.add(new ClientKeys.TrackedKey(keybind, mapping, Keybind.Context.IN_GAME));
+                this.track(keybind, mapping, Keybind.Context.IN_GAME);
             }
         }
+    }
 
-        this.existingTracked = true;
+    ///
+    /// Tracks the given key on the given mapping from the current client tick on.
+    ///
+    /// @param keybind The key to track.
+    /// @param mapping The mapping of the key.
+    /// @param context The context the key can be pressed in.
+    ///
+    private void track(Keybind keybind, KeyMapping mapping, Keybind.Context context) {
+        keybind.track(this.clientTick);
+        this.keys.add(new ClientKeys.TrackedKey(keybind, mapping, context));
     }
 
     ///
@@ -360,17 +387,26 @@ public final class ClientKeys {
         }
 
         ///
-        /// Moves the key on by one client tick, updates the key with the new tick, sends the key going down or up if it syncs its held state,
+        /// Moves the key on to the given client tick, sends the key going down or up if it syncs its held state,
         /// and then fires the key if its activation fires on it.
         ///
+        /// A key that stays up keeps its state, and its mapping is still released if the window lost focus.
         /// A key that is down goes up without the player letting go if the window lost focus, or if a screen opened over an
         /// [Keybind.Context#IN_GAME] key or closed under an [Keybind.Context#IN_SCREEN] key.
         ///
+        /// @param clientTick    The client tick that ended.
         /// @param inScreen      If a screen is open.
         /// @param screenChanged If a screen opened or closed since the last client tick.
         /// @param lostFocus     If the window lost focus since the last client tick.
         ///
-        private void tick(boolean inScreen, boolean screenChanged, boolean lostFocus) {
+        private void tick(int clientTick, boolean inScreen, boolean screenChanged, boolean lostFocus) {
+            boolean wasDown = this.keybind.isDown();
+            // A mapping can be set down while its context is inactive, so the mapping of an up key is still released if the window lost focus.
+            if (!wasDown && !lostFocus && !this.pressed && !this.heldInScreen && !this.mapping.isDown()) {
+                this.keybind.moveTo(clientTick);
+                return;
+            }
+
             if (lostFocus) {
                 this.mapping.setDown(false);
                 this.pressed = false;
@@ -387,19 +423,14 @@ public final class ClientKeys {
             }
 
             boolean down = inScreen ? this.context != Keybind.Context.IN_GAME && (this.pressed || this.heldInScreen) : this.pressed || this.mapping.isDown();
-            KeyTick last = this.keybind.getTick();
-            boolean wasDown = last.down();
-            int idleTicks = last.idleTicks();
-            if (!down) {
-                idleTicks = wasDown ? 1 : idleTicks + 1;
-            } else if (wasDown) {
-                idleTicks = 0;
+            this.pressed = false;
+            if (!down && !wasDown) {
+                this.keybind.moveTo(clientTick);
+                return;
             }
 
             boolean interrupted = wasDown && !down && (lostFocus || screenChanged);
-            KeyTick tick = new KeyTick(down, wasDown, down ? last.heldTicks() + 1 : 0, idleTicks, interrupted);
-            this.pressed = false;
-            this.keybind.update(tick);
+            KeyTick tick = this.keybind.update(down, interrupted, clientTick);
 
             // If the firing went first, the server action would read the key as up on the tick it goes down.
             if (down != wasDown && this.keybind.isSyncHeld()) {

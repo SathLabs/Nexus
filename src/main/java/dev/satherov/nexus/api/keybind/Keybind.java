@@ -84,10 +84,19 @@ public final class Keybind {
     private final HeldKeys heldKeys;
     
     ///
-    /// The key's tick on the last client tick, with the key up until the first one.
+    /// The key's tick on the client tick its state last changed on, with the key up until the first change.
     ///
-    @Getter(onMethod_ = @ApiStatus.Internal)
-    private KeyTick tick = new KeyTick(false, false, 0, 0, false);
+    private KeyTick changedTick = new KeyTick(false, false, 0, 0, false);
+    
+    ///
+    /// The client tick the key's state last changed on or its tracking started on, `0` while the key is not tracked.
+    ///
+    private int changedAt;
+    
+    ///
+    /// The client tick the key was last moved on to or its tracking started on, `0` while the key is not tracked.
+    ///
+    private int movedAt;
     
     ///
     /// The text of the key that is bound to the mapping right now, resolved by the client that shows it.
@@ -108,7 +117,7 @@ public final class Keybind {
     /// @return `true` if the key is down.
     ///
     public boolean isDown() {
-        return this.tick.down();
+        return this.changedTick.down();
     }
     
     ///
@@ -134,7 +143,7 @@ public final class Keybind {
     /// @return The number of client ticks the key has been down.
     ///
     public int getHeldTicks() {
-        return this.tick.heldTicks();
+        return this.getTick().heldTicks();
     }
     
     ///
@@ -166,7 +175,7 @@ public final class Keybind {
     /// @see Activation#progress(KeyTick)
     ///
     public float getProgress() {
-        return this.activation.progress(this.tick);
+        return this.activation.progress(this.getTick());
     }
     
     ///
@@ -215,15 +224,78 @@ public final class Keybind {
     }
     
     ///
-    /// Moves the key on to the given tick.
+    /// The key's tick on the client tick it was last moved on to, with the key up until the first one.
     ///
-    /// Should only ever be called on the client, once per client tick.
-    ///
-    /// @param tick The key's tick on the client tick that ended.
+    /// @return The key's tick on the client tick it was last moved on to.
     ///
     @ApiStatus.Internal
-    public void update(KeyTick tick) {
-        this.tick = tick;
+    public KeyTick getTick() {
+        return this.tickAt(this.movedAt);
+    }
+    
+    ///
+    /// Starts tracking the key on the given client tick, with the key up.
+    ///
+    /// Should only ever be called on the client, once per key.
+    ///
+    /// @param clientTick The client tick the tracking starts on.
+    ///
+    @ApiStatus.Internal
+    public void track(int clientTick) {
+        this.changedAt = clientTick;
+        this.movedAt = clientTick;
+    }
+    
+    ///
+    /// Moves the key on to the given client tick with its state unchanged.
+    ///
+    /// Should only ever be called on the client, on every client tick that [#update(boolean, boolean, int)] is not called on.
+    ///
+    /// @param clientTick The client tick that ended.
+    ///
+    @ApiStatus.Internal
+    public void moveTo(int clientTick) {
+        this.movedAt = clientTick;
+    }
+    
+    ///
+    /// Moves the key on to the given client tick with the given down state.
+    ///
+    /// Should only ever be called on the client, on every client tick the key is down and on the tick it goes up.
+    ///
+    /// @param down        If the key is down on the client tick.
+    /// @param interrupted If the key went up without the player letting go, read only on the tick it goes up.
+    /// @param clientTick  The client tick that ended.
+    ///
+    /// @return The key's tick on the client tick.
+    ///
+    @ApiStatus.Internal
+    public KeyTick update(boolean down, boolean interrupted, int clientTick) {
+        this.movedAt = clientTick;
+        if (down == this.changedTick.down()) {
+            return this.tickAt(clientTick);
+        }
+        
+        // On the tick the key goes down, the idle ticks keep the length of the gap that ended on the tick before.
+        this.changedTick = down ? new KeyTick(true, false, 1, this.tickAt(clientTick - 1).idleTicks(), false) : new KeyTick(false, true, 0, 1, interrupted);
+        this.changedAt = clientTick;
+        return this.changedTick;
+    }
+    
+    ///
+    /// The key's tick on the given client tick, which is not before the client tick its state last changed on.
+    ///
+    private KeyTick tickAt(int clientTick) {
+        int elapsed = clientTick - this.changedAt;
+        if (elapsed == 0) {
+            return this.changedTick;
+        }
+        
+        if (this.changedTick.down()) {
+            return new KeyTick(true, true, this.changedTick.heldTicks() + elapsed, 0, false);
+        }
+        
+        return new KeyTick(false, false, 0, this.changedTick.idleTicks() + elapsed, false);
     }
     
     ///

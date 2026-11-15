@@ -113,7 +113,7 @@ public interface Activation {
     ///
     /// If the key fires on the given tick.
     ///
-    /// Called once per client tick for every registered key.
+    /// Called on every client tick the key is down and on the client tick it goes up.
     ///
     /// @param tick The state of the key on this tick.
     ///
