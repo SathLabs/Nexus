@@ -98,11 +98,17 @@ public class ShapePipelines {
     );
     
     ///
-    /// The shape render types by depth mode.
+    /// The shape render types by depth mode, which draw into the [PackOverlay] since their pipelines are own-shaded.
     ///
     private static final Map<Paint.Depth, RenderType> SHAPE_TYPES = Util.makeEnumMap(
             Paint.Depth.class,
-            depth -> ShapePipelines.type("nexus_shape", ShapePipelines.setup(ShapePipelines.SHAPE_PIPELINES.get(depth)).sortOnUpload().createRenderSetup())
+            depth -> ShapePipelines.type(
+                    "nexus_shape",
+                    ShapePipelines.setup(ShapePipelines.SHAPE_PIPELINES.get(depth))
+                            .sortOnUpload()
+                            .setOutputTarget(PackOverlay.TARGET)
+                            .createRenderSetup()
+            )
     );
     
     ///

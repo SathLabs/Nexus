@@ -131,6 +131,7 @@ public class RenderDispatch {
                 event -> event.registerEntityModifier(new TypeToken<EntityRenderer<Entity, EntityRenderState>>() { }, RenderDispatch::glow)
         );
         NeoForge.EVENT_BUS.addListener(FrameGraphSetupEvent.class, RenderDispatch::enableGlows);
+        NeoForge.EVENT_BUS.addListener(FrameGraphSetupEvent.class, _ -> PackOverlay.arm());
         NeoForge.EVENT_BUS.addListener(
                 SubmitCustomGeometryEvent.class,
                 event -> GlowOutlines.INSTANCE.submitBlocks(event.getPoseStack(), event.getSubmitNodeCollector(), event.getLevelRenderState().cameraRenderState.pos)
@@ -138,7 +139,7 @@ public class RenderDispatch {
         NeoForge.EVENT_BUS.addListener(ExtractBlockOutlineRenderStateEvent.class, RenderDispatch::extractOutline);
         NeoForge.EVENT_BUS.addListener(RenderLevelStageEvent.AfterTranslucentFeatures.class, event -> RenderDispatch.DRAW_HOOKS.drawInLevel(event.getPoseStack()));
         NeoForge.EVENT_BUS.addListener(RenderLevelStageEvent.AfterTranslucentBlocks.class, RenderDispatch::drawScenes);
-        NeoForge.EVENT_BUS.addListener(RenderLevelStageEvent.AfterLevel.class, RenderDispatch::drawAfterLevel);
+        NeoForge.EVENT_BUS.addListener(RenderLevelStageEvent.AfterLevel.class, _ -> PackOverlay.composite());
         NeoForge.EVENT_BUS.addListener(ClientTickEvent.Post.class, _ -> DebugRenderers.INSTANCE.tick());
         // The client session only opens the client scope at normal priority, so we have to start after it.
         NeoForge.EVENT_BUS.addListener(EventPriority.LOW, ClientPlayerNetworkEvent.LoggingIn.class, RenderDispatch::start);
@@ -154,6 +155,7 @@ public class RenderDispatch {
     ///
     private static void registerPipelines(RegisterRenderPipelinesEvent event) {
         ShapePipelines.register(event::registerPipeline);
+        event.registerPipeline(PackOverlay.getCompositePipeline());
         for (Pipeline pipeline : RenderDispatch.WAITING_PIPELINES) {
             RenderPipeline renderPipeline = pipeline.getPipeline().get().get();
             event.registerPipeline(renderPipeline);
@@ -257,17 +259,6 @@ public class RenderDispatch {
     }
     
     ///
-    /// Draws the held back batches of the draw hooks, the own-shaded buffers of every scene, and then the held back meshes of the outline rules.
-    ///
-    /// @param event The render stage event after the level.
-    ///
-    private static void drawAfterLevel(RenderLevelStageEvent.AfterLevel event) {
-        RenderDispatch.DRAW_HOOKS.drawAfterLevel(event.getModelViewMatrix());
-        Scenes.INSTANCE.drawAfterLevel(event.getModelViewMatrix(), Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(false));
-        OutlineRules.INSTANCE.drawAfterLevel(event.getModelViewMatrix());
-    }
-    
-    ///
     /// Starts the scenes and the glows on login.
     ///
     /// @param event The login event.
@@ -327,18 +318,6 @@ public class RenderDispatch {
         }
         
         RenderDispatch.PIPELINES.put(pipeline.getPipeline().get().get(), pipeline);
-    }
-    
-    ///
-    /// If the geometry of the given render pipeline is drawn after the level, which is the case for [Shading#OWN] while a shader pack is in use.
-    ///
-    /// @param renderPipeline The render pipeline.
-    ///
-    /// @return `true` if the geometry is drawn after the level.
-    ///
-    public static boolean isDrawnAfterLevel(RenderPipeline renderPipeline) {
-        Pipeline pipeline = RenderDispatch.PIPELINES.get(renderPipeline);
-        return pipeline != null && pipeline.getShading() == Shading.OWN && ModList.get().isLoaded("iris") && IrisBridge.isShaderPackInUse();
     }
     
     ///

@@ -2,13 +2,11 @@ package dev.satherov.nexus.internal.render.client;
 
 import dev.satherov.nexus.api.render.pipeline.Pipeline;
 import dev.satherov.nexus.api.render.pipeline.Shading;
-import dev.satherov.nexus.internal.render.iris.IrisBridge;
 import dev.satherov.nexus.internal.render.shader.Programs;
 import dev.satherov.nexus.internal.render.shader.VanillaBlock;
 
-import net.neoforged.fml.ModList;
-
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.rendertype.OutputTarget;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
 
@@ -30,13 +28,11 @@ import com.mojang.blaze3d.vertex.VertexFormat;
 import org.jetbrains.annotations.ApiStatus;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fStack;
-import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.jspecify.annotations.Nullable;
 
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -86,11 +82,6 @@ public final class DrawHooks {
     private final Map<RenderType, ByteBufferBuilder> memoryByType = new HashMap<>();
     
     ///
-    /// The batches held back for [#drawAfterLevel(Matrix4fc)].
-    ///
-    private final List<Batch> held = new ArrayList<>();
-    
-    ///
     /// Should only ever be called from [RenderDispatch].
     ///
     /// @param hooks     The draw hooks of the mods.
@@ -102,9 +93,9 @@ public final class DrawHooks {
     }
     
     ///
-    /// Runs every draw hook and then draws or holds back the batch of every render type they drew into.
+    /// Runs every draw hook and then draws the batch of every render type they drew into.
     ///
-    /// If a hook or a batch throws, every open buffer builder and every held back batch will be dropped and every byte buffer builder freed.
+    /// If a hook or a batch throws, every open buffer builder will be dropped and every byte buffer builder freed.
     ///
     /// @param pose The pose stack of the frame.
     ///
@@ -126,13 +117,11 @@ public final class DrawHooks {
     }
     
     ///
-    /// Drops every held back batch and frees every byte buffer builder.
+    /// Frees every byte buffer builder.
     ///
     /// A byte buffer builder may still hold the vertices of a buffer builder that never built its mesh, which would end up in the next mesh built from it.
     ///
     private void drop() {
-        this.held.forEach(batch -> batch.mesh().close());
-        this.held.clear();
         this.memoryByType.values().forEach(ByteBufferBuilder::close);
         this.memoryByType.clear();
     }
@@ -205,7 +194,6 @@ public final class DrawHooks {
     ///
     /// Builds the mesh of the given buffer builder and then draws it as a batch.
     ///
-    /// If the shading of its pipeline is [Shading#OWN] and a shader pack is in use, the batch will be held back for [#drawAfterLevel(Matrix4fc)].
     /// If the program of its pipeline could not be compiled, the batch will be dropped.
     ///
     /// @param type    The render type of the buffer builder.
@@ -226,14 +214,7 @@ public final class DrawHooks {
             mesh.sortQuads(this.memory(type), RenderSystem.getProjectionType().vertexSorting());
         }
         
-        Pipeline pipeline = this.pipelines.get(type.pipeline());
-        Batch batch = new Batch(type, mesh, pipeline);
-        if (pipeline != null && pipeline.getShading() == Shading.OWN && ModList.get().isLoaded("iris") && IrisBridge.isShaderPackInUse()) {
-            this.held.add(batch);
-            return;
-        }
-        
-        batch.draw();
+        new Batch(type, mesh, this.pipelines.get(type.pipeline())).draw();
     }
     
     ///
@@ -248,30 +229,6 @@ public final class DrawHooks {
     }
     
     ///
-    /// Applies the given model-view matrix and then draws every held back batch.
-    ///
-    /// If a batch throws, every held back batch will be dropped.
-    ///
-    /// @param modelView The model-view matrix of the frame.
-    ///
-    public void drawAfterLevel(Matrix4fc modelView) {
-        if (this.held.isEmpty()) {
-            return;
-        }
-        
-        Matrix4fStack stack = RenderSystem.getModelViewStack();
-        stack.pushMatrix();
-        stack.mul(modelView);
-        try {
-            this.held.forEach(Batch::draw);
-        } finally {
-            stack.popMatrix();
-            this.held.forEach(batch -> batch.mesh().close());
-            this.held.clear();
-        }
-    }
-    
-    ///
     /// A batch of one render type, ready to draw.
     ///
     /// @param type     The render type of the batch.
@@ -281,19 +238,22 @@ public final class DrawHooks {
     private record Batch(RenderType type, MeshData mesh, @Nullable Pipeline pipeline) {
         
         ///
-        /// Draws the mesh through the render type, or through a render pass of our own if the pipeline binds any uniform block.
+        /// Draws the mesh through the render type, or through a render pass of our own
+        /// if the pipeline binds any uniform block or is [Shading#OWN] while its render type draws onto the main target.
         ///
+        /// The pass of an own-shaded pipeline draws into the [PackOverlay] instead of the main target.
         /// The mesh will be closed even if the draw throws.
         ///
         private void draw() {
             try (this.mesh) {
                 Map<String, GpuBufferSlice> uniforms = this.readUniforms();
-                if (uniforms.isEmpty()) {
+                boolean redirected = this.pipeline != null && this.pipeline.getShading() == Shading.OWN && this.type.outputTarget() == OutputTarget.MAIN_TARGET;
+                if (uniforms.isEmpty() && !redirected) {
                     this.type.draw(this.mesh); // Legal because closing the mesh a second time does nothing
                     return;
                 }
                 
-                this.drawThroughPass(uniforms);
+                this.drawThroughPass(uniforms, redirected ? PackOverlay.target() : this.type.outputTarget().getRenderTarget());
             }
         }
         
@@ -313,11 +273,12 @@ public final class DrawHooks {
         }
         
         ///
-        /// Draws the mesh the way [RenderType#draw(MeshData)] does and binds the given uniform blocks as well.
+        /// Draws the mesh the way [RenderType#draw(MeshData)] does, onto the given target, and binds the given uniform blocks as well.
         ///
         /// @param uniforms The buffer slices of the uniform blocks to bind, by the name of their uniform block.
+        /// @param target   The render target to draw onto.
         ///
-        private void drawThroughPass(Map<String, GpuBufferSlice> uniforms) {
+        private void drawThroughPass(Map<String, GpuBufferSlice> uniforms, RenderTarget target) {
             RenderSetup setup = this.type.state;
             Matrix4fStack modelView = RenderSystem.getModelViewStack();
             modelView.pushMatrix();
@@ -340,7 +301,6 @@ public final class DrawHooks {
             GpuBuffer indices = sortedIndices == null ? sequential.getBuffer(this.mesh.drawState().indexCount()) : format.uploadImmediateIndexBuffer(sortedIndices);
             VertexFormat.IndexType indexType = sortedIndices == null ? sequential.type() : this.mesh.drawState().indexType();
             
-            RenderTarget target = this.type.outputTarget().getRenderTarget();
             GpuTextureView color = Objects.requireNonNullElseGet(RenderSystem.outputColorTextureOverride, () -> Objects.requireNonNull(target.getColorTextureView()));
             GpuTextureView depth = null;
             if (target.useDepth) {

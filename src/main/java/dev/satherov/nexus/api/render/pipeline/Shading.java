@@ -82,9 +82,11 @@ public enum Shading {
     ///
     /// The pipeline's own shaders, under a pack too.
     ///
-    /// If a pack is active, geometry from `Render#draw` will be drawn after the level, over the finished frame and depth tested against it.
+    /// If a pack is active, the geometry is drawn into a target of Nexus that is depth tested against the level drawn so far
+    /// and blended over the finished frame after the level.
     /// The lighting and fog of the pack will not apply to it.
-    /// Geometry a mod draws elsewhere will lose its color under a pack.
+    /// Geometry from `Render#draw` ends in that target by itself.
+    /// A render type a mod draws elsewhere has to draw into `Pipeline#getTarget()`, or it will lose its color under a pack.
     ///
     OWN
 }
