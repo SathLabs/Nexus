@@ -12,6 +12,7 @@
     "ClientCommonPacketListenerImplMixin",
     "DeltaTrackerTimerMixin",
     "FramerateLimiterMixin",
+    "InputConstantsMixin",
     "KeyboardHandlerAccess",
     "LogoRendererMixin",
     "MinecraftAccess",

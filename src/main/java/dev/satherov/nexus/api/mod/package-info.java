@@ -1,6 +1,6 @@
 ///
 /// The handle of a mod that uses Nexus.
-/// - [NexusMod]: The handle, with the translation table, the registrations, the network, the scheduler, the render, and the persistence of the mod.
+/// - [NexusMod]: The handle, with the translation table, the registrations, the network, the scheduler, the render, the persistence, and the keybinds of the mod.
 ///
 @NullMarked
 @CheckReturnValue

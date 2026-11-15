@@ -14,9 +14,9 @@ import org.jetbrains.annotations.ApiStatus;
 @ApiStatus.Internal
 public enum TooltipText implements Translatable {
     ///
-    /// The hint to hold the sneak key for details, with the keybind component of the sneak key as `{{key}}`.
+    /// The hint to hold shift for details.
     ///
-    HOLD_SHIFT("Hold {{key}} for details");
+    HOLD_SHIFT("Hold Shift for details");
 
     ///
     /// The declared key of the constant.

@@ -72,6 +72,16 @@ public final class Network {
     }
     
     ///
+    /// If the payload handlers event already ran.
+    ///
+    /// @return `true` once the payload handlers event ran.
+    ///
+    @ApiStatus.Internal
+    public static boolean hasPayloadEventRun() {
+        return Network.fired;
+    }
+    
+    ///
     /// Throws an [IllegalStateException] if the payload handlers event already ran.
     ///
     /// @param action The action to refuse, used in the failure message.

@@ -126,7 +126,7 @@ public final class TooltipBuilder {
     ///
     /// Shows the given section if shift is held.
     ///
-    /// If shift is not held, a dark gray hint to hold the sneak key for details will be added instead.
+    /// If shift is not held, a dark gray hint to hold shift for details will be added instead.
     ///
     /// @param section The section of lines to add, if shift is held.
     ///
@@ -137,7 +137,7 @@ public final class TooltipBuilder {
         if (this.flag.hasShiftDown()) {
             section.accept(this);
         } else {
-            this.lines.accept(TooltipText.HOLD_SHIFT.with("key", Component.keybind("key.sneak")).withStyle(ChatFormatting.DARK_GRAY));
+            this.lines.accept(TooltipText.HOLD_SHIFT.component().withStyle(ChatFormatting.DARK_GRAY));
         }
 
         return this;
