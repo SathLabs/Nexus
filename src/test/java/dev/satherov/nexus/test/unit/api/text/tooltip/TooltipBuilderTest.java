@@ -1,5 +1,6 @@
 package dev.satherov.nexus.test.unit.api.text.tooltip;
 
+import dev.satherov.nexus.api.text.Translation;
 import dev.satherov.nexus.api.text.Translations;
 import dev.satherov.nexus.api.text.tooltip.TooltipBuilder;
 
@@ -59,6 +60,14 @@ public class TooltipBuilderTest {
                 .singleElement()
                 .extracting(Component::toFlatList)
                 .isEqualTo(List.of(Component.literal("Mana").withStyle(ChatFormatting.GRAY)));
+    }
+
+    @Test
+    public void refusesATranslatableLineWithPlaceholders() {
+        Translation cost = this.translations.define("tooltip", "cost", "Costs {{cost}} mana");
+        TooltipBuilder builder = this.builder(TooltipFlag.NORMAL);
+        Assertions.assertThatThrownBy(() -> builder.line(cost)).isInstanceOf(IllegalArgumentException.class);
+        Assertions.assertThat(this.lines).isEmpty();
     }
 
     @Test
@@ -123,6 +132,20 @@ public class TooltipBuilderTest {
     }
 
     @Test
+    public void hintsAtShiftOnceForSeveralSections() {
+        this.builder(TooltipFlag.NORMAL)
+                .onShift(section -> section.line(Component.literal("Details")))
+                .onShift(section -> section.line(Component.literal("More details")));
+        Assertions.assertThat(this.lines).extracting(Component::getString).containsExactly("Hold Shift for details");
+    }
+
+    @Test
+    public void runsTheShiftSectionIfAllInformationShouldShow() {
+        this.builder(new AllInformation()).onShift(section -> section.line(Component.literal("Details")));
+        Assertions.assertThat(this.lines).extracting(Component::getString).containsExactly("Details");
+    }
+
+    @Test
     public void runsTheAdvancedSectionWithAdvancedTooltips() {
         this.builder(TooltipFlag.ADVANCED).onAdvanced(section -> section.line(Component.literal("Details")));
         Assertions.assertThat(this.lines).extracting(Component::getString).containsExactly("Details");
@@ -152,6 +175,24 @@ public class TooltipBuilderTest {
 
         @Override
         public boolean hasShiftDown() {
+            return true;
+        }
+    }
+
+    private static final class AllInformation implements TooltipFlag {
+
+        @Override
+        public boolean isAdvanced() {
+            return false;
+        }
+
+        @Override
+        public boolean isCreative() {
+            return false;
+        }
+
+        @Override
+        public boolean shouldDisplayAllInformation() {
             return true;
         }
     }

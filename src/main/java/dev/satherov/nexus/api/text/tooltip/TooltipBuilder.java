@@ -42,6 +42,11 @@ public final class TooltipBuilder {
     private final Consumer<Component> lines;
 
     ///
+    /// If the hint to hold shift for details was already added.
+    ///
+    private boolean hinted;
+
+    ///
     /// Creates a builder that passes every added line to the given consumer.
     ///
     /// Should only ever be called from [TooltipDispatch#listen(NexusMod)].
@@ -124,20 +129,24 @@ public final class TooltipBuilder {
     }
 
     ///
-    /// Shows the given section if shift is held.
+    /// Shows the given section if shift is held or if the tooltip should show all its information.
     ///
-    /// If shift is not held, a dark gray hint to hold shift for details will be added instead.
+    /// If neither is the case, a dark gray hint to hold shift for details will be added instead, once per tooltip.
     ///
-    /// @param section The section of lines to add, if shift is held.
+    /// Without shift, only a flag whose `shouldDisplayAllInformation()` is `true` gets the section, such as the one a recipe viewer passes.
+    /// The creative search tree builds its tooltips with a flag that doesn't ask for it, so it will only find the hint.
+    ///
+    /// @param section The section of lines to add, if shift is held or if the tooltip should show all its information.
     ///
     /// @return The builder for chaining.
     ///
     @CanIgnoreReturnValue
     public TooltipBuilder onShift(Consumer<TooltipBuilder> section) {
-        if (this.flag.hasShiftDown()) {
+        if (this.flag.hasShiftDown() || this.flag.shouldDisplayAllInformation()) {
             section.accept(this);
-        } else {
+        } else if (!this.hinted) {
             this.lines.accept(TooltipText.HOLD_SHIFT.component().withStyle(ChatFormatting.DARK_GRAY));
+            this.hinted = true;
         }
 
         return this;

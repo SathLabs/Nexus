@@ -175,6 +175,7 @@ public class RunReportTest {
                         Map.entry("nexus:attach_tooltips_event_samples/skips_other_items", Expected.passed()),
                         Map.entry("nexus:attach_tooltips_event_samples/attaches_to_fluid_stacks", Expected.passed()),
                         Map.entry("nexus:attach_tooltips_event_samples/skips_other_fluids", Expected.passed()),
+                        Map.entry("nexus:attach_tooltips_event_samples/hints_at_shift_once_for_several_attachments", Expected.passed()),
                         Map.entry("nexus:attribute_builder_samples/adds_the_attribute_with_its_default_to_every_type", Expected.passed()),
                         Map.entry("nexus:attribute_builder_samples/get_is_the_current_value_on_the_entity", Expected.passed()),
                         Map.entry("nexus:attribute_builder_samples/get_is_the_default_on_an_entity_without_the_attribute", Expected.passed()),
