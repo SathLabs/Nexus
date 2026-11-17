@@ -7,12 +7,14 @@ import dev.satherov.nexus.api.codec.result.NexusCodecException;
 import dev.satherov.nexus.internal.codec.CodecErrors;
 
 import net.minecraft.core.HolderLookup;
+import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.VarInt;
 import net.minecraft.network.VarLong;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.resources.RegistryOps;
+import net.minecraft.resources.ResourceKey;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.mojang.serialization.DynamicOps;
@@ -26,6 +28,7 @@ import io.netty.buffer.ByteBufUtil;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 ///
@@ -92,7 +95,9 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     }
     
     ///
-    /// Creates a new [RegistryOps.HolderLookupAdapter] over the registry access or returns `null` if the format is plain.
+    /// Creates a lookup of the registries in the registry access or returns `null` if the format is plain.
+    ///
+    /// Every call to the lookup looks the registry up in the registry access again.
     ///
     @Override
     public RegistryOps.@Nullable RegistryInfoLookup lookup() {
@@ -100,7 +105,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
             return null;
         }
         
-        return new RegistryOps.HolderLookupAdapter(this.registryAccess);
+        return new NettyOperations.AccessLookup(this.registryAccess);
     }
     
     ///
@@ -201,9 +206,14 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     ///
     @Override
     public int asVarInt(B input) {
+        int readable = input.readableBytes();
         int value = 0;
         for (int size = 0; size < VarInt.MAX_VARINT_SIZE; size++) {
-            byte next = this.requireReadable(input, Byte.BYTES, "a VarInt").readByte();
+            if (size == readable) {
+                throw new NexusCodecException("Expected a VarInt, found the end of the buffer");
+            }
+            
+            byte next = input.readByte();
             value |= (next & 0x7F) << (size * 7);
             if (!VarInt.hasContinuationBit(next)) {
                 return value;
@@ -248,9 +258,14 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     ///
     @Override
     public long asVarLong(B input) {
+        int readable = input.readableBytes();
         long value = 0L;
         for (int size = 0; size < NettyOperations.MAX_VARLONG_SIZE; size++) {
-            byte next = this.requireReadable(input, Byte.BYTES, "a VarLong").readByte();
+            if (size == readable) {
+                throw new NexusCodecException("Expected a VarLong, found the end of the buffer");
+            }
+            
+            byte next = input.readByte();
             value |= (long) (next & 0x7F) << (size * 7);
             if (!VarLong.hasContinuationBit(next)) {
                 return value;
@@ -341,7 +356,7 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     public String asString(B input, int limit) {
         // A character takes at most three bytes, and the product could overflow an `int`.
         int length = this.readCount(input, (int) Math.min(3L * limit, Integer.MAX_VALUE));
-        String value = this.requireReadable(input, length, "a string").readCharSequence(length, StandardCharsets.UTF_8).toString();
+        String value = this.requireReadable(input, length, "a string").readString(length, StandardCharsets.UTF_8);
         if (value.length() > limit) {
             throw CodecErrors.tooLong(limit, value.length());
         }
@@ -490,5 +505,23 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
     @Contract("-> fail")
     public B ofNull() {
         throw new UnsupportedOperationException("Netty has no null value");
+    }
+    
+    ///
+    /// A lookup of the registries in a registry access.
+    ///
+    /// Every call looks the registry up in the registry access again.
+    ///
+    /// @param registryAccess The registry access to look the registries up in.
+    ///
+    private record AccessLookup(RegistryAccess registryAccess) implements RegistryOps.RegistryInfoLookup {
+        
+        ///
+        /// Looks the given registry up in the registry access, or returns an empty optional if it's missing.
+        ///
+        @Override
+        public <T> Optional<RegistryOps.RegistryInfo<T>> lookup(ResourceKey<? extends Registry<? extends T>> registryKey) {
+            return this.registryAccess.lookup(registryKey).map(RegistryOps.RegistryInfo::fromRegistryLookup);
+        }
     }
 }

@@ -703,7 +703,7 @@ public class Structs {
             if (operations.isPositional()) {
                 Object[] values = new Object[this.fields.size()];
                 for (int i = 0; i < values.length; i++) {
-                    values[i] = this.fields.get(i).read(operations, input);
+                    values[i] = this.fields.get(i).codec().read(operations, input);
                 }
                 
                 return this.constructor.apply(values);

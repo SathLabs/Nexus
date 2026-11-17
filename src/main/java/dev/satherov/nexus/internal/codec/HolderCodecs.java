@@ -254,7 +254,7 @@ public class HolderCodecs {
         RegistryAccess access = operations.registryAccess();
         Optional<Registry<T>> found = access != null ? access.lookup(registry) : Optional.empty();
         Registry<T> synced = found.orElseThrow(() -> HolderCodecs.inaccessible(registry));
-        if (BuiltInRegistries.REGISTRY.containsKey(registry.identifier()) && !synced.doesSync()) {
+        if (!synced.doesSync() && BuiltInRegistries.REGISTRY.containsKey(registry.identifier())) {
             throw new NexusCodecException("Could not use the ids of the registry '" + registry.identifier() + "' since it isn't synced");
         }
         
