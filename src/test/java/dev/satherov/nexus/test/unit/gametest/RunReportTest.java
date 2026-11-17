@@ -287,6 +287,12 @@ public class RunReportTest {
                         Map.entry("nexus:particle_entry_samples/spawn_sends_the_particles_to_the_players_near_the_position", Expected.passed()),
                         Map.entry("nexus:particle_entry_samples/spawn_sends_the_particles_of_a_type_that_overrides_the_limiter_farther", Expected.passed()),
                         Map.entry("nexus:particle_entry_samples/is_matches_options_of_the_type_only", Expected.passed()),
+                        Map.entry("nexus:particle_entry_samples/spawn_sends_the_particles_with_the_given_spread_and_speed", Expected.passed()),
+                        Map.entry("nexus:particle_entry_samples/spawn_sends_the_particles_that_always_show_to_the_players_near_the_position", Expected.passed()),
+                        Map.entry("nexus:particle_entry_samples/spawn_sends_the_particles_that_override_the_limiter_farther", Expected.passed()),
+                        Map.entry("nexus:particle_entry_samples/spawn_sends_the_particles_to_the_given_player_only", Expected.passed()),
+                        Map.entry("nexus:particle_entry_samples/spawn_sends_nothing_to_a_given_player_out_of_range", Expected.passed()),
+                        Map.entry("nexus:particle_entry_samples/spawn_sends_the_particles_that_override_the_limiter_to_a_given_far_player", Expected.passed()),
                         Map.entry("nexus:potion_entry_samples/stacks_hold_the_potion_in_each_container", Expected.passed()),
                         Map.entry("nexus:potion_entry_samples/names_each_stack_under_a_defined_key", Expected.passed()),
                         Map.entry("nexus:potion_entry_samples/is_matches_stacks_of_the_potion_only", Expected.passed()),
@@ -414,7 +420,9 @@ public class RunReportTest {
                         Map.entry("nexus:slot_layout_samples/vanilla_sources_carry_the_slots_of_a_player", Expected.passed()),
                         Map.entry(RunReportTest.BASELINE, Expected.passed()),
                         Map.entry("nexus:entity_builder_samples/never_requests_the_renderer_on_a_dedicated_server", Expected.passed()),
-                        Map.entry("nexus:fluid_builder_samples/never_requests_the_client_hooks_on_a_dedicated_server", Expected.passed())
+                        Map.entry("nexus:fluid_builder_samples/never_requests_the_client_hooks_on_a_dedicated_server", Expected.passed()),
+                        Map.entry("nexus:menu_builder_samples/never_requests_the_screen_on_a_dedicated_server", Expected.passed()),
+                        Map.entry("nexus:particle_entry_samples/never_requests_the_providers_on_a_dedicated_server", Expected.passed())
                 ),
                 List.of(
                         Measurement.of("nexus/discovery_samples/measured", 5),
@@ -580,6 +588,8 @@ public class RunReportTest {
                         Map.entry("nexus:encoding_samples/holder_of_the_client_level_encodes_on_the_client_thread", Expected.passed()),
                         Map.entry("nexus:encoding_samples/owner_outside_a_world_is_the_built_in_registry", Expected.passed()),
                         Map.entry("nexus:entry_builder_samples/runs_the_client_code_of_the_taken_builder_once", Expected.passed()),
+                        Map.entry("nexus:menu_builder_samples/opens_the_screen_of_the_menu_on_the_client", Expected.passed()),
+                        Map.entry("nexus:particle_entry_samples/creates_the_particles_with_the_registered_providers", Expected.passed()),
                         Map.entry("nexus:encoding_samples/leaving_the_world_drops_the_registries_of_its_server", Expected.passed()),
                         Map.entry("nexus:activation_samples/double_tap_over_idle_ticks_fires", Expected.passed()),
                         Map.entry("nexus:activation_samples/held_for_does_not_fire_on_an_earlier_release", Expected.passed()),
