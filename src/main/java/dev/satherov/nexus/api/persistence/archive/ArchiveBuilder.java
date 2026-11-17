@@ -78,6 +78,7 @@ public final class ArchiveBuilder<KEY extends ArchiveKey<KEY>, VALUE> {
     /// Sets the retention of the active entries and keeps every retired entry.
     ///
     /// The retention runs once when a server starts, over the group of a key after every write-action, and over every group when the archive is pruned.
+    /// After a queued write, it runs on the IO thread of the archive once the file is written.
     ///
     /// @param active The retention of the active entries.
     ///
@@ -92,6 +93,7 @@ public final class ArchiveBuilder<KEY extends ArchiveKey<KEY>, VALUE> {
     /// Sets the retention of the active and the retired entries.
     ///
     /// The retention runs once when a server starts, over the group of a key after every write, and over every group when the archive is pruned.
+    /// After a queued write, it runs on the IO thread of the archive once the file is written.
     ///
     /// @param active  The retention of the active entries.
     /// @param retired The retention of the retired entries.
@@ -108,7 +110,8 @@ public final class ArchiveBuilder<KEY extends ArchiveKey<KEY>, VALUE> {
     ///
     /// Imports the files of an older layout into the archive once per world.
     ///
-    /// When a server starts, the given reader will be called with every file below the given folder that isn't in the folder of the archive.
+    /// When a server starts, the given reader will be called with every file below the given folder that isn't in the folder of the archive,
+    /// as a path relative to the given folder.
     /// If the reader returns an entry, the file will be moved unchanged to the file of its key.
     /// If the reader returns empty, the file will be left where it is.
     ///
@@ -119,7 +122,7 @@ public final class ArchiveBuilder<KEY extends ArchiveKey<KEY>, VALUE> {
     /// If the reader returns a key that can't be written, an [IllegalArgumentException] will be thrown once the server starts.
     ///
     /// @param folder The folder of the older layout, relative to the world folder.
-    /// @param reader The reader of one file, called with its path.
+    /// @param reader The reader of one file, called with its path relative to the folder.
     ///
     /// @return The builder for chaining.
     ///

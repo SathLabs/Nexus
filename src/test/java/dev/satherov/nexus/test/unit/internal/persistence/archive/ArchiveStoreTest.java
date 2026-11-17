@@ -28,11 +28,14 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -50,6 +53,7 @@ public class ArchiveStoreTest {
     private static final String BACKUPS = "data/nexus/backups";
     private static final String BLUEPRINTS = "data/nexus/blueprints";
     private static final String LEGACY = "data/epitaphs";
+    private static final String NESTED = "data/epitaphs/backups";
     private static final Identifier BACKUP_ARCHIVE = Identifier.fromNamespaceAndPath("nexus", "backups");
     private static final Identifier BLUEPRINT_ARCHIVE = Identifier.fromNamespaceAndPath("nexus", "blueprints");
 
@@ -93,6 +97,24 @@ public class ArchiveStoreTest {
         try (ArchiveStore<PathKey, CompoundTag> paths = ArchiveStoreTest.openPaths(world)) {
             Assertions.assertThatThrownBy(() -> paths.write(new PathKey(List.of()), ArchiveStoreTest.value("root"))).isInstanceOf(IllegalArgumentException.class);
             Assertions.assertThatThrownBy(() -> paths.write(new PathKey(List.of("castle", "")), ArchiveStoreTest.value("hollow"))).isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Test
+    public void refusesASegmentTooLongForAFileName(@TempDir Path world) {
+        NameKey longest = new NameKey("A".repeat(49));
+        NameKey tooLong = new NameKey("A".repeat(50));
+        try (ArchiveStore<NameKey, CompoundTag> store = ArchiveStoreTest.openNames(world)) {
+            store.write(longest, ArchiveStoreTest.value("longest"));
+            store.retire(longest);
+
+            Assertions.assertThatThrownBy(() -> store.write(tooLong, ArchiveStoreTest.value("too long"))).isInstanceOf(IllegalArgumentException.class);
+            Assertions.assertThatThrownBy(() -> store.writeNow(tooLong, ArchiveStoreTest.value("too long"))).isInstanceOf(IllegalArgumentException.class);
+        }
+
+        try (ArchiveStore<NameKey, CompoundTag> store = ArchiveStoreTest.openNames(world)) {
+            Assertions.assertThat(store.listRetired(_ -> true)).containsExactly(longest);
+            Assertions.assertThat(store.read(longest)).contains(ArchiveStoreTest.value("longest"));
         }
     }
 
@@ -256,7 +278,7 @@ public class ArchiveStoreTest {
         BackupKey otherOld = ArchiveStoreTest.key(ArchiveStoreTest.ALEX, Duration.ofHours(5));
         BackupKey otherNew = ArchiveStoreTest.key(ArchiveStoreTest.ALEX, Duration.ofHours(4));
         try (ArchiveStore<BackupKey, CompoundTag> store = ArchiveStoreTest.open(world, Retention.newest(count::get), Retention.forever())) {
-            Stream.of(oldest, middle, newest, otherOld, otherNew).forEach(key -> store.write(key, ArchiveStoreTest.value("backup")));
+            Stream.of(oldest, middle, newest, otherOld, otherNew).forEach(key -> store.writeNow(key, ArchiveStoreTest.value("backup")));
             count.set(1);
             store.prune();
 
@@ -297,7 +319,7 @@ public class ArchiveStoreTest {
         BackupKey middle = ArchiveStoreTest.key(ArchiveStoreTest.STEVE, Duration.ofHours(2));
         BackupKey newest = ArchiveStoreTest.key(ArchiveStoreTest.STEVE, Duration.ofHours(1));
         try (ArchiveStore<BackupKey, CompoundTag> store = ArchiveStoreTest.open(world, Retention.forever(), Retention.newest(() -> 1))) {
-            Stream.of(oldest, middle, newest).forEach(key -> store.write(key, ArchiveStoreTest.value("backup")));
+            Stream.of(oldest, middle, newest).forEach(key -> store.writeNow(key, ArchiveStoreTest.value("backup")));
             store.retire(oldest);
             store.retire(middle);
             store.prune();
@@ -312,9 +334,9 @@ public class ArchiveStoreTest {
         BackupKey retired = ArchiveStoreTest.key(ArchiveStoreTest.STEVE, Duration.ofHours(2));
         BackupKey active = ArchiveStoreTest.key(ArchiveStoreTest.STEVE, Duration.ofHours(1));
         try (ArchiveStore<BackupKey, CompoundTag> store = ArchiveStoreTest.open(world, Retention.newest(() -> 1), Retention.forever())) {
-            store.write(retired, ArchiveStoreTest.value("retired"));
+            store.writeNow(retired, ArchiveStoreTest.value("retired"));
             store.retire(retired);
-            store.write(active, ArchiveStoreTest.value("active"));
+            store.writeNow(active, ArchiveStoreTest.value("active"));
             store.prune();
 
             Assertions.assertThat(store.list(_ -> true)).containsExactly(active);
@@ -392,6 +414,93 @@ public class ArchiveStoreTest {
     }
 
     @Test
+    public void keepsTheValueAsItWasWritten(@TempDir Path world) {
+        BackupKey key = ArchiveStoreTest.key(ArchiveStoreTest.STEVE, Duration.ofHours(1));
+        CompoundTag value = ArchiveStoreTest.value("written");
+        try (ArchiveStore<BackupKey, CompoundTag> store = ArchiveStoreTest.open(world)) {
+            IntStream.range(0, 50).forEach(minutes -> store.write(ArchiveStoreTest.key(ArchiveStoreTest.ALEX, Duration.ofMinutes(minutes)), ArchiveStoreTest.value("backup")));
+            store.write(key, value);
+            value.putString("text", "changed after the write");
+            CompoundTag read = store.read(key).orElseThrow();
+            read.putString("text", "changed after the read");
+
+            Assertions.assertThat(read).isNotSameAs(value);
+            Assertions.assertThat(store.read(key)).contains(ArchiveStoreTest.value("written"));
+        }
+
+        try (ArchiveStore<BackupKey, CompoundTag> store = ArchiveStoreTest.open(world)) {
+            Assertions.assertThat(store.read(key)).contains(ArchiveStoreTest.value("written"));
+        }
+    }
+
+    @Test
+    public void keepsOtherEntriesWhenAQueuedWriteFails(@TempDir Path world) throws IOException {
+        BackupKey oldest = ArchiveStoreTest.key(ArchiveStoreTest.STEVE, Duration.ofHours(3));
+        BackupKey middle = ArchiveStoreTest.key(ArchiveStoreTest.STEVE, Duration.ofHours(2));
+        BackupKey failing = ArchiveStoreTest.key(ArchiveStoreTest.STEVE, Duration.ofHours(1));
+        Path blocker = ArchiveStoreTest.file(world, failing, ".dat");
+        Files.createDirectories(blocker);
+        Files.writeString(blocker.resolve("blocker.txt"), "a folder where the file of the entry belongs");
+
+        ArchiveStore<BackupKey, CompoundTag> store = ArchiveStoreTest.open(world, Retention.newest(() -> 2), Retention.forever());
+        try (store) {
+            store.writeNow(oldest, ArchiveStoreTest.value("oldest"));
+            store.writeNow(middle, ArchiveStoreTest.value("middle"));
+            store.write(failing, ArchiveStoreTest.value("failing"));
+        }
+
+        Assertions.assertThat(store.list(_ -> true)).containsExactly(oldest, middle);
+        Assertions.assertThat(ArchiveStoreTest.file(world, oldest, ".dat")).isRegularFile();
+        Assertions.assertThat(ArchiveStoreTest.file(world, middle, ".dat")).isRegularFile();
+    }
+
+    @Test
+    public void keepsOtherEntriesWhenPrunedBeforeAQueuedWriteFails(@TempDir Path world) throws IOException {
+        BackupKey oldest = ArchiveStoreTest.key(ArchiveStoreTest.STEVE, Duration.ofHours(4));
+        BackupKey older = ArchiveStoreTest.key(ArchiveStoreTest.STEVE, Duration.ofHours(3));
+        BackupKey middle = ArchiveStoreTest.key(ArchiveStoreTest.STEVE, Duration.ofHours(2));
+        BackupKey failing = ArchiveStoreTest.key(ArchiveStoreTest.STEVE, Duration.ofHours(1));
+        Path blocker = ArchiveStoreTest.file(world, failing, ".dat");
+        Files.createDirectories(blocker);
+        Files.writeString(blocker.resolve("blocker.txt"), "a folder where the file of the entry belongs");
+
+        ArchiveStore<BackupKey, CompoundTag> store = ArchiveStoreTest.open(world, Retention.newest(() -> 3), Retention.forever());
+        try (store) {
+            store.writeNow(oldest, ArchiveStoreTest.value("oldest"));
+            store.writeNow(older, ArchiveStoreTest.value("older"));
+            store.writeNow(middle, ArchiveStoreTest.value("middle"));
+            // The IO thread needs the lock of the store to settle the queued write, so it can't fail before the prune ran.
+            synchronized (store) {
+                store.write(failing, ArchiveStoreTest.value("failing"));
+                store.prune();
+            }
+        }
+
+        Assertions.assertThat(store.list(_ -> true)).containsExactly(oldest, older, middle);
+        Assertions.assertThat(ArchiveStoreTest.file(world, oldest, ".dat")).isRegularFile();
+    }
+
+    @Test
+    public void keepsARetiredEntryWhenItsQueuedWriteFails(@TempDir Path world) throws IOException {
+        BackupKey key = ArchiveStoreTest.key(ArchiveStoreTest.STEVE, Duration.ofHours(1));
+        try (ArchiveStore<BackupKey, CompoundTag> store = ArchiveStoreTest.open(world)) {
+            store.write(key, ArchiveStoreTest.value("retired"));
+            store.retire(key);
+        }
+
+        Path blocker = ArchiveStoreTest.file(world, key, ".dat");
+        Files.createDirectories(blocker);
+        Files.writeString(blocker.resolve("blocker.txt"), "a folder where the file of the entry belongs");
+        ArchiveStore<BackupKey, CompoundTag> store = ArchiveStoreTest.open(world);
+        try (store) {
+            store.write(key, ArchiveStoreTest.value("failing"));
+        }
+
+        Assertions.assertThat(store.isRetired(key)).isTrue();
+        Assertions.assertThat(store.read(key)).contains(ArchiveStoreTest.value("retired"));
+    }
+
+    @Test
     public void writesNowBeforeReturning(@TempDir Path world) throws IOException {
         BackupKey key = ArchiveStoreTest.key(ArchiveStoreTest.STEVE, Duration.ofHours(1));
         try (ArchiveStore<BackupKey, CompoundTag> store = ArchiveStoreTest.open(world)) {
@@ -399,6 +508,47 @@ public class ArchiveStoreTest {
 
             Path file = ArchiveStoreTest.file(world, key, ".dat");
             Assertions.assertThat(NbtIo.readCompressed(file, NbtAccounter.unlimitedHeap())).isEqualTo(ArchiveStoreTest.FORMAT.write(ArchiveStoreTest.value("grave"), ArchiveStoreTest.REGISTRIES));
+        }
+    }
+
+    @Test
+    public void writesNowWhileAnotherKeyIsWritten(@TempDir Path world) {
+        BackupKey large = ArchiveStoreTest.key(ArchiveStoreTest.ALEX, Duration.ofHours(2));
+        BackupKey small = ArchiveStoreTest.key(ArchiveStoreTest.STEVE, Duration.ofHours(1));
+        byte[] noise = new byte[1 << 24];
+        new Random(0).nextBytes(noise);
+        CompoundTag value = ArchiveStoreTest.value("large");
+        value.putByteArray("noise", noise);
+        try (ArchiveStore<BackupKey, CompoundTag> store = ArchiveStoreTest.open(world)) {
+            store.write(large, value);
+            store.writeNow(small, ArchiveStoreTest.value("small"));
+
+            Assertions.assertThat(store.read(small)).contains(ArchiveStoreTest.value("small"));
+            Assertions.assertThat(store.list(_ -> true)).containsExactly(large, small);
+            Assertions.assertThat(ArchiveStoreTest.file(world, large, ".dat")).doesNotExist();
+        }
+
+        Assertions.assertThat(ArchiveStoreTest.file(world, large, ".dat")).isRegularFile();
+    }
+
+    @Test
+    public void writesNowWhenTheRetiredFileCannotBeDeleted(@TempDir Path world) throws IOException {
+        BackupKey key = ArchiveStoreTest.key(ArchiveStoreTest.STEVE, Duration.ofHours(1));
+        try (ArchiveStore<BackupKey, CompoundTag> store = ArchiveStoreTest.open(world)) {
+            store.write(key, ArchiveStoreTest.value("retired"));
+            store.retire(key);
+        }
+
+        try (ArchiveStore<BackupKey, CompoundTag> store = ArchiveStoreTest.open(world)) {
+            Path retired = ArchiveStoreTest.file(world, key, ".retired");
+            Files.delete(retired);
+            Files.createDirectories(retired);
+            Files.writeString(retired.resolve("blocker.txt"), "a folder where the retired file of the entry was");
+            store.writeNow(key, ArchiveStoreTest.value("active"));
+
+            Assertions.assertThat(store.isRetired(key)).isFalse();
+            Assertions.assertThat(store.list(_ -> true)).containsExactly(key);
+            Assertions.assertThat(store.read(key)).contains(ArchiveStoreTest.value("active"));
         }
     }
 
@@ -425,6 +575,44 @@ public class ArchiveStoreTest {
 
         Assertions.assertThat(ArchiveStoreTest.files(world.resolve(ArchiveStoreTest.BACKUPS)))
                 .containsExactlyInAnyOrderElementsOf(keys.stream().map(key -> ArchiveStoreTest.file(world, key, ".dat")).toList());
+    }
+
+    @Test
+    public void runsEveryQueuedWriteWhenClosedWhileInterrupted(@TempDir Path world) throws IOException {
+        List<BackupKey> keys = IntStream.range(0, 50)
+                .mapToObj(minutes -> ArchiveStoreTest.key(ArchiveStoreTest.STEVE, Duration.ofMinutes(minutes)))
+                .toList();
+
+        ArchiveStore<BackupKey, CompoundTag> store = ArchiveStoreTest.open(world);
+        keys.forEach(key -> store.write(key, ArchiveStoreTest.value("backup")));
+        Thread.currentThread().interrupt();
+        store.close();
+
+        Assertions.assertThat(Thread.interrupted()).isTrue();
+        Assertions.assertThat(ArchiveStoreTest.files(world.resolve(ArchiveStoreTest.BACKUPS)))
+                .containsExactlyInAnyOrderElementsOf(keys.stream().map(key -> ArchiveStoreTest.file(world, key, ".dat")).toList());
+    }
+
+    @Test
+    public void deletesTheRetiredFileWhenTheActiveOneCannotBe(@TempDir Path world) throws IOException {
+        BackupKey key = ArchiveStoreTest.key(ArchiveStoreTest.STEVE, Duration.ofHours(1));
+        try (ArchiveStore<BackupKey, CompoundTag> store = ArchiveStoreTest.open(world)) {
+            store.write(key, ArchiveStoreTest.value("retired"));
+            store.retire(key);
+        }
+
+        Path blocker = ArchiveStoreTest.file(world, key, ".dat");
+        Files.createDirectories(blocker);
+        Files.writeString(blocker.resolve("blocker.txt"), "a folder where the file of the entry belongs");
+        ArchiveStore<BackupKey, CompoundTag> store = ArchiveStoreTest.open(world);
+        try (store) {
+            Assertions.assertThat(store.isRetired(key)).isTrue();
+            store.delete(key);
+        }
+
+        Assertions.assertThat(ArchiveStoreTest.file(world, key, ".retired")).doesNotExist();
+        Assertions.assertThat(store.listRetired(_ -> true)).isEmpty();
+        Assertions.assertThat(store.list(_ -> true)).isEmpty();
     }
 
     @Test
@@ -501,6 +689,35 @@ public class ArchiveStoreTest {
         Assertions.assertThat(foreignFile).exists();
     }
 
+    @Test
+    public void importsLegacyFromAFolderAboveTheArchive(@TempDir Path world) throws IOException {
+        BackupKey archived = ArchiveStoreTest.key(ArchiveStoreTest.STEVE, Duration.ofHours(1));
+        BackupKey imported = ArchiveStoreTest.key(ArchiveStoreTest.STEVE, Duration.ofHours(2));
+        Path archivedFile = world.resolve(ArchiveStoreTest.NESTED).resolve(archived.segments().get(0)).resolve(archived.segments().get(1) + ".dat");
+        Files.createDirectories(archivedFile.getParent());
+        NbtIo.writeCompressed((CompoundTag) ArchiveStoreTest.FORMAT.write(ArchiveStoreTest.value("archived"), ArchiveStoreTest.REGISTRIES), archivedFile);
+        byte[] archivedBytes = Files.readAllBytes(archivedFile);
+        Path legacy = world.resolve(ArchiveStoreTest.LEGACY);
+        Path importedFile = ArchiveStoreTest.legacyFile(legacy, imported, ".dat");
+        ArchiveStoreTest.writeLegacy(importedFile, "imported");
+
+        List<Path> offered = new ArrayList<>();
+        Function<Path, Optional<Archive.Imported<BackupKey>>> reader = file -> {
+            offered.add(file);
+            return ArchiveStoreTest.readLegacy(file);
+        };
+
+        try (ArchiveStore<BackupKey, CompoundTag> store = ArchiveStoreTest.openLegacy(world, ArchiveStoreTest.NESTED, reader)) {
+            Assertions.assertThat(store.list(_ -> true)).containsExactly(imported, archived);
+            Assertions.assertThat(store.read(archived)).contains(ArchiveStoreTest.value("archived"));
+            Assertions.assertThat(store.read(imported)).contains(ArchiveStoreTest.value("imported"));
+        }
+
+        Assertions.assertThat(offered).containsExactly(legacy.relativize(importedFile));
+        Assertions.assertThat(Files.readAllBytes(archivedFile)).isEqualTo(archivedBytes);
+        Assertions.assertThat(importedFile).doesNotExist();
+    }
+
     private static ArchiveStore<BackupKey, CompoundTag> open(Path world) {
         return ArchiveStoreTest.open(world, Retention.forever(), Retention.forever());
     }
@@ -511,15 +728,19 @@ public class ArchiveStoreTest {
     }
 
     private static ArchiveStore<BackupKey, CompoundTag> openLegacy(Path world) {
+        return ArchiveStoreTest.openLegacy(world, ArchiveStoreTest.BACKUPS, ArchiveStoreTest::readLegacy);
+    }
+
+    private static ArchiveStore<BackupKey, CompoundTag> openLegacy(Path world, String folder, Function<Path, Optional<Archive.Imported<BackupKey>>> reader) {
         ArchiveStore.Declaration<BackupKey, CompoundTag> declaration = new ArchiveStore.Declaration<>(
                 ArchiveStoreTest.BACKUP_ARCHIVE,
                 BackupKey::parse,
                 ArchiveStoreTest.FORMAT,
                 Retention.forever(),
                 Retention.forever(),
-                new ArchiveStore.Legacy<>(ArchiveStoreTest.LEGACY, ArchiveStoreTest::readLegacy)
+                new ArchiveStore.Legacy<>(ArchiveStoreTest.LEGACY, reader)
         );
-        return new ArchiveStore<>(world.resolve(ArchiveStoreTest.BACKUPS), world, ArchiveStoreTest.REGISTRIES, declaration);
+        return new ArchiveStore<>(world.resolve(folder), world, ArchiveStoreTest.REGISTRIES, declaration);
     }
 
     private static ArchiveStore<NameKey, CompoundTag> openNames(Path world) {
@@ -541,11 +762,11 @@ public class ArchiveStoreTest {
 
     private static Optional<Archive.Imported<BackupKey>> readLegacy(Path file) {
         Matcher matcher = ArchiveStoreTest.LEGACY_NAME.matcher(file.getFileName().toString());
-        if (!matcher.matches()) {
+        if (file.getNameCount() != 2 || !matcher.matches()) {
             return Optional.empty();
         }
 
-        UUID owner = UUID.fromString(file.getParent().getFileName().toString());
+        UUID owner = UUID.fromString(file.getName(0).toString());
         BackupKey key = new BackupKey(owner, Instant.ofEpochSecond(Long.parseLong(matcher.group(1))), matcher.group(2));
         return Optional.of(new Archive.Imported<>(key, matcher.group(3) != null));
     }
