@@ -531,7 +531,7 @@ public class VanillaReadersTest {
     
     private static <VALUE> @Nullable PathReader<VALUE> reader(DataComponentType<VALUE> type, String path) {
         Map<DataComponentType<?>, List<Function<List<ComponentPath.Step>, ? extends @Nullable PathReader<?>>>> byComponent = new IdentityHashMap<>();
-        Map<Codec<?>, List<Function<List<ComponentPath.Step>, ? extends @Nullable PathReader<?>>>> byCodec = new IdentityHashMap<>();
+        Map<Object, List<Function<List<ComponentPath.Step>, ? extends @Nullable PathReader<?>>>> byCodec = new IdentityHashMap<>();
         VanillaReaders.register(new RegisterPathReadersEvent(byComponent, byCodec));
         List<ComponentPath.Step> steps = VanillaReadersTest.steps(path);
         Codec<?> built = Objects.requireNonNullElse(((ComponentTypeCodec) type).nexus$getCodec(), type.codecOrThrow());
