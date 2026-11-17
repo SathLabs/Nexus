@@ -13,6 +13,7 @@ import dev.satherov.nexus.api.persistence.format.Format;
 
 import net.neoforged.neoforge.common.CommonHooks;
 import net.neoforged.neoforge.fluids.FluidStack;
+import net.neoforged.neoforge.registries.holdersets.OrHolderSet;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
@@ -83,6 +84,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
+import java.util.stream.Collectors;
 
 ///
 /// The parity fixture, every Nexus codec next to its DFU codec, its vanilla stream codec, and the values to compare them on.
@@ -190,9 +192,27 @@ public class ParityCases {
             new Case<>("VAR_INT", NexusCodec.VAR_INT, Codec.INT, ByteBufCodecs.VAR_INT, List.of(0, 127, 128, 300, -1, Integer.MIN_VALUE, Integer.MAX_VALUE)),
             new Case<>("LONG", NexusCodec.LONG, Codec.LONG, ByteBufCodecs.LONG, List.of(0L, 1L << 40, -1L, Long.MIN_VALUE, Long.MAX_VALUE)),
             new Case<>("VAR_LONG", NexusCodec.VAR_LONG, Codec.LONG, ByteBufCodecs.VAR_LONG, List.of(0L, 127L, 128L, 1L << 40, -1L, Long.MIN_VALUE, Long.MAX_VALUE)),
-            new Case<>("FLOAT", NexusCodec.FLOAT, Codec.FLOAT, ByteBufCodecs.FLOAT, List.of(0.0F, -0.0F, 0.1F, 1.5F, -3.25F, Float.MIN_VALUE, Float.MAX_VALUE)),
-            new Case<>("DOUBLE", NexusCodec.DOUBLE, Codec.DOUBLE, ByteBufCodecs.DOUBLE, List.of(0.0D, -0.0D, 0.1D, 1.5D, -3.25D, Double.MIN_VALUE, Double.MAX_VALUE)),
-            new Case<>("STRING", NexusCodec.STRING, Codec.STRING, ByteBufCodecs.STRING_UTF8, List.of("", "stone", "café", "𝄞", "a".repeat(32767))),
+            new Case<>(
+                    "FLOAT",
+                    NexusCodec.FLOAT,
+                    Codec.FLOAT,
+                    ByteBufCodecs.FLOAT,
+                    List.of(0.0F, -0.0F, 0.1F, 1.5F, -3.25F, Float.MIN_VALUE, Float.MAX_VALUE, Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY)
+            ),
+            new Case<>(
+                    "DOUBLE",
+                    NexusCodec.DOUBLE,
+                    Codec.DOUBLE,
+                    ByteBufCodecs.DOUBLE,
+                    List.of(0.0D, -0.0D, 0.1D, 1.5D, -3.25D, Double.MIN_VALUE, Double.MAX_VALUE, Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY)
+            ),
+            new Case<>(
+                    "STRING",
+                    NexusCodec.STRING,
+                    Codec.STRING,
+                    ByteBufCodecs.STRING_UTF8,
+                    List.of("", "stone", "café", "𝄞", "a".repeat(43), "a".repeat(127), "a".repeat(5462), "a".repeat(16383), "a".repeat(32767), "\uD800\u00E9", "\uD800\uD800\uDC00")
+            ),
             new Case<>("string(16)", NexusCodec.string(16), Codec.sizeLimitedString(16), ByteBufCodecs.stringUtf8(16), List.of("", "sixteen chars ok")),
             new Case<>(
                     "IDENTIFIER",
@@ -409,6 +429,13 @@ public class ParityCases {
                             HolderSet.direct(List.of(ParityCases.STONE, ParityCases.DIRT)),
                             BuiltInRegistries.ITEM.getOrThrow(ItemTags.WOODEN_TOOL_MATERIALS)
                     )
+            ),
+            new Case<>(
+                    "holderSet(ITEM) custom",
+                    NexusCodec.holderSet(Registries.ITEM).xmap(MatchedSet::new, MatchedSet::set),
+                    RegistryCodecs.homogeneousList(Registries.ITEM).xmap(MatchedSet::new, MatchedSet::set),
+                    ByteBufCodecs.holderSet(Registries.ITEM).map(MatchedSet::new, MatchedSet::set),
+                    List.of(new MatchedSet(new OrHolderSet<>(List.of(HolderSet.direct(List.of(ParityCases.STONE)), HolderSet.direct(List.of(ParityCases.DIRT))))))
             ),
             new Case<>(
                     "ofDfu(listing)",
@@ -712,6 +739,23 @@ public class ParityCases {
         @Override
         public int hashCode() {
             return FluidStack.hashFluidAndComponents(this.stack);
+        }
+    }
+    
+    public record MatchedSet(HolderSet<Item> set) {
+        
+        @Override
+        public boolean equals(@Nullable Object other) {
+            return other instanceof MatchedSet(HolderSet<Item> that) && this.set.getClass() == that.getClass() && MatchedSet.contentsOf(this.set).equals(MatchedSet.contentsOf(that));
+        }
+        
+        @Override
+        public int hashCode() {
+            return MatchedSet.contentsOf(this.set).hashCode();
+        }
+        
+        private static Set<Holder<Item>> contentsOf(HolderSet<Item> set) {
+            return set.stream().collect(Collectors.toSet());
         }
     }
 }

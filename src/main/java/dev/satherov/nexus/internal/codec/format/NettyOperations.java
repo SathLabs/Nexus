@@ -21,6 +21,7 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Contract;
 import org.jspecify.annotations.Nullable;
 
+import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 
 import java.nio.charset.StandardCharsets;
@@ -307,18 +308,16 @@ public record NettyOperations<B extends FriendlyByteBuf, A extends Access.Plain>
             throw CodecErrors.tooLong(limit, value.length());
         }
         
-        int reserved = VarInt.getByteSize(ByteBufUtil.utf8MaxBytes(value));
-        int start = this.requireWritable(reserved + ByteBufUtil.utf8MaxBytes(value), "a string").writerIndex();
-        this.buffer.writerIndex(start + reserved);
-        int length = ByteBufUtil.writeUtf8(this.buffer, value);
-        int size = VarInt.getByteSize(length);
-        if (size != reserved) {
-            this.buffer.setBytes(start + size, this.buffer, start + reserved, length);
+        // Netty would encode unpaired surrogates differently than vanilla if it wrote into the friendly byte buffer directly.
+        ByteBuf encoded = this.buffer.alloc().buffer(ByteBufUtil.utf8MaxBytes(value));
+        try {
+            int length = ByteBufUtil.writeUtf8(encoded, value);
+            this.requireWritable(VarInt.getByteSize(length) + length, "a string").writeVarInt(length);
+            this.buffer.writeBytes(encoded);
+        } finally {
+            encoded.release();
         }
         
-        this.buffer.writerIndex(start);
-        this.buffer.writeVarInt(length);
-        this.buffer.writerIndex(start + size + length);
         return this.buffer;
     }
     

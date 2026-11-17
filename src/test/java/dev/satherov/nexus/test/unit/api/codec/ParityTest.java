@@ -12,6 +12,7 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.RegistryOps;
 
 import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.JsonOps;
 import io.netty.buffer.ByteBufUtil;
@@ -23,6 +24,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
+import java.util.Optional;
 import java.util.stream.Stream;
 
 ///
@@ -36,6 +38,7 @@ public class ParityTest {
     private static final CodecFormat<Tag, Access.Registries> NBT = CodecFormat.NBT.withRegistries(ParityTest.REGISTRIES);
     private static final RegistryOps<JsonElement> JSON_OPS = RegistryOps.create(JsonOps.INSTANCE, ParityTest.REGISTRIES);
     private static final RegistryOps<Tag> NBT_OPS = RegistryOps.create(NbtOps.INSTANCE, ParityTest.REGISTRIES);
+    private static final int MAX_PREFIX = 512;
     
     public static Stream<Arguments> samples() {
         return ParityCases.ALL.stream().flatMap(parity -> parity.values().stream().map(value -> Arguments.of(Named.of(parity.name(), parity), value)));
@@ -51,6 +54,15 @@ public class ParityTest {
         Assertions.assertThat(nexus.toString()).isEqualTo(dfu.toString());
         Assertions.assertThat(parity.dfu().parse(ParityTest.JSON_OPS, nexus).getOrThrow()).isEqualTo(dfuRoundTrip);
         Assertions.assertThat(parity.codec().decode(ParityTest.JSON, dfu)).isEqualTo(dfuRoundTrip);
+    }
+    
+    @ParameterizedTest(name = "{0} [{index}]")
+    @MethodSource("samples")
+    public <T> void parsedJsonMatchesDfu(ParityCases.Case<T> parity, T value) {
+        JsonElement parsed = JsonParser.parseString(parity.dfu().encodeStart(ParityTest.JSON_OPS, value).getOrThrow().toString());
+        Optional<T> dfu = parity.dfu().parse(ParityTest.JSON_OPS, parsed).result();
+        
+        Assertions.assertThat(parity.codec().tryDecode(ParityTest.JSON, parsed).map(Optional::of).orElse(Optional.empty())).isEqualTo(dfu);
     }
     
     @ParameterizedTest(name = "{0} [{index}]")
@@ -74,10 +86,22 @@ public class ParityTest {
         parity.stream().encode(vanilla, value);
         
         Assertions.assertThat(ByteBufUtil.getBytes(nexus)).isEqualTo(ByteBufUtil.getBytes(vanilla));
-        Assertions.assertThat(parity.stream().decode(nexus)).isEqualTo(value);
+        Assertions.assertThat(parity.codec().decode(CodecFormat.netty(vanilla))).isEqualTo(parity.stream().decode(nexus));
         Assertions.assertThat(nexus.readableBytes()).isZero();
-        Assertions.assertThat(parity.codec().decode(CodecFormat.netty(vanilla))).isEqualTo(value);
         Assertions.assertThat(vanilla.readableBytes()).isZero();
+    }
+    
+    @ParameterizedTest(name = "{0} [{index}]")
+    @MethodSource("samples")
+    public <T> void nettyMatchesStreamCodecAfterAnyPrefix(ParityCases.Case<T> parity, T value) {
+        for (int prefix = 0; prefix <= ParityTest.MAX_PREFIX; prefix++) {
+            RegistryFriendlyByteBuf nexus = ParityTest.prefixed(prefix);
+            RegistryFriendlyByteBuf vanilla = ParityTest.prefixed(prefix);
+            parity.codec().encode(CodecFormat.netty(nexus), value);
+            parity.stream().encode(vanilla, value);
+            
+            Assertions.assertThat(ByteBufUtil.getBytes(nexus)).as("after a prefix of %d bytes", prefix).isEqualTo(ByteBufUtil.getBytes(vanilla));
+        }
     }
     
     @ParameterizedTest(name = "{0} [{index}]")
@@ -112,7 +136,27 @@ public class ParityTest {
         parity.stream().encode(vanilla, value);
         
         Assertions.assertThat(ByteBufUtil.getBytes(nexus)).isEqualTo(ByteBufUtil.getBytes(vanilla));
-        Assertions.assertThat(view.decode(vanilla)).isEqualTo(value);
+        Assertions.assertThat(view.decode(vanilla)).isEqualTo(parity.stream().decode(nexus));
         Assertions.assertThat(vanilla.readableBytes()).isZero();
+    }
+    
+    @ParameterizedTest(name = "{0} [{index}]")
+    @MethodSource("samples")
+    public <T> void streamViewMatchesStreamCodecAfterAnyPrefix(ParityCases.Case<T> parity, T value) {
+        StreamCodec<RegistryFriendlyByteBuf, T> view = parity.codec().asStream();
+        for (int prefix = 0; prefix <= ParityTest.MAX_PREFIX; prefix++) {
+            RegistryFriendlyByteBuf nexus = ParityTest.prefixed(prefix);
+            RegistryFriendlyByteBuf vanilla = ParityTest.prefixed(prefix);
+            view.encode(nexus, value);
+            parity.stream().encode(vanilla, value);
+            
+            Assertions.assertThat(ByteBufUtil.getBytes(nexus)).as("after a prefix of %d bytes", prefix).isEqualTo(ByteBufUtil.getBytes(vanilla));
+        }
+    }
+    
+    private static RegistryFriendlyByteBuf prefixed(int length) {
+        RegistryFriendlyByteBuf buffer = new RegistryFriendlyByteBuf(Unpooled.buffer(), ParityTest.REGISTRIES);
+        buffer.writeZero(length);
+        return buffer;
     }
 }
