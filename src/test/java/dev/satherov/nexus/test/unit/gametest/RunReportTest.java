@@ -350,6 +350,7 @@ public class RunReportTest {
                         Map.entry("nexus:component_filter_samples/ingredient_round_trips_over_the_network", Expected.passed()),
                         Map.entry("nexus:component_filter_samples/fluid_ingredient_round_trips_in_json", Expected.passed()),
                         Map.entry("nexus:component_filter_samples/fluid_ingredient_round_trips_over_the_network", Expected.passed()),
+                        Map.entry("nexus:component_filter_samples/stores_the_result_of_a_resource_or_a_fluid_stack", Expected.passed()),
                         Map.entry("nexus:memoized_component_map_samples/every_write_drops_the_stored_result", Expected.passed()),
                         Map.entry("nexus:memoized_component_map_samples/write_to_a_copy_is_seen_only_on_the_copy", Expected.passed()),
                         Map.entry("nexus:memoized_component_map_samples/every_filter_gets_its_own_result", Expected.passed()),

@@ -1,5 +1,8 @@
 package dev.satherov.nexus.test.game.api.component;
 
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
+
 import dev.satherov.nexus.api.component.Comparison;
 import dev.satherov.nexus.api.component.ComponentFilter;
 import dev.satherov.nexus.api.component.ComponentPath;
@@ -21,7 +24,9 @@ import net.minecraft.advancements.criterion.MinMaxBounds;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
 import net.minecraft.core.component.DataComponentExactPredicate;
+import net.minecraft.core.component.DataComponentGetter;
 import net.minecraft.core.component.DataComponentPatch;
+import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.component.predicates.DamagePredicate;
 import net.minecraft.core.component.predicates.DataComponentPredicate;
@@ -46,6 +51,7 @@ import net.minecraft.world.level.material.Fluids;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.serialization.JsonOps;
+import com.mojang.serialization.MapCodec;
 import io.netty.buffer.Unpooled;
 
 import org.assertj.core.api.Assertions;
@@ -86,6 +92,14 @@ public class ComponentFilterSamples {
 
     private static RegistryFriendlyByteBuf buffer(GameTestHelper helper) {
         return new RegistryFriendlyByteBuf(Unpooled.buffer(), helper.getLevel().registryAccess(), ConnectionType.NEOFORGE);
+    }
+
+    private static void assertThirdTestIsStored(String kind, DataComponentGetter holder, DataComponentType<?> component) {
+        CountingPredicate predicate = new CountingPredicate(component);
+        DataComponentPredicate.Type<CountingPredicate> type = new DataComponentPredicate.ConcreteType<>(MapCodec.unitCodec(predicate));
+        ComponentFilter filter = ComponentFilter.matching(type, predicate);
+        Assertions.assertThat(List.of(filter.test(holder), filter.test(holder), filter.test(holder))).as("results of the " + kind).containsExactly(true, true, true);
+        Assertions.assertThat(predicate.evaluations).as("evaluations of the " + kind).isEqualTo(2);
     }
 
     @ServerTest
@@ -176,6 +190,14 @@ public class ComponentFilterSamples {
         Assertions.assertThat(epic.test(ComponentFilterSamples.epicFluid(Fluids.WATER))).isTrue();
         Assertions.assertThat(rarity.test(ComponentFilterSamples.epicFluid(Fluids.WATER))).isTrue();
         Assertions.assertThat(rarity.test(new FluidStack(Fluids.WATER, 1_000))).isFalse();
+        helper.succeed();
+    }
+
+    @ServerTest
+    public static void storesTheResultOfAResourceOrAFluidStack(GameTestHelper helper) {
+        ComponentFilterSamples.assertThirdTestIsStored("item resource", ItemResource.of(ComponentFilterSamples.damagedSword(3)), DataComponents.DAMAGE);
+        ComponentFilterSamples.assertThirdTestIsStored("fluid resource", FluidResource.of(ComponentFilterSamples.epicFluid(Fluids.WATER)), DataComponents.RARITY);
+        ComponentFilterSamples.assertThirdTestIsStored("fluid stack", ComponentFilterSamples.epicFluid(Fluids.WATER), DataComponents.RARITY);
         helper.succeed();
     }
 
@@ -310,5 +332,18 @@ public class ComponentFilterSamples {
         FluidIngredient.STREAM_CODEC.encode(buffer, ingredient);
         Assertions.assertThat(FluidIngredient.STREAM_CODEC.decode(buffer)).isEqualTo(ingredient);
         helper.succeed();
+    }
+
+    @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
+    private static final class CountingPredicate implements DataComponentPredicate {
+
+        private final DataComponentType<?> component;
+        private int evaluations;
+
+        @Override
+        public boolean matches(DataComponentGetter components) {
+            this.evaluations++;
+            return components.has(this.component);
+        }
     }
 }
