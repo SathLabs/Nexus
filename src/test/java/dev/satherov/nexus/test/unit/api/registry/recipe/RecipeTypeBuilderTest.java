@@ -11,8 +11,10 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLConstructModEvent;
 
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.PlacementInfo;
@@ -29,6 +31,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.JsonOps;
+import io.netty.buffer.Unpooled;
 
 import org.assertj.core.api.Assertions;
 import org.jspecify.annotations.Nullable;
@@ -42,6 +45,7 @@ import java.util.Objects;
 public class RecipeTypeBuilderTest {
     
     private static final StructCodec<Probe, Access.Plain> CODEC = NexusCodec.struct("probe", NexusCodec.STRING.field("group", Probe::group), group -> new Probe(group, RecipeTypeBuilderTest.probe().value()));
+    private static final RegistryAccess.Frozen REGISTRIES = RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY);
     
     private static @Nullable RecipeTypeEntry<Probe> probe;
     
@@ -67,6 +71,18 @@ public class RecipeTypeBuilderTest {
         JsonElement json = codec.encodeStart(JsonOps.INSTANCE, new Probe("planks", probe.value())).getOrThrow();
         Assertions.assertThat(json).isEqualTo(JsonParser.parseString("{\"group\":\"planks\"}"));
         Assertions.assertThat(codec.parse(JsonOps.INSTANCE, json).getOrThrow()).isEqualTo(new Probe("planks", probe.value()));
+    }
+    
+    @Test
+    public void syncsTheRecipesWithTheCodec() {
+        RecipeHolder<Probe> holder = RecipeTypeBuilderTest.holder(new Probe("planks", RecipeTypeBuilderTest.probe().value()));
+        RegistryFriendlyByteBuf buffer = new RegistryFriendlyByteBuf(Unpooled.buffer(), RecipeTypeBuilderTest.REGISTRIES);
+        RecipeHolder.STREAM_CODEC.encode(buffer, holder);
+        RecipeHolder<?> synced = RecipeHolder.STREAM_CODEC.decode(buffer);
+        
+        Assertions.assertThat(synced.id()).isEqualTo(holder.id());
+        Assertions.assertThat(synced.value()).isEqualTo(holder.value());
+        Assertions.assertThat(buffer.readableBytes()).isZero();
     }
     
     @Test
