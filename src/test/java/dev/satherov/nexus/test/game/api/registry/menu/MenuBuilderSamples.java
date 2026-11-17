@@ -3,6 +3,8 @@ package dev.satherov.nexus.test.game.api.registry.menu;
 import dev.satherov.nexus.Nexus;
 import dev.satherov.nexus.api.registry.Registrations;
 import dev.satherov.nexus.api.registry.menu.MenuEntry;
+import dev.satherov.nexus.gametest.api.client.Client;
+import dev.satherov.nexus.gametest.api.client.ClientTest;
 import dev.satherov.nexus.gametest.api.server.ServerTest;
 
 import net.neoforged.bus.api.SubscribeEvent;
@@ -10,9 +12,11 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLConstructModEvent;
 import net.neoforged.neoforge.network.payload.AdvancedOpenScreenPayload;
 
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.Connection;
 import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.PacketFlow;
 import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
@@ -22,11 +26,13 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
+import net.minecraft.world.entity.player.Inventory;
 
 import com.mojang.authlib.GameProfile;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFutureListener;
 
+import org.assertj.core.api.Assertions;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -35,11 +41,13 @@ import java.util.Objects;
 import java.util.UUID;
 
 ///
-/// Checks the menu types that menu builders register, the title their menus open under, and the extra data they write.
+/// Checks the menu types that menu builders register, the title their menus open under, the extra data they write, and the screens they open on the client.
 ///
 public class MenuBuilderSamples {
 
     private static @Nullable MenuEntry<NumberMenu> number;
+    private static @Nullable MenuEntry<NumberMenu> screened;
+    private static boolean clientRequested;
 
     @ServerTest
     public static void namesTheTitleAfterItsKey(GameTestHelper helper) {
@@ -91,6 +99,24 @@ public class MenuBuilderSamples {
         helper.succeed();
     }
 
+    @ServerTest
+    public static void neverRequestsTheScreenOnADedicatedServer(GameTestHelper helper) {
+        helper.assertFalse(MenuBuilderSamples.clientRequested, "A screen was requested on a dedicated server");
+        helper.succeed();
+    }
+
+    @ClientTest
+    public static void opensTheScreenOfTheMenuOnTheClient(Client client) {
+        MenuEntry<NumberMenu> screened = Objects.requireNonNull(MenuBuilderSamples.screened);
+        client.joinWorld();
+        ServerLevel level = client.serverLevel();
+        ServerPlayer player = level.players().getFirst();
+        level.getServer().execute(() -> screened.open(player, (id, _, _) -> new NumberMenu(screened.get(), id, 0)));
+        client.until("the screen of the menu to open", () -> client.screen() instanceof NumberScreen);
+        Assertions.assertThat(Objects.requireNonNull(client.screen()).getTitle()).isEqualTo(screened.component());
+        client.leaveWorld();
+    }
+
     private static ServerPlayer createPlayer(GameTestHelper helper, List<Packet<?>> sent) {
         ServerLevel level = helper.getLevel();
         ServerPlayer player = new ServerPlayer(level.getServer(), level, new GameProfile(UUID.randomUUID(), "menu_builder_samples"), ClientInformation.createDefault());
@@ -105,6 +131,13 @@ public class MenuBuilderSamples {
         return player;
     }
 
+    private static final class NumberScreen extends AbstractContainerScreen<NumberMenu> {
+
+        private NumberScreen(NumberMenu menu, Inventory inventory, Component title) {
+            super(menu, inventory, title);
+        }
+    }
+
     @EventBusSubscriber(modid = Nexus.MOD_ID)
     public static final class Registered {
 
@@ -113,6 +146,14 @@ public class MenuBuilderSamples {
             Registrations registrations = Nexus.getMod().getRegistrations();
             MenuBuilderSamples.number = registrations
                     .menu("menu_builder_samples_number", "Number Sample", (id, _, buffer) -> new NumberMenu(Objects.requireNonNull(MenuBuilderSamples.number).get(), id, buffer.readVarInt()))
+                    .register();
+
+            MenuBuilderSamples.screened = registrations
+                    .menu("menu_builder_samples_screened", "Screened Sample", (id, _, _) -> new NumberMenu(Objects.requireNonNull(MenuBuilderSamples.screened).get(), id, 0))
+                    .screen(() -> {
+                        MenuBuilderSamples.clientRequested = true;
+                        return NumberScreen::new;
+                    })
                     .register();
         }
     }
