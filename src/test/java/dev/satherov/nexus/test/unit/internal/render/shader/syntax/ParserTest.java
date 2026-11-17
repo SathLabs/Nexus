@@ -68,18 +68,24 @@ public class ParserTest {
     @Test
     public void readsTheDeclarationsThePipelineHasToKnow() {
         Assertions.assertThat(ParserTest.parse(
-                "layout(location = 3) in vec2 ParserTestA;",
+                "in vec2 ParserTestA;",
                 "flat out int parserTestB;",
                 "layout(std140) uniform ParserTestC {",
                 "    vec4 ParserTestColor;",
                 "};",
                 "uniform sampler2D ParserTestD;"
         )).containsExactly(
-                new Item.Input("vec2", "ParserTestA", "layout(location = 3) in vec2 ParserTestA;", 1),
+                new Item.Input("vec2", "ParserTestA", "in vec2 ParserTestA;", 1),
                 new Item.Output("flat out int parserTestB;", "flat in int parserTestB;", 2),
                 new Item.Block("ParserTestC", "layout(std140) uniform ParserTestC {\n    vec4 ParserTestColor;\n};", 3),
                 new Item.Sampler("ParserTestD", "uniform sampler2D ParserTestD;", 6)
         );
+    }
+    
+    @Test
+    public void readsASamplerWithAPrecisionQualifier() {
+        Assertions.assertThat(ParserTest.parse("uniform highp sampler2D ParserTestA;"))
+                .containsExactly(new Item.Sampler("ParserTestA", "uniform highp sampler2D ParserTestA;", 1));
     }
     
     @Test
@@ -133,7 +139,10 @@ public class ParserTest {
             "float parserTestA;\n#endif",
             "float parserTestA;\nfloat parserTestB",
             "float parserTestA;\nin vec4 ParserTestB, ParserTestC;",
-            "float parserTestA;\nlayout(location = 0) in highp vec4 ParserTestB;"
+            "float parserTestA;\nlayout(location = 0) in highp vec4 ParserTestB;",
+            "float parserTestA;\nlayout(location = 3) in vec2 ParserTestB;",
+            "float parserTestA;\nuniform sampler2D ParserTestB, ParserTestC;",
+            "float parserTestA;\nuniform highp sampler2D ParserTestB[2];"
     })
     public void throwsNamingTheLine(String text) {
         Assertions.assertThatIllegalArgumentException()

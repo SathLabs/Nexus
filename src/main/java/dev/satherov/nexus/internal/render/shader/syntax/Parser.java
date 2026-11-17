@@ -13,6 +13,7 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 ///
 /// A recursive descent parser for the file-scope items of a program file.
@@ -20,6 +21,11 @@ import java.util.List;
 @ApiStatus.Internal
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class Parser {
+    
+    ///
+    /// The precision qualifiers of GLSL.
+    ///
+    private static final Set<String> PRECISION_QUALIFIERS = Set.of("lowp", "mediump", "highp");
     
     ///
     /// The identifier of the program file, used in the failure messages.
@@ -138,7 +144,9 @@ public final class Parser {
     /// - If a conditional has no `#endif`.
     /// - If an `#endif` has no opener.
     /// - If an item ends neither in `;` nor in a function body.
-    /// - If a declaration starts with `in` after its layout qualifier and is not `in <type> <name>;`.
+    /// - If a declaration starts with `in` after a layout qualifier.
+    /// - If a declaration starts with `in` and is not `in <type> <name>;`.
+    /// - If a declaration starts with `uniform` and a sampler type after its layout and precision qualifiers and is not `uniform <sampler type> <name>;`.
     ///
     public static @Unmodifiable List<Item> parse(Identifier program, String text) {
         Parser parser = new Parser(program, text, Lexer.lex(program, text));
@@ -272,25 +280,32 @@ public final class Parser {
     /// Creates the item of the declaration from the given token up to the `;` that was read last.
     ///
     /// The item is the first of these that fits the declaration after its layout qualifier, if it has one:
-    /// - [Item.Input]: `in <type> <name>;`.
+    /// - [Item.Input]: `in <type> <name>;` without a layout qualifier.
     /// - [Item.Function]: A function head followed by `;`.
     /// - [Item.Output]: An `out` among the leading words.
     /// - [Item.Block]: `uniform <name> {`.
-    /// - [Item.Sampler]: `uniform <sampler type> <name>;` without a layout qualifier.
+    /// - [Item.Sampler]: `uniform <sampler type> <name>;`, which may have a precision qualifier before the type.
     /// - [Item.Declaration]: Anything else.
     ///
     /// @param start The index of the first token of the declaration.
     ///
     /// @return The item.
     ///
-    /// @throws IllegalArgumentException If the declaration starts with `in` and is not `in <type> <name>;`.
+    /// @throws IllegalArgumentException - If the declaration starts with `in` after a layout qualifier.
+    /// - If the declaration starts with `in` and is not `in <type> <name>;`.
+    /// - If the declaration starts with `uniform` and a sampler type and is not `uniform <sampler type> <name>;`.
     ///
     private Item classify(int start) {
         List<Token> declaration = this.tokens.subList(start, this.position);
         Token first = declaration.getFirst();
         String text = this.textFrom(first);
-        List<Token> withoutLayout = declaration.subList(Parser.afterLayout(declaration), declaration.size());
+        int layoutEnd = Parser.afterLayout(declaration);
+        List<Token> withoutLayout = declaration.subList(layoutEnd, declaration.size());
         if (withoutLayout.getFirst().text().equals("in")) {
+            if (layoutEnd > 0) {
+                throw new IllegalArgumentException(StringUtils.format("The input '%s' on line '%d' of the program '%s' has a layout qualifier", text, first.line(), this.program));
+            }
+            
             if (withoutLayout.size() != 4 || withoutLayout.get(1).kind() != Token.Kind.WORD || withoutLayout.get(2).kind() != Token.Kind.WORD) {
                 throw new IllegalArgumentException(StringUtils.format("Could not read the input '%s' on line '%d' of the program '%s'", text, first.line(), this.program));
             }
@@ -322,13 +337,15 @@ public final class Parser {
             return new Item.Block(withoutLayout.get(1).text(), text, first.line());
         }
         
-        if (
-                declaration.size() == 4 &&
-                declaration.getFirst().text().equals("uniform") &&
-                Parser.isSamplerType(declaration.get(1).text()) &&
-                declaration.get(2).kind() == Token.Kind.WORD
-        ) {
-            return new Item.Sampler(declaration.get(2).text(), text, first.line());
+        if (withoutLayout.getFirst().text().equals("uniform")) {
+            int type = Parser.PRECISION_QUALIFIERS.contains(withoutLayout.get(1).text()) ? 2 : 1;
+            if (Parser.isSamplerType(withoutLayout.get(type).text())) {
+                if (withoutLayout.size() != type + 3 || withoutLayout.get(type + 1).kind() != Token.Kind.WORD) {
+                    throw new IllegalArgumentException(StringUtils.format("Could not read the sampler '%s' on line '%d' of the program '%s'", text, first.line(), this.program));
+                }
+                
+                return new Item.Sampler(withoutLayout.get(type + 1).text(), text, first.line());
+            }
         }
         
         return new Item.Declaration(text, first.line());
