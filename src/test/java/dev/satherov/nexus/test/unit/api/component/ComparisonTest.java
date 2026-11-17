@@ -146,12 +146,23 @@ public class ComparisonTest {
     
     @ParameterizedTest
     @EnumSource(value = Comparison.Operator.class, names = { "EQUAL", "NOT_EQUAL" })
-    public void failsANumberOrTextAgainstAFlag(Comparison.Operator operator) {
+    public void failsTextAgainstAFlag(Comparison.Operator operator) {
         Comparison comparison = new Comparison(operator, new Comparison.Literal.Flag(true));
-        Assertions.assertThat(comparison.test(1.0D)).isFalse();
-        Assertions.assertThat(comparison.test(0.0D)).isFalse();
         Assertions.assertThat(comparison.test("true")).isFalse();
+        Assertions.assertThat(comparison.test("1")).isFalse();
         Assertions.assertThat(comparison.test(Identifier.withDefaultNamespace("true"))).isFalse();
+    }
+    
+    @Test
+    public void comparesANumberWithAFlagAsOneOrZero() {
+        Assertions.assertThat(new Comparison(Comparison.Operator.EQUAL, new Comparison.Literal.Flag(true)).test(1.0D)).isTrue();
+        Assertions.assertThat(new Comparison(Comparison.Operator.EQUAL, new Comparison.Literal.Flag(true)).test(0.0D)).isFalse();
+        Assertions.assertThat(new Comparison(Comparison.Operator.EQUAL, new Comparison.Literal.Flag(true)).test(2.0D)).isFalse();
+        Assertions.assertThat(new Comparison(Comparison.Operator.EQUAL, new Comparison.Literal.Flag(false)).test(0.0D)).isTrue();
+        Assertions.assertThat(new Comparison(Comparison.Operator.EQUAL, new Comparison.Literal.Flag(false)).test(-0.0D)).isTrue();
+        Assertions.assertThat(new Comparison(Comparison.Operator.NOT_EQUAL, new Comparison.Literal.Flag(false)).test(0.0D)).isFalse();
+        Assertions.assertThat(new Comparison(Comparison.Operator.NOT_EQUAL, new Comparison.Literal.Flag(false)).test(2.0D)).isTrue();
+        Assertions.assertThat(new Comparison(Comparison.Operator.EQUAL, new Comparison.Literal.Flag(true)).test(IntTag.valueOf(1))).isTrue();
     }
     
     @ParameterizedTest
@@ -186,7 +197,7 @@ public class ComparisonTest {
     
     @Test
     public void comparesOnlyByteTagsAsFlags() {
-        Assertions.assertThat(new Comparison(Comparison.Operator.EQUAL, new Comparison.Literal.Flag(true)).test(IntTag.valueOf(1))).isFalse();
+        Assertions.assertThat(new Comparison(Comparison.Operator.EQUAL, new Comparison.Literal.Flag(true)).test(IntTag.valueOf(2))).isFalse();
         Assertions.assertThat(new Comparison(Comparison.Operator.EQUAL, new Comparison.Literal.Flag(true)).test(StringTag.valueOf("true"))).isFalse();
     }
     

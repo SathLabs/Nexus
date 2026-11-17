@@ -51,7 +51,8 @@ public record Comparison(Operator operator, Literal literal) {
     ///
     /// Tests the given number against the literal.
     ///
-    /// Fails if the literal is not a number.
+    /// Fails if the literal is text.
+    /// If the literal is a flag, it's compared as `1` or `0`, the same way [#test(boolean)] compares a flag with a number.
     /// `-0` equals `0`, and `NaN` passes only [Operator#NOT_EQUAL].
     ///
     /// @param value The number on the left side of the operator.
@@ -59,10 +60,17 @@ public record Comparison(Operator operator, Literal literal) {
     /// @return `true` if the number passes.
     ///
     public boolean test(double value) {
-        if (!(this.literal instanceof Literal.Numeric(double number))) {
-            return false;
-        }
-        
+        return switch (this.literal) {
+            case Literal.Numeric(double number) -> this.passes(value, number);
+            case Literal.Flag(boolean flag) -> this.passes(value, flag ? 1.0D : 0.0D);
+            case Literal.Text _ -> false;
+        };
+    }
+    
+    ///
+    /// Applies the operator to the given number against the given number of the literal.
+    ///
+    private boolean passes(double value, double number) {
         return switch (this.operator) {
             case EQUAL -> value == number;
             case NOT_EQUAL -> value != number;
