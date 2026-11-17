@@ -74,6 +74,13 @@ public enum Scenes {
     }
     
     ///
+    /// Makes every scene rebuild its GPU buffers before its next draw.
+    ///
+    public void invalidate() {
+        this.scenes.forEach(Scene::invalidate);
+    }
+    
+    ///
     /// Ends every scene.
     ///
     public void end() {

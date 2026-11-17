@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -60,6 +61,11 @@ public final class SceneMesh implements AutoCloseable {
     /// The order the render types of a group are drawn in, lines last.
     ///
     private static final Comparator<RenderType> DRAW_ORDER = Comparator.comparing(type -> type.mode() == VertexFormat.Mode.LINES);
+    
+    ///
+    /// The distance in blocks that the camera may move away from the camera position of the last rebuild before the vertices lose precision.
+    ///
+    private static final double REBUILD_DISTANCE = 512.0D;
     
     ///
     /// The groups of buffers, in the order they are drawn.
@@ -126,6 +132,19 @@ public final class SceneMesh implements AutoCloseable {
     }
     
     ///
+    /// If the vertices of the drawings that follow no entity lose too much precision at the given camera position.
+    ///
+    /// They are written relative to the camera position of the last rebuild.
+    ///
+    /// @param camera The position of the camera.
+    ///
+    /// @return `true` if the mesh should be rebuilt before it is drawn.
+    ///
+    public boolean isFarFrom(Vec3 camera) {
+        return !this.groups.isEmpty() && !this.groups.getFirst().origin().closerThan(camera, SceneMesh.REBUILD_DISTANCE);
+    }
+    
+    ///
     /// Draws every buffer, each group at its interpolated origin, through one render pass per render target that the render types draw into.
     ///
     /// The shape render types draw into the [PackOverlay], which is the main target unless a shader pack is in use.
@@ -138,6 +157,7 @@ public final class SceneMesh implements AutoCloseable {
     public void draw(PoseStack pose, float partialTick) {
         Map<RenderTarget, List<List<Buffer>>> drawnByTarget = new LinkedHashMap<>();
         Map<VertexFormat.Mode, Integer> indexCounts = new EnumMap<>(VertexFormat.Mode.class);
+        Map<RenderType, Map<String, RenderSetup.TextureAndSampler>> texturesByType = new HashMap<>();
         for (int i = 0; i < this.groups.size(); i++) {
             for (Buffer buffer : this.groups.get(i).buffers()) {
                 if (Programs.isBroken(buffer.type().pipeline())) {
@@ -147,6 +167,8 @@ public final class SceneMesh implements AutoCloseable {
                 List<List<Buffer>> drawn = drawnByTarget.computeIfAbsent(buffer.type().outputTarget().getRenderTarget(), _ -> this.emptyGroups());
                 drawn.get(i).add(buffer);
                 indexCounts.merge(buffer.type().mode(), buffer.indexCount(), Math::max);
+                // Looking up a missing texture loads and uploads it, which isn't allowed inside an open render pass, so we look up every one here first.
+                texturesByType.computeIfAbsent(buffer.type(), ShapePipelines::getTextures);
             }
         }
         
@@ -172,7 +194,7 @@ public final class SceneMesh implements AutoCloseable {
         
         modelView.popMatrix();
         
-        drawnByTarget.forEach((target, drawn) -> SceneMesh.drawOnto(target, transforms, drawn));
+        drawnByTarget.forEach((target, drawn) -> SceneMesh.drawOnto(target, transforms, texturesByType, drawn));
     }
     
     ///
@@ -192,11 +214,12 @@ public final class SceneMesh implements AutoCloseable {
     ///
     /// Draws the given buffers through one render pass on the given target.
     ///
-    /// @param target     The render target to draw onto.
-    /// @param transforms The transforms of the groups, in the order of the groups.
-    /// @param drawn      The buffers of each group, in the order of the groups.
+    /// @param target         The render target to draw onto.
+    /// @param transforms     The transforms of the groups, in the order of the groups.
+    /// @param texturesByType The textures of each render type by sampler name.
+    /// @param drawn          The buffers of each group, in the order of the groups.
     ///
-    private static void drawOnto(RenderTarget target, List<GpuBufferSlice> transforms, List<List<Buffer>> drawn) {
+    private static void drawOnto(RenderTarget target, List<GpuBufferSlice> transforms, Map<RenderType, Map<String, RenderSetup.TextureAndSampler>> texturesByType, List<List<Buffer>> drawn) {
         //noinspection DataFlowIssue Yes, target#getColorTextureView might be null, but only after the buffer has already been destroyed, so it doesn't matter.
         try (RenderPass pass = RenderSystem.getDevice()
                 .createCommandEncoder()
@@ -207,7 +230,7 @@ public final class SceneMesh implements AutoCloseable {
                 for (Buffer buffer : drawn.get(i)) {
                     RenderSystem.AutoStorageIndexBuffer indices = RenderSystem.getSequentialBuffer(buffer.type().mode());
                     pass.setPipeline(buffer.type().pipeline());
-                    for (Map.Entry<String, RenderSetup.TextureAndSampler> texture : ShapePipelines.getTextures(buffer.type()).entrySet()) {
+                    for (Map.Entry<String, RenderSetup.TextureAndSampler> texture : texturesByType.getOrDefault(buffer.type(), Map.of()).entrySet()) {
                         pass.bindTexture(texture.getKey(), texture.getValue().textureView(), texture.getValue().sampler());
                     }
                     

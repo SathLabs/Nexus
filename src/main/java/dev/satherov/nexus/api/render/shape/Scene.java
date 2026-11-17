@@ -207,9 +207,24 @@ public final class Scene {
     }
     
     ///
+    /// Makes the scene rebuild its GPU buffers before its next draw.
+    ///
+    /// Works while the client is in no level, since the resources may reload outside of one.
+    ///
+    /// Should only ever be called by Nexus itself.
+    ///
+    /// @throws IllegalStateException If called off the client thread.
+    ///
+    @ApiStatus.Internal
+    public void invalidate() {
+        this.checkThread();
+        this.changed = true;
+    }
+    
+    ///
     /// Draws every drawing and its labels.
     ///
-    /// If a drawing was added, changed, or removed since the last frame, the GPU buffers will be rebuilt first.
+    /// If a drawing was added, changed, or removed since the last frame, or the camera is far from where the buffers were last rebuilt, the GPU buffers will be rebuilt first.
     ///
     /// Should only ever be called by Nexus itself.
     ///
@@ -220,13 +235,13 @@ public final class Scene {
     @ApiStatus.Internal
     public void draw(PoseStack pose, float partialTick, MultiBufferSource.BufferSource buffers) {
         this.checkUsable();
-        if (this.changed) {
+        Vec3 camera = Minecraft.getInstance().gameRenderer.getMainCamera().position();
+        if (this.changed || this.mesh.isFarFrom(camera)) {
             this.mesh.rebuild(this.drawings);
             this.changed = false;
         }
         
         this.mesh.draw(pose, partialTick);
-        Vec3 camera = Minecraft.getInstance().gameRenderer.getMainCamera().position();
         for (Drawing drawing : this.drawings) {
             drawing.drawLabels(pose, camera, partialTick, buffers);
         }
