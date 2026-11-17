@@ -5,6 +5,7 @@ import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.codec.format.CodecFormat;
 import dev.satherov.nexus.api.codec.key.MapKey;
 import dev.satherov.nexus.api.codec.result.CodecError;
+import dev.satherov.nexus.api.codec.result.CodecResult;
 import dev.satherov.nexus.api.codec.result.NexusCodecException;
 import dev.satherov.nexus.api.codec.struct.StructCodec;
 
@@ -179,6 +180,27 @@ public class CollectionsTest {
         Assertions.assertThat(CollectionsTest.errors(() -> NexusCodec.mapOf(MapKey.STRING, NexusCodec.INT, Integer.MAX_VALUE).decode(CodecFormat.netty(map))))
                 .singleElement()
                 .satisfies(error -> Assertions.assertThat(error.message()).contains("end of the buffer"));
+    }
+    
+    @Test
+    public void refusesNegativeCountBeforeReadingAnyElement() {
+        int[] count = { 0xFF, 0xFF, 0xFF, 0xFF, 0x0F };
+        
+        CollectionsTest.assertLimit(CollectionsTest.refusal(NexusCodec.INT.list(), count), 32767, -1);
+        CollectionsTest.assertLimit(CollectionsTest.refusal(NexusCodec.INT.list(Integer.MAX_VALUE), count), Integer.MAX_VALUE, -1);
+        CollectionsTest.assertLimit(CollectionsTest.refusal(NexusCodec.STRING.set(), count), 32767, -1);
+        CollectionsTest.assertLimit(CollectionsTest.refusal(NexusCodec.STRING.set(Integer.MAX_VALUE), count), Integer.MAX_VALUE, -1);
+        CollectionsTest.assertLimit(CollectionsTest.refusal(NexusCodec.mapOf(MapKey.STRING, NexusCodec.INT), count), 32767, -1);
+        CollectionsTest.assertLimit(CollectionsTest.refusal(NexusCodec.mapOf(MapKey.STRING, NexusCodec.INT, Integer.MAX_VALUE), count), Integer.MAX_VALUE, -1);
+    }
+    
+    @Test
+    public void refusesCountWhoseVarIntRunsPastFiveBytes() {
+        int[] count = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+        
+        Assertions.assertThat(CollectionsTest.refusal(NexusCodec.INT.list(Integer.MAX_VALUE), count).message()).doesNotContain("end of the buffer");
+        Assertions.assertThat(CollectionsTest.refusal(NexusCodec.STRING.set(Integer.MAX_VALUE), count).message()).doesNotContain("end of the buffer");
+        Assertions.assertThat(CollectionsTest.refusal(NexusCodec.mapOf(MapKey.STRING, NexusCodec.INT, Integer.MAX_VALUE), count).message()).doesNotContain("end of the buffer");
     }
     
     @Test
@@ -416,6 +438,14 @@ public class CollectionsTest {
     private static void assertLimit(CodecError error, int limit, int count) {
         Assertions.assertThat(error.path()).isEmpty();
         Assertions.assertThat(error.message()).contains(String.valueOf(limit), String.valueOf(count)).doesNotContain("end of the buffer");
+    }
+    
+    private static CodecError refusal(NexusCodec<?, Access.Plain> codec, int... bytes) {
+        List<CodecError> errors = CollectionsTest.errors(() -> codec.decode(CodecFormat.netty(CollectionsTest.buffer(bytes))));
+        
+        Assertions.assertThat(codec.tryDecode(CodecFormat.netty(CollectionsTest.buffer(bytes)))).isInstanceOf(CodecResult.Failure.class);
+        Assertions.assertThat(errors).hasSize(1);
+        return errors.getFirst();
     }
     
     private static <K> void assertKey(MapKey<K, Access.Plain> key, K value, String text, int... keyBytes) {
