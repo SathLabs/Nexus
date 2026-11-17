@@ -7,6 +7,7 @@ import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.codec.format.BufferFormat;
 import dev.satherov.nexus.api.codec.format.CodecFormat;
+import dev.satherov.nexus.api.codec.key.KeyedCodec;
 import dev.satherov.nexus.api.codec.result.CodecResult;
 import dev.satherov.nexus.api.codec.result.NexusCodecException;
 import dev.satherov.nexus.api.codec.struct.StructField;
@@ -191,6 +192,14 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     @Override
     public <Z> StructField<Z, Optional<T>, A> optionalField(String name, Function<Z, Optional<T>> getter) {
         return new Structs.BoundField<>(Structs.optional(this), name, getter, Optional.empty());
+    }
+    
+    ///
+    /// Creates a keyed codec of this codec.
+    ///
+    @Override
+    public KeyedCodec<T, A> keyed(String key, T fallback) {
+        return new KeyedCodec<>(this, key, fallback);
     }
     
     ///

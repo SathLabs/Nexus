@@ -3,103 +3,114 @@ package dev.satherov.nexus.test.unit.api.codec;
 import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.codec.format.CodecFormat;
 import dev.satherov.nexus.api.codec.key.MapKey;
+import dev.satherov.nexus.api.codec.result.CodecResult;
+import dev.satherov.nexus.api.codec.struct.StructCodec;
+import dev.satherov.nexus.internal.codec.Traversal;
 
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.reflect.Field;
-import java.time.DayOfWeek;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.CodeElement;
+import java.lang.classfile.CodeModel;
+import java.lang.classfile.MethodModel;
+import java.lang.classfile.Opcode;
+import java.lang.classfile.instruction.FieldInstruction;
+import java.lang.classfile.instruction.InvokeInstruction;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.stream.Stream;
 
 ///
-/// Checks that every constant of [NexusCodec] is set if a [MapKey] is used before any codec.
+/// Checks that no codec class can initialize [NexusCodec], which would leave its constants `null` if a [MapKey] is used first and could deadlock two threads.
 ///
 public class InitOrderTest {
     
+    private static final String NEXUS_CODEC = "dev/satherov/nexus/api/codec/NexusCodec";
+    
+    private static final List<Class<?>> PACKAGES = List.of(Traversal.class, MapKey.class, CodecFormat.class, StructCodec.class, CodecResult.class);
+    
     @Test
-    public void stringKeyFirstLeavesEveryConstantSet() throws ReflectiveOperationException {
-        IsolatedLoader loader = new IsolatedLoader();
-        Object key = loader.isolated(MapKey.class).getField("STRING").get(null);
-        
-        Assertions.assertThat(loader.unsetConstants()).isEmpty();
-        Assertions.assertThat(loader.roundTrip(key, Map.of("count", 1))).isEqualTo(Map.of("count", 1));
+    public void nexusCodecDeclaresNoInstanceMethodWithABody() {
+        Assertions.assertThat(NexusCodec.class.getDeclaredMethods())
+                .filteredOn(InitOrderTest::hasInstanceBody)
+                .isEmpty();
     }
     
     @Test
-    public void enumKeyFirstLeavesEveryConstantSet() throws ReflectiveOperationException {
-        IsolatedLoader loader = new IsolatedLoader();
-        Object key = loader.isolated(MapKey.class).getMethod("enumOf", Class.class).invoke(null, DayOfWeek.class);
+    public void noCodecClassReadsOrCallsTheStaticMembersOfNexusCodec() throws IOException, URISyntaxException {
+        List<String> classFiles = new ArrayList<>();
+        for (Class<?> member : InitOrderTest.PACKAGES) {
+            classFiles.addAll(InitOrderTest.classFilesBeside(member));
+        }
         
-        Assertions.assertThat(loader.unsetConstants()).isEmpty();
-        Assertions.assertThat(loader.roundTrip(key, Map.of(DayOfWeek.MONDAY, 1))).isEqualTo(Map.of(DayOfWeek.MONDAY, 1));
+        List<String> offenders = new ArrayList<>();
+        for (String classFile : classFiles) {
+            if (InitOrderTest.initializesNexusCodec(classFile)) {
+                offenders.add(classFile);
+            }
+        }
+        
+        Assertions.assertThat(classFiles).contains(
+                "dev/satherov/nexus/internal/codec/Scalars.class",
+                "dev/satherov/nexus/internal/codec/CollectionCodecs.class",
+                "dev/satherov/nexus/internal/codec/vanilla/VanillaTypes.class",
+                "dev/satherov/nexus/api/codec/key/MapKey.class"
+        );
+        Assertions.assertThat(offenders).isEmpty();
     }
     
-    private static final class IsolatedLoader extends ClassLoader {
-        
-        private static final List<String> ISOLATED = List.of("dev.satherov.nexus.api.", "dev.satherov.nexus.internal.");
-        
-        private IsolatedLoader() {
-            super(InitOrderTest.class.getClassLoader());
+    private static boolean hasInstanceBody(Method method) {
+        return !Modifier.isStatic(method.getModifiers()) && !Modifier.isAbstract(method.getModifiers());
+    }
+    
+    private static List<String> classFilesBeside(Class<?> member) throws IOException, URISyntaxException {
+        String resource = member.getName().replace('.', '/') + ".class";
+        URL url = Objects.requireNonNull(InitOrderTest.class.getClassLoader().getResource(resource), resource);
+        Path directory = Path.of(url.toURI()).getParent();
+        String prefix = resource.substring(0, resource.lastIndexOf('/') + 1);
+        try (Stream<Path> files = Files.walk(directory)) {
+            return files.filter(file -> file.getFileName().toString().endsWith(".class"))
+                    .map(file -> prefix + directory.relativize(file).toString().replace(File.separatorChar, '/'))
+                    .toList();
+        }
+    }
+    
+    private static boolean initializesNexusCodec(String classFile) throws IOException {
+        byte[] bytes;
+        try (InputStream stream = Objects.requireNonNull(InitOrderTest.class.getClassLoader().getResourceAsStream(classFile), classFile)) {
+            bytes = stream.readAllBytes();
         }
         
-        private Class<?> isolated(Class<?> type) throws ClassNotFoundException {
-            Class<?> isolated = this.loadClass(type.getName());
-            Assertions.assertThat(isolated).isNotSameAs(type);
-            return isolated;
-        }
-        
-        private List<String> unsetConstants() throws ReflectiveOperationException {
-            List<String> unset = new ArrayList<>();
-            for (Field constant : this.isolated(NexusCodec.class).getFields()) {
-                if (constant.get(null) == null) {
-                    unset.add(constant.getName());
-                }
+        for (MethodModel method : ClassFile.of().parse(bytes).methods()) {
+            Optional<CodeModel> code = method.code();
+            if (code.isEmpty()) {
+                continue;
             }
             
-            return unset;
-        }
-        
-        private Object roundTrip(Object key, Map<?, ?> map) throws ReflectiveOperationException {
-            Class<?> codecType = this.isolated(NexusCodec.class);
-            Class<?> formatType = this.isolated(CodecFormat.class);
-            Object codec = codecType.getMethod("mapOf", this.isolated(MapKey.class), codecType).invoke(null, key, codecType.getField("INT").get(null));
-            Object json = formatType.getField("JSON").get(null);
-            Object encoded = codecType.getMethod("encode", formatType, Object.class).invoke(codec, json, map);
-            return codecType.getMethod("decode", formatType, Object.class).invoke(codec, json, encoded);
-        }
-        
-        @Override
-        protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
-            if (IsolatedLoader.ISOLATED.stream().noneMatch(name::startsWith)) {
-                return super.loadClass(name, resolve);
-            }
-            
-            synchronized (this.getClassLoadingLock(name)) {
-                Class<?> loaded = this.findLoadedClass(name);
-                if (loaded == null) {
-                    loaded = this.define(name);
+            for (CodeElement element : code.get()) {
+                String owner = switch (element) {
+                    case FieldInstruction field when field.opcode() == Opcode.GETSTATIC || field.opcode() == Opcode.PUTSTATIC -> field.owner().asInternalName();
+                    case InvokeInstruction invoke when invoke.opcode() == Opcode.INVOKESTATIC -> invoke.owner().asInternalName();
+                    default -> "";
+                };
+                if (owner.equals(InitOrderTest.NEXUS_CODEC)) {
+                    return true;
                 }
-                
-                if (resolve) {
-                    this.resolveClass(loaded);
-                }
-                
-                return loaded;
             }
         }
         
-        private Class<?> define(String name) throws ClassNotFoundException {
-            try (InputStream stream = this.getParent().getResourceAsStream(name.replace('.', '/') + ".class")) {
-                if (stream == null) throw new ClassNotFoundException(name);
-                byte[] bytes = stream.readAllBytes();
-                return this.defineClass(name, bytes, 0, bytes.length);
-            } catch (IOException failure) {
-                throw new ClassNotFoundException(name, failure);
-            }
-        }
+        return false;
     }
 }

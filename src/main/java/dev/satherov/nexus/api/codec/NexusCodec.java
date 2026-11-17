@@ -912,6 +912,9 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// In JSON and NBT, if neither codec can read the input, the failure will hold the errors of both, the left ones first.
     ///
+    /// In JSON and NBT, a number that is out of range for the left codec will be read by the right codec.
+    /// DFU's left codec would narrow it instead.
+    ///
     /// @param left  The codec of the left side.
     /// @param right The codec of the right side.
     ///
@@ -954,6 +957,8 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// It writes and reads the same as the codec the definition returns.
     /// The definition is called once, the first time the codec is used.
+    ///
+    /// Fails to encode or decode a value that nests the codec more than 512 levels deep.
     ///
     /// If encode or decode is called on the returned codec, the given name will be on the first line of a failure.
     ///
@@ -1186,6 +1191,8 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// Returns a failure holding the same [NexusCodecException] that [#encode(CodecFormat, Object)] would throw.
     ///
+    /// If the format is a [BufferFormat] and encoding fails, the writer index of its buffer will be back where it was before.
+    ///
     /// @param format The format to encode the value in.
     /// @param value  The value to encode.
     ///
@@ -1197,6 +1204,8 @@ public interface NexusCodec<T, A extends Access.Plain> {
     /// Decodes a value from the given input in the given format.
     ///
     /// Returns a failure holding the same [NexusCodecException] that [#decode(CodecFormat, Object)] would throw.
+    ///
+    /// If the format is a [BufferFormat] and decoding fails, the reader index of its buffer will be back where it was before.
     ///
     /// @param format The format the input is in.
     /// @param input  The input to decode, which is the buffer the format was built on for a [BufferFormat].
@@ -1222,6 +1231,8 @@ public interface NexusCodec<T, A extends Access.Plain> {
     /// Decodes a value from the buffer the given format was built on.
     ///
     /// Returns a failure holding the same [NexusCodecException] that [#decode(BufferFormat)] would throw.
+    ///
+    /// If decoding fails, the reader index of the buffer will be back where it was before.
     ///
     /// @param format The format to decode from.
     ///
@@ -1283,9 +1294,7 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// @return The keyed codec.
     ///
-    default KeyedCodec<T, A> keyed(String key, T fallback) {
-        return new KeyedCodec<>(this, key, fallback);
-    }
+    KeyedCodec<T, A> keyed(String key, T fallback);
     
     ///
     /// Creates the codec of a list of at most the given number of values of this codec.
