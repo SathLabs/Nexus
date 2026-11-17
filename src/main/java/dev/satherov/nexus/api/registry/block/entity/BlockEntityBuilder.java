@@ -11,6 +11,7 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.capabilities.BlockCapability;
 import net.neoforged.neoforge.capabilities.ICapabilityProvider;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
+import net.neoforged.neoforge.event.BlockEntityTypeAddBlocksEvent;
 
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
@@ -63,6 +64,11 @@ public final class BlockEntityBuilder<ENTITY extends BlockEntity, PARENT>
     private final List<Holder<Block>> blocks = new ArrayList<>();
     
     ///
+    /// Whether the type may register without blocks, set by [#noBlocks()].
+    ///
+    private boolean blockless;
+    
+    ///
     /// The registrations of the capabilities, called with the event and the created type, in call order.
     ///
     private final List<BiConsumer<RegisterCapabilitiesEvent, BlockEntityType<ENTITY>>> capabilities = new ArrayList<>();
@@ -110,6 +116,8 @@ public final class BlockEntityBuilder<ENTITY extends BlockEntity, PARENT>
     /// The holders are only resolved once the type is built,
     /// so the entries of blocks may still be unbound at this stage without causing issues.
     ///
+    /// If no blocks were given and [#noBlocks()] was not called, registering the type will throw an [IllegalStateException].
+    ///
     /// @param blocks The holders of the blocks.
     ///
     /// @return The builder for chaining.
@@ -121,6 +129,23 @@ public final class BlockEntityBuilder<ENTITY extends BlockEntity, PARENT>
     public final BlockEntityBuilder<ENTITY, PARENT> blocks(Holder<Block>... blocks) {
         this.checkUnregistered();
         Collections.addAll(this.blocks, blocks);
+        return this;
+    }
+    
+    ///
+    /// Registers the type without blocks, for a type whose blocks are added through [BlockEntityTypeAddBlocksEvent].
+    ///
+    /// Replaces previous calls of [#blocks(Holder...)].
+    ///
+    /// @return The builder for chaining.
+    ///
+    /// @throws IllegalStateException If [#register()] was already called or another builder took over this one.
+    ///
+    @CanIgnoreReturnValue
+    public BlockEntityBuilder<ENTITY, PARENT> noBlocks() {
+        this.checkUnregistered();
+        this.blocks.clear();
+        this.blockless = true;
         return this;
     }
     
@@ -229,8 +254,14 @@ public final class BlockEntityBuilder<ENTITY extends BlockEntity, PARENT>
     ///
     /// @return The created entry.
     ///
+    /// @throws IllegalStateException If no blocks were given and [#noBlocks()] was not called.
+    ///
     @Override
     protected BlockEntityEntry<ENTITY> createEntry(ResourceKey<BlockEntityType<?>> key) {
+        if (this.blocks.isEmpty() && !this.blockless) {
+            throw new IllegalStateException("Could not register '" + key.identifier() + "' because it has no blocks");
+        }
+        
         BlockEntityEntry<ENTITY> entry = new BlockEntityEntry<>(key, this);
         IEventBus modBus = this.getRegistrations().getMod().getEventBus();
         this.capabilities.forEach(capability -> modBus.addListener(RegisterCapabilitiesEvent.class, event -> capability.accept(event, entry.value())));
