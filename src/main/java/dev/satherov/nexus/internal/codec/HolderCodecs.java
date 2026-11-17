@@ -11,6 +11,7 @@ import dev.satherov.nexus.api.component.ComponentPath;
 import dev.satherov.nexus.api.component.PathReader;
 import dev.satherov.nexus.internal.codec.format.Operations;
 import dev.satherov.nexus.internal.codec.path.Encoding;
+import dev.satherov.nexus.internal.codec.vanilla.VanillaAdapters;
 
 import net.neoforged.neoforge.registries.NeoForgeRegistries;
 import net.neoforged.neoforge.registries.holdersets.HolderSetType;
@@ -375,7 +376,7 @@ public class HolderCodecs {
                 throw HolderCodecs.inaccessible(registry);
             }
             
-            return RegistryOps.create(operations.dynamicOps(), lookup);
+            return VanillaAdapters.registryOps(operations.dynamicOps(), lookup);
         }
         
         ///
@@ -491,7 +492,7 @@ public class HolderCodecs {
                 List<CodecError> unknown = operations.keys(object)
                         .stream()
                         .filter(key -> !key.equals(HolderSetTraversal.TYPE_KEY) && !known.contains(key))
-                        .map(key -> new CodecError(key, "Unknown key"))
+                        .map(CodecErrors::unknownKey)
                         .toList();
                 
                 if (!unknown.isEmpty()) throw new NexusCodecException(unknown);

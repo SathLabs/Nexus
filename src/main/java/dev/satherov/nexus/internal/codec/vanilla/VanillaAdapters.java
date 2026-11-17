@@ -22,6 +22,8 @@ import dev.satherov.nexus.internal.codec.format.Operations;
 import dev.satherov.nexus.internal.codec.path.Encoding;
 import dev.satherov.nexus.internal.codec.struct.Structs;
 
+import net.neoforged.neoforge.common.conditions.ConditionalOps;
+
 import net.minecraft.core.Registry;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.nbt.CompoundTag;
@@ -323,10 +325,28 @@ public class VanillaAdapters {
     }
     
     ///
-    /// Gets the registries of the given ops if they are registry ops, and registries that fail on every lookup otherwise.
+    /// Gets the registries of the given ops with the ops kept if they are registry ops, and registries that fail on every lookup otherwise.
     ///
     private static RegistryOps.RegistryInfoLookup registriesOf(DynamicOps<?> ops) {
-        return ops instanceof RegistryOps<?> registryOps ? registryOps.lookupProvider : VanillaAdapters.WITHOUT_REGISTRIES;
+        return ops instanceof RegistryOps<?> registryOps ? new ViewRegistries(registryOps) : VanillaAdapters.WITHOUT_REGISTRIES;
+    }
+    
+    ///
+    /// Creates the registry ops over the given ops, with the given registries of a format.
+    ///
+    /// If the format was built for the registry ops of a DFU view, they will be a copy of those ops over the given ops, which keeps the context of NeoForge's [ConditionalOps].
+    ///
+    /// @param parent     The JSON or NBT ops of the format.
+    /// @param registries The registries of the format.
+    ///
+    /// @return The registry ops.
+    ///
+    public static <V> RegistryOps<V> registryOps(DynamicOps<V> parent, RegistryOps.RegistryInfoLookup registries) {
+        if (registries instanceof ViewRegistries(RegistryOps<?> ops)) {
+            return ops.withParent(parent);
+        }
+        
+        return RegistryOps.create(parent, registries);
     }
     
     ///
@@ -523,7 +543,7 @@ public class VanillaAdapters {
             }
             
             //noinspection DataFlowIssue A codec that needs registries only ever runs on formats with registries.
-            return RegistryOps.create(operations.dynamicOps(), operations.lookup());
+            return VanillaAdapters.registryOps(operations.dynamicOps(), operations.lookup());
         }
         
         ///
@@ -1044,6 +1064,22 @@ public class VanillaAdapters {
                 
                 return found != null && test.test(found);
             };
+        }
+    }
+    
+    ///
+    /// The registries of the registry ops that a DFU view runs over, with the ops kept for the DFU codecs inside the view.
+    ///
+    /// @param ops The registry ops of the view.
+    ///
+    private record ViewRegistries(RegistryOps<?> ops) implements RegistryOps.RegistryInfoLookup {
+        
+        ///
+        /// Finds the registry under the given key in the registries of the ops.
+        ///
+        @Override
+        public <T> Optional<RegistryOps.RegistryInfo<T>> lookup(ResourceKey<? extends Registry<? extends T>> registry) {
+            return this.ops.lookupProvider.lookup(registry);
         }
     }
 }

@@ -693,7 +693,7 @@ public class VanillaTypes {
         ///
         private static <V> RegistryOps<V> opsOf(Operations<V> operations) {
             //noinspection DataFlowIssue A codec that needs registries only ever runs on formats with registries.
-            return RegistryOps.create(operations.dynamicOps(), operations.lookup());
+            return VanillaAdapters.registryOps(operations.dynamicOps(), operations.lookup());
         }
         
         ///
