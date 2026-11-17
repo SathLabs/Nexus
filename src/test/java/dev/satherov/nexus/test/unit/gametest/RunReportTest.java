@@ -362,6 +362,8 @@ public class RunReportTest {
                         Map.entry("nexus:memoized_component_map_samples/result_of_two_direct_reads_is_stored", Expected.passed()),
                         Map.entry("nexus:memoized_component_map_samples/result_of_one_direct_read_is_never_stored", Expected.passed()),
                         Map.entry("nexus:memoized_component_map_samples/result_of_a_scan_read_is_stored", Expected.passed()),
+                        Map.entry("nexus:memoized_component_map_samples/two_threads_get_the_result_of_their_own_filter", Expected.passed()),
+                        Map.entry("nexus:memoized_component_map_samples/result_is_stored_on_default_item_and_fluid_resources", Expected.passed()),
                         Map.entry("nexus:vanilla_readers_samples/enchantments_match_the_encoding", Expected.passed()),
                         Map.entry("nexus:vanilla_readers_samples/container_slots_match_the_encoding", Expected.passed()),
                         Map.entry("nexus:vanilla_readers_samples/bundle_items_match_the_encoding", Expected.passed()),
