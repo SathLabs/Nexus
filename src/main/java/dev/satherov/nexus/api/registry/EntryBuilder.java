@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 ///
 /// A builder of one object of a registry and the sub-objects that come with it.
@@ -163,6 +164,48 @@ public abstract class EntryBuilder
     }
     
     ///
+    /// The keys of the object of the given builder and of every sub-object it registers.
+    ///
+    /// If another builder took over the given one, the keys will be those of the builder that took over last.
+    ///
+    /// Meant to be used for the sub-objects in [#getSubObjectKeys()].
+    ///
+    /// @param builder The builder of the object.
+    ///
+    /// @return The keys of the object and its sub-objects.
+    ///
+    protected static List<ResourceKey<?>> getAllKeys(EntryBuilder<?, ?, ?, ?, ?> builder) {
+        EntryBuilder<?, ?, ?, ?, ?> successor = builder.successor;
+        if (successor != null) {
+            return EntryBuilder.getAllKeys(successor);
+        }
+        
+        return Stream.concat(Stream.of(builder.key), builder.getSubObjectKeys().stream()).toList();
+    }
+    
+    ///
+    /// Declares the translations of the object of the given builder and of every sub-object it registers, as far as
+    /// [#declareTranslations()] declares them.
+    ///
+    /// If another builder took over the given one, the translations will be those of the builder that took over last.
+    ///
+    /// Meant for a builder that registers objects of its own before its sub-objects, so a taken translation key throws before anything is registered.
+    ///
+    /// @param builder The builder of the object.
+    ///
+    /// @throws IllegalStateException If a translation key is already declared.
+    ///
+    protected static void declareAllTranslations(EntryBuilder<?, ?, ?, ?, ?> builder) {
+        EntryBuilder<?, ?, ?, ?, ?> successor = builder.successor;
+        if (successor != null) {
+            EntryBuilder.declareAllTranslations(successor);
+            return;
+        }
+        
+        builder.declareTranslations();
+    }
+    
+    ///
     /// The name, aka the path of the identifier.
     ///
     /// @return The name.
@@ -293,14 +336,16 @@ public abstract class EntryBuilder
     ///
     /// Registers the object, its sub-objects, and the defaults that no builder was opened for.
     ///
+    /// If the identifier of a sub-object is refused, nothing will be registered.
+    ///
     /// @return The still unbound entry of the object.
     ///
-    /// @throws IllegalArgumentException If the registry is a datapack registry.
+    /// @throws IllegalArgumentException If the registry of the object or of a sub-object is a datapack registry.
     /// @throws IllegalStateException    - If [#end()] returns another builder, which registers this one.
     /// - If this was already called.
     /// - If another builder took over this one.
-    /// - If the registry event of the registry already ran.
-    /// - If the identifier is already registered in the registry.
+    /// - If the registry event of the registry of the object or of a sub-object already ran.
+    /// - If the identifier of the object or of a sub-object is already registered in its registry.
     /// - If a translation key the object declares is already declared, such as by a name that differs only by a `/` in place of a `.`.
     ///
     @CanIgnoreReturnValue
@@ -317,8 +362,8 @@ public abstract class EntryBuilder
     ///
     private ENTRY registerEntry() {
         this.checkUnregistered();
-        // Check before creating the entry, or a late call would leave the listeners and sub-objects of the entry behind.
-        this.registrations.checkAddable(this.key.registryKey(), this.key.identifier());
+        // Check every key before creating the entry, or a refused one would leave the listeners and sub-objects of the entry behind.
+        EntryBuilder.getAllKeys(this).forEach(key -> this.registrations.checkAddable(key.registryKey(), key.identifier()));
         ENTRY entry = this.createEntry(this.key);
         this.registrations.add(entry, this::create, value -> this.callbacks.forEach(callback -> callback.accept(value)));
         
@@ -411,4 +456,28 @@ public abstract class EntryBuilder
     ///
     @ForOverride
     protected abstract ENTRY createEntry(ResourceKey<REGISTRY> key);
+    
+    ///
+    /// The keys of every sub-object that [#createEntry(ResourceKey)] registers, with the sub-objects of those.
+    ///
+    /// Every key will be checked before the entry is created.
+    /// If a key is missing, a refused sub-object will leave the sub-objects registered before it behind.
+    ///
+    /// @return The keys of the sub-objects, or an empty list if this builder doesn't register any.
+    ///
+    @ForOverride
+    protected List<ResourceKey<?>> getSubObjectKeys() {
+        return List.of();
+    }
+    
+    ///
+    /// Declares the translations that [#createEntry(ResourceKey)] would declare for the object and its sub-objects.
+    ///
+    /// A translation declared here will not be declared again when the entry is created.
+    /// Declares nothing by default.
+    ///
+    /// @throws IllegalStateException If a translation key is already declared.
+    ///
+    @ForOverride
+    protected void declareTranslations() { }
 }
