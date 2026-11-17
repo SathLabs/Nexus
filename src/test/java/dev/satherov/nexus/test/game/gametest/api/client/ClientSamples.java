@@ -3,6 +3,7 @@ package dev.satherov.nexus.test.game.gametest.api.client;
 import dev.satherov.nexus.gametest.api.client.Capture;
 import dev.satherov.nexus.gametest.api.client.Client;
 import dev.satherov.nexus.gametest.api.client.ClientTest;
+import dev.satherov.nexus.gametest.api.client.TextBoxScreen;
 import dev.satherov.nexus.gametest.internal.option.RunOptions;
 
 import net.minecraft.client.Camera;
@@ -16,9 +17,13 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 
 import org.assertj.core.api.Assertions;
+import org.jspecify.annotations.Nullable;
 
 import java.util.Objects;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 ///
 /// The client tests that check the frame budget, the first screen, the level, the camera, the packets, the rendered blocks, the still frames, and the HUD of a client.
@@ -74,6 +79,57 @@ public class ClientSamples {
     @ClientTest
     public static void serverLevelOutsideWorld(Client client) {
         Assertions.assertThatIllegalStateException().isThrownBy(client::serverLevel);
+    }
+    
+    @ClientTest
+    public static void onServerRunsTheTaskOnTheServerThread(Client client) {
+        client.joinWorld();
+        AtomicBoolean onServerThread = new AtomicBoolean();
+        client.onServer(level -> onServerThread.set(level.getServer().isSameThread()));
+        Assertions.assertThat(onServerThread).isTrue();
+        client.leaveWorld();
+    }
+    
+    @ClientTest
+    public static void onServerRethrowsWhatTheTaskThrows(Client client) {
+        client.joinWorld();
+        Assertions.assertThatThrownBy(() -> client.onServer(_ -> {
+                    throw new IllegalStateException("The task failed on purpose");
+                }))
+                .isInstanceOf(CompletionException.class)
+                .hasMessageContaining("The task failed on purpose")
+                .hasCauseInstanceOf(IllegalStateException.class);
+        client.leaveWorld();
+    }
+    
+    @ClientTest
+    public static void onServerRethrowsWhatANestedTaskThrows(Client client) {
+        client.joinWorld();
+        AtomicReference<@Nullable Throwable> thrown = new AtomicReference<>();
+        client.onServer(_ -> {
+            try {
+                client.onServer(_ -> {
+                    throw new IllegalStateException("The nested task failed on purpose");
+                });
+            } catch (Throwable failure) {
+                thrown.set(failure);
+            }
+        });
+        Assertions.assertThat(thrown.get())
+                .isInstanceOf(CompletionException.class)
+                .hasMessageContaining("The nested task failed on purpose")
+                .hasCauseInstanceOf(IllegalStateException.class);
+        client.leaveWorld();
+    }
+    
+    @ClientTest
+    public static void settleRefusesAPausingScreen(Client client) {
+        client.joinWorld();
+        client.minecraft().setScreen(new TextBoxScreen());
+        Assertions.assertThatIllegalStateException()
+                .isThrownBy(client::settle)
+                .withMessageContaining(TextBoxScreen.class.getName());
+        client.leaveWorld();
     }
     
     @ClientTest

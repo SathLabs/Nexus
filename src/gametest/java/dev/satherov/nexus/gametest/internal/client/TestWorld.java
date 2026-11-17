@@ -17,6 +17,7 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
 import net.minecraft.client.PrioritizeChunkUpdates;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.LevelRenderer;
@@ -269,17 +270,19 @@ public final class TestWorld {
     }
     
     ///
-    /// Moves the player to the level's spawn and makes it fly.
+    /// Moves the player to the level's spawn and makes it fly, on the server thread.
     ///
     private void floatAtSpawn() {
         ServerLevel level = this.overworld();
-        ServerPlayer player = level.players().getFirst();
-        Vec3 spawn = level.getRespawnData().pos().getBottomCenter();
-        
-        player.getAbilities().flying = true;
-        player.onUpdateAbilities();
-        player.setDeltaMovement(Vec3.ZERO);
-        player.teleportTo(spawn.x, spawn.y, spawn.z);
+        level.getServer().execute(() -> {
+            ServerPlayer player = level.players().getFirst();
+            Vec3 spawn = level.getRespawnData().pos().getBottomCenter();
+            
+            player.getAbilities().flying = true;
+            player.onUpdateAbilities();
+            player.setDeltaMovement(Vec3.ZERO);
+            player.teleportTo(spawn.x, spawn.y, spawn.z);
+        });
     }
     
     ///
@@ -319,7 +322,14 @@ public final class TestWorld {
     ///
     /// If sodium is loaded, one more frame will run, in which sodium rebuilds the section of the camera and its 26 neighbors.
     ///
+    /// @throws IllegalStateException If a screen that pauses the game is open, since the paused server would never send the ping.
+    ///
     public void settle() {
+        Screen screen = this.client.minecraft().screen;
+        if (screen != null && screen.isPauseScreen()) {
+            throw new IllegalStateException("Could not settle while the screen '" + screen.getClass().getName() + "' pauses the game");
+        }
+        
         int id = ++TestWorld.pings;
         TestWorld.PENDING_PING.set(new Ping(id, this.overworld().getServer().getTickCount()));
         this.client.until("the client to handle the ping '" + id + "'", () -> TestWorld.handledPing == id);

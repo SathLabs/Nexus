@@ -11,6 +11,7 @@ import net.neoforged.fml.ModList;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.resources.Identifier;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.Vec3;
 
@@ -20,14 +21,18 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Range;
 import org.jspecify.annotations.Nullable;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 
 ///
 /// The client abstraction that a [ClientTest] can control.
 ///
 /// Every method in here runs on the render thread.
+/// Only [#onServer(Consumer)] may also be called from a task on the server thread.
 ///
 @Accessors(fluent = true)
 public final class Client {
@@ -245,6 +250,47 @@ public final class Client {
     }
     
     ///
+    /// Runs the given task with the overworld level of the player world on the server thread,
+    /// and then runs the game until the server has run it.
+    ///
+    /// A change made to the server level from the render thread races the server thread, so every change should go through here.
+    /// If this is called from a task that already runs on the server thread, the given task runs right away and no frame runs.
+    ///
+    /// The task must never wait on the render thread, for example by joining a task submitted to the client.
+    /// In a lockstep run, the render thread waits for the server's tick before it runs its own tasks, so the run would hang.
+    ///
+    /// Fails the test if we are not allowed to run any more frames.
+    ///
+    /// @param task The task to run on the server thread.
+    ///
+    /// @throws IllegalStateException If we are not currently in a world, or if the server of the world has stopped.
+    /// @throws AssertionError        If we are not allowed to run any more frames, before the server has run the task.
+    /// @throws CompletionException   If the task threw, with what it threw as its cause.
+    ///
+    public void onServer(Consumer<ServerLevel> task) {
+        ServerLevel level = this.serverLevel();
+        MinecraftServer server = level.getServer();
+        if (server.isSameThread()) {
+            try {
+                task.accept(level);
+            } catch (Throwable failure) {
+                throw new CompletionException(failure);
+            }
+            
+            return;
+        }
+        
+        // A stopped server runs a submitted task right away on the thread that submits it.
+        if (server.isStopped()) {
+            throw new IllegalStateException("Could not run the task on the server thread, since the server of the world has stopped");
+        }
+        
+        CompletableFuture<Void> run = server.submit(() -> task.accept(level));
+        this.until("the server to run the task", run::isDone);
+        run.join();
+    }
+    
+    ///
     /// Hides or shows the vanilla HUD for the rest of the test.
     ///
     /// @param hidden If the HUD should be hidden.
@@ -289,7 +335,7 @@ public final class Client {
     ///
     /// Fails the test if we are not allowed to run any more frames.
     ///
-    /// @throws IllegalStateException If we are not currently in a world.
+    /// @throws IllegalStateException If we are not currently in a world, or if a screen that pauses the game is open.
     /// @throws AssertionError        If we are not allowed to run any more frames, before the client has handled the packets and
     ///                               rebuilt the sections.
     ///
