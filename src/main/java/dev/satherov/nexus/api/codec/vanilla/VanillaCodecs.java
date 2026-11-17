@@ -169,9 +169,12 @@ public class VanillaCodecs {
     ///
     /// Every component is written and read with the codec and the stream codec of its [DataComponentType], and a removed one is written under `!` and its identifier.
     /// An empty stack is an empty object in JSON and NBT, and a count of `0` on the network.
+    /// Inline or in [StructCodec#asMapCodec()], an object with none of the keys of a stack reads as an empty stack.
     ///
     /// Fails if the item is unknown or air, or in JSON and NBT if the count is not in `[1, 99]`.
     /// In JSON and NBT, a failure holds the errors of every field that failed, and a failure of a component is at its identifier inside `components`, such as `components['minecraft:damage']`.
+    /// If the format is NBT and isn't strict, a component that could not be read will be left out with a warning instead.
+    /// If the codec of the component still returns a partial value, the partial value will be kept.
     ///
     public static final StructCodec<ItemStack, Access.Registries> ITEM_STACK = VanillaTypes.ITEM_STACK;
 
@@ -199,9 +202,12 @@ public class VanillaCodecs {
     ///
     /// Every component is written and read with the codec and the stream codec of its [DataComponentType], and a removed one is written under `!` and its identifier.
     /// An empty stack is an empty object in JSON and NBT, and an amount of `0` on the network.
+    /// Inline or in [StructCodec#asMapCodec()], an object with none of the keys of a stack reads as an empty stack.
     ///
     /// Fails if the fluid is unknown or empty, or in JSON and NBT if the amount is missing or not positive.
     /// In JSON and NBT, a failure holds the errors of every field that failed, and a failure of a component is at its identifier inside `components`, such as `components['minecraft:custom_name']`.
+    /// If the format is NBT and isn't strict, a component that could not be read will be left out with a warning instead.
+    /// If the codec of the component still returns a partial value, the partial value will be kept.
     ///
     public static final StructCodec<FluidStack, Access.Registries> FLUID_STACK = VanillaTypes.FLUID_STACK;
     

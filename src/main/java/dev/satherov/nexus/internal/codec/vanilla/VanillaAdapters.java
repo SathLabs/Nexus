@@ -228,7 +228,7 @@ public class VanillaAdapters {
     /// @return The map codec, which fails with the message of a [NexusCodecException] and without a partial result.
     ///
     public static <T> MapCodec<T> asMapCodec(Structs.Inlinable<T, ?> struct) {
-        return new StructMapCodec<>(struct);
+        return new StructMapCodec<>(struct, true);
     }
     
     ///
@@ -657,6 +657,11 @@ public class VanillaAdapters {
         private final Structs.Inlinable<T, ?> struct;
         
         ///
+        /// If the map may hold the other fields of a DFU record or the type key of a dispatch, which the struct never reads.
+        ///
+        private final boolean shared;
+        
+        ///
         /// Creates every key the struct may write, in the given ops.
         ///
         @Override
@@ -666,12 +671,15 @@ public class VanillaAdapters {
         
         ///
         /// Decodes the struct from an object of every entry of the input whose value isn't `null`.
+        /// If the map is shared, the object only has the entries under a key of the struct.
         ///
         @Override
         public <V> DataResult<T> decode(DynamicOps<V> ops, MapLike<V> input) {
             try {
+                // If the keys of the other fields of a DFU record were kept, a stack would read them as a stack that isn't empty.
+                Stream<Pair<V, V>> entries = this.shared ? this.struct.keys().stream().map(key -> Pair.of(ops.createString(key), input.get(key))) : input.entries();
                 // JavaOps reads a null value the same as a missing key, and its maps can't hold one.
-                V object = ops.createMap(input.entries().filter(entry -> entry.getSecond() != null));
+                V object = ops.createMap(entries.filter(entry -> entry.getSecond() != null));
                 return DataResult.success(VanillaAdapters.decode(this.struct, ops, object));
             } catch (NexusCodecException failure) {
                 return DataResult.error(failure::getMessage);
@@ -701,6 +709,19 @@ public class VanillaAdapters {
             }
             
             return builder;
+        }
+        
+        ///
+        /// Creates the codec of the struct alone in its map, which reads every entry of the map.
+        ///
+        @Override
+        public Codec<T> codec() {
+            // Vanilla fails on an object with none of the keys of a stack, so a stack alone in its map has to see the other keys.
+            if (this.shared) {
+                return new StructMapCodec<>(this.struct, false).codec();
+            }
+            
+            return new MapCodec.MapCodecCodec<>(this);
         }
     }
     
