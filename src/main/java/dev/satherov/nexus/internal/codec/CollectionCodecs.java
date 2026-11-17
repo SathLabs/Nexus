@@ -46,6 +46,8 @@ import java.util.function.Predicate;
 ///
 /// Utility for the list, set, and map codecs with their limits, and the keys behind [MapKey].
 ///
+/// The constant keys read their codecs from [NexusCodec], because if [Scalars] were initialized first through a [MapKey], every constant of [NexusCodec] would stay `null`.
+///
 @UtilityClass
 @ApiStatus.Internal
 public class CollectionCodecs {
@@ -58,18 +60,18 @@ public class CollectionCodecs {
     ///
     /// The key behind [MapKey#STRING].
     ///
-    public static final MapKey<String, Access.Plain> STRING_KEY = CollectionCodecs.stringKey(Scalars.STRING);
+    public static final MapKey<String, Access.Plain> STRING_KEY = CollectionCodecs.stringKey(NexusCodec.STRING);
     
     ///
     /// The key behind [MapKey#IDENTIFIER].
     ///
-    public static final MapKey<Identifier, Access.Plain> IDENTIFIER_KEY = CollectionCodecs.stringKey(Scalars.IDENTIFIER);
+    public static final MapKey<Identifier, Access.Plain> IDENTIFIER_KEY = CollectionCodecs.stringKey(NexusCodec.IDENTIFIER);
     
     ///
     /// The key behind [MapKey#UUID], which reads its string form with the codec, as the codec reads UUID strings too.
     ///
-    public static final MapKey<UUID, Access.Plain> UUID_KEY = new Key<>(
-            Scalars.UNIQUE_ID,
+    public static final MapKey<UUID, Access.Plain> UUID_KEY = CollectionCodecs.key(
+            NexusCodec.UUID,
             UUID::toString,
             text -> Scalars.UNIQUE_ID.read(CollectionCodecs.JSON, new JsonPrimitive(text))
     );
@@ -77,8 +79,8 @@ public class CollectionCodecs {
     ///
     /// The key behind [MapKey#INT].
     ///
-    public static final MapKey<Integer, Access.Plain> INT_KEY = new Key<>(
-            Scalars.INT,
+    public static final MapKey<Integer, Access.Plain> INT_KEY = CollectionCodecs.key(
+            NexusCodec.INT,
             String::valueOf,
             text -> (int) CollectionCodecs.parseInteger(text, Integer.MIN_VALUE, Integer.MAX_VALUE)
     );
@@ -86,8 +88,8 @@ public class CollectionCodecs {
     ///
     /// The key behind [MapKey#LONG].
     ///
-    public static final MapKey<Long, Access.Plain> LONG_KEY = new Key<>(
-            Scalars.LONG,
+    public static final MapKey<Long, Access.Plain> LONG_KEY = CollectionCodecs.key(
+            NexusCodec.LONG,
             String::valueOf,
             text -> CollectionCodecs.parseInteger(text, Long.MIN_VALUE, Long.MAX_VALUE)
     );
@@ -148,11 +150,12 @@ public class CollectionCodecs {
     ///
     /// Creates the key over the given codec whose string form is the string the codec writes in JSON.
     ///
-    private static <K> MapKey<K, Access.Plain> stringKey(Traversal<K, Access.Plain> codec) {
+    private static <K> MapKey<K, Access.Plain> stringKey(NexusCodec<K, Access.Plain> codec) {
+        Traversal<K, Access.Plain> traversal = (Traversal<K, Access.Plain>) codec;
         return new Key<>(
-                codec,
-                key -> codec.write(CollectionCodecs.JSON, key).getAsString(),
-                text -> codec.read(CollectionCodecs.JSON, new JsonPrimitive(text))
+                traversal,
+                key -> traversal.write(CollectionCodecs.JSON, key).getAsString(),
+                text -> traversal.read(CollectionCodecs.JSON, new JsonPrimitive(text))
         );
     }
     
