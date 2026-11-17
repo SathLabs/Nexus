@@ -1,10 +1,16 @@
 package dev.satherov.nexus.internal.network;
 
+import net.neoforged.neoforge.network.handling.IPayloadContext;
+import net.neoforged.neoforge.network.handling.IPayloadHandler;
+
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 
 import org.jetbrains.annotations.ApiStatus;
+
+import java.util.function.BiConsumer;
+import java.util.function.Function;
 
 ///
 /// A mod payload that holds one encoded value and the identifier of its payload type.
@@ -29,5 +35,23 @@ public record Envelope<VALUE>(CustomPacketPayload.Type<Envelope<VALUE>> type, VA
             StreamCodec<? super BUFFER, VALUE> codec
     ) {
         return StreamCodec.composite(codec, Envelope::value, value -> new Envelope<>(type, value));
+    }
+    
+    ///
+    /// Creates the neoforge handler of envelopes that calls the given handler with the value of every envelope.
+    ///
+    /// The handler will not be called once the connection stopped accepting messages.
+    ///
+    /// @param context The factory of the context of the handler, called with the neoforge context of every envelope.
+    /// @param handler The handler of the values.
+    ///
+    /// @return The neoforge handler of the envelopes.
+    ///
+    public static <VALUE, CONTEXT> IPayloadHandler<Envelope<VALUE>> handler(Function<IPayloadContext, CONTEXT> context, BiConsumer<VALUE, CONTEXT> handler) {
+        return (envelope, platform) -> {
+            if (platform.listener().isAcceptingMessages()) {
+                handler.accept(envelope.value(), context.apply(platform));
+            }
+        };
     }
 }

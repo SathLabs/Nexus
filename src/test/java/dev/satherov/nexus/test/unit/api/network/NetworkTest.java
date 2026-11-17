@@ -12,8 +12,11 @@ import dev.satherov.nexus.internal.network.Envelope;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLConstructModEvent;
+import net.neoforged.neoforge.network.registration.NetworkRegistry;
 
+import net.minecraft.network.ConnectionProtocol;
 import net.minecraft.network.codec.ByteBufCodecs;
+import net.minecraft.network.protocol.PacketFlow;
 import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
 import net.minecraft.resources.Identifier;
 
@@ -33,6 +36,7 @@ public class NetworkTest {
     private static @Nullable ServerboundPayload<Integer> serverbound;
     private static @Nullable ClientboundPayload<String> clientbound;
     private static @Nullable Payload<Integer> bidirectional;
+    private static @Nullable Payload<Integer> optional;
     private static @Nullable PayloadBuilder<Integer> unfinished;
 
     @Test
@@ -52,6 +56,23 @@ public class NetworkTest {
         Payload<String> clientbound = (Payload<String>) Objects.requireNonNull(NetworkTest.clientbound);
         Assertions.assertThat(clientbound.getVersion()).isEqualTo("2");
         Assertions.assertThat(clientbound.isOptional()).isTrue();
+    }
+
+    @Test
+    public void holdsTheProtocolOfItsOpener() {
+        Payload<Integer> serverbound = (Payload<Integer>) Objects.requireNonNull(NetworkTest.serverbound);
+        Payload<String> clientbound = (Payload<String>) Objects.requireNonNull(NetworkTest.clientbound);
+        Assertions.assertThat(serverbound.getProtocol()).isEqualTo(ConnectionProtocol.PLAY);
+        Assertions.assertThat(clientbound.getProtocol()).isEqualTo(ConnectionProtocol.CONFIGURATION);
+    }
+
+    @Test
+    public void registersOnlyOptionalPlayPayloadsAsCommonChannels() {
+        Identifier optional = Objects.requireNonNull(NetworkTest.optional).getId();
+        Identifier serverbound = Objects.requireNonNull(NetworkTest.serverbound).getId();
+        Identifier bidirectional = Objects.requireNonNull(NetworkTest.bidirectional).getId();
+        Assertions.assertThat(NetworkRegistry.getCommonPlayChannels(PacketFlow.CLIENTBOUND)).contains(optional).doesNotContain(bidirectional);
+        Assertions.assertThat(NetworkRegistry.getCommonPlayChannels(PacketFlow.SERVERBOUND)).contains(optional).doesNotContain(serverbound, bidirectional);
     }
 
     @Test
@@ -122,6 +143,9 @@ public class NetworkTest {
                     .toClient(() -> (_, _) -> { });
             NetworkTest.bidirectional = network.play("network_test_bidirectional", ByteBufCodecs.VAR_INT)
                     .onNetworkThread()
+                    .bidirectional(() -> (_, _) -> { }, (_, _) -> { });
+            NetworkTest.optional = network.play("network_test_optional", NexusCodec.INT)
+                    .optional()
                     .bidirectional(() -> (_, _) -> { }, (_, _) -> { });
             NetworkTest.unfinished = network.play("network_test_unfinished", NexusCodec.INT);
             NetworkTest.blankVersionRefusal = Assertions.catchThrowable(() -> network.play("network_test_blank", NexusCodec.INT).version(" "));

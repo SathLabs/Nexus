@@ -11,6 +11,7 @@ import dev.satherov.nexus.internal.network.client.ClientConnection;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.extensions.ICommonPacketListener;
 
+import net.minecraft.network.ConnectionProtocol;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.common.ClientCommonPacketListener;
 import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
@@ -34,6 +35,12 @@ public final class Payload<VALUE> implements ClientboundPayload<VALUE>, Serverbo
     private final Payload.Direction direction;
     
     ///
+    /// The protocol the payload was declared for.
+    ///
+    @Getter
+    private final ConnectionProtocol protocol;
+    
+    ///
     /// The type of the envelope that wraps the values, built from the identifier of the payload.
     ///
     private final CustomPacketPayload.Type<Envelope<VALUE>> type;
@@ -55,12 +62,14 @@ public final class Payload<VALUE> implements ClientboundPayload<VALUE>, Serverbo
     ///
     /// @param id        The identifier the payload is registered under.
     /// @param direction The direction the payload was declared with.
+    /// @param protocol  The protocol the payload was declared for.
     /// @param version   The version neoforge negotiates for the payload.
     /// @param optional  If a client or server lacking the payload still connects.
     ///
     @ApiStatus.Internal
-    public Payload(Identifier id, Payload.Direction direction, String version, boolean optional) {
+    public Payload(Identifier id, Payload.Direction direction, ConnectionProtocol protocol, String version, boolean optional) {
         this.direction = direction;
+        this.protocol = protocol;
         this.version = version;
         this.optional = optional;
         
@@ -83,11 +92,11 @@ public final class Payload<VALUE> implements ClientboundPayload<VALUE>, Serverbo
     /// @param value      The value to send.
     /// @param recipients The recipients to deliver the value to.
     ///
-    /// @throws IllegalStateException If the payload is not client-bound.
+    /// @throws IllegalStateException If the payload is not client-bound, or if a recipient is connected in another protocol than the payload.
     ///
     @Override
     public void send(VALUE value, ClientRecipients recipients) {
-        recipients.send(this.toPacket(value), this.optional ? listener -> listener.hasChannel(this.type) : _ -> true);
+        recipients.send(this.toPacket(value), this::accepts);
     }
 
     ///
@@ -131,7 +140,7 @@ public final class Payload<VALUE> implements ClientboundPayload<VALUE>, Serverbo
     @Override
     public boolean canSend(ICommonPacketListener listener) {
         this.checkClientbound();
-        return !this.optional || listener.hasChannel(this.type);
+        return this.canReach(listener);
     }
     
     ///
@@ -139,12 +148,16 @@ public final class Payload<VALUE> implements ClientboundPayload<VALUE>, Serverbo
     ///
     /// @param value The value to send.
     ///
-    /// @throws IllegalStateException If the payload is not server-bound or this is a dedicated server.
+    /// @throws IllegalStateException If the payload is not server-bound, this is a dedicated server, the client is not in play,
+    /// or the payload is not a play payload.
     ///
     @Override
     public void sendToServer(VALUE value) {
         this.checkServerbound();
-        ClientConnection.sendToServer(new Envelope<>(this.type, value));
+        ICommonPacketListener listener = ClientConnection.getListener();
+        if (this.accepts(listener)) {
+            listener.send(new Envelope<>(this.type, value));
+        }
     }
     
     ///
@@ -157,7 +170,7 @@ public final class Payload<VALUE> implements ClientboundPayload<VALUE>, Serverbo
     @Override
     public boolean canSendToServer() {
         this.checkServerbound();
-        return !this.optional || ClientConnection.getListener().hasChannel(this.type);
+        return this.canReach(ClientConnection.getListener());
     }
     
     ///
@@ -166,12 +179,33 @@ public final class Payload<VALUE> implements ClientboundPayload<VALUE>, Serverbo
     /// @param value   The value to send.
     /// @param context The context of the client handler.
     ///
-    /// @throws IllegalStateException If the payload is not server-bound or this is a dedicated server.
+    /// @throws IllegalStateException If the payload is not server-bound, this is a dedicated server,
+    /// or the connection is in another protocol than the payload.
     ///
     @Override
     public void reply(VALUE value, ClientHandlerContext context) {
         this.checkServerbound();
-        context.reply(new Envelope<>(this.type, value));
+        if (this.accepts(context.getListener())) {
+            context.reply(new Envelope<>(this.type, value));
+        }
+    }
+    
+    ///
+    /// If the payload can reach the other side of the given listener, throwing an [IllegalStateException] if the listener is in another protocol.
+    ///
+    private boolean accepts(ICommonPacketListener listener) {
+        if (listener.protocol() != this.protocol) {
+            throw new IllegalStateException("Could not send the payload '" + this.type.id() + "' of the protocol '" + this.protocol.id() + "' over a connection in '" + listener.protocol().id() + "'");
+        }
+        
+        return this.canReach(listener);
+    }
+    
+    ///
+    /// If the given listener is in the protocol of the payload, and the payload is required or the other side registered it.
+    ///
+    private boolean canReach(ICommonPacketListener listener) {
+        return listener.protocol() == this.protocol && (!this.optional || listener.hasChannel(this.type));
     }
     
     ///
