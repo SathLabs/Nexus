@@ -672,7 +672,7 @@ public class Combinators {
                 boolean known = name.equals(this.key) || subtype.keys().contains(name);
                 if (!known && (present != null || this.keys.contains(name))) {
                     unknown = Objects.requireNonNullElseGet(unknown, ArrayList::new);
-                    unknown.add(new CodecError(name, "Unknown key"));
+                    unknown.add(CodecErrors.unknownKey(name));
                 }
             }
             

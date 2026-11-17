@@ -122,12 +122,22 @@ public class CodecErrors {
     ///
     /// Creates the error for a key that a strict format refuses.
     ///
+    /// If the key is empty or holds a bracket, a dot, a quote, a backslash, or a control character, it will be in the path the same as a map key.
+    ///
     /// @param key The key that the codec doesn't know.
     ///
     /// @return The error at the key.
     ///
     public static CodecError unknownKey(String key) {
-        return new CodecError(key, "Unknown key");
+        String path = CodecErrors.isPlainKey(key) ? key : "[" + CodecErrors.quote(key, '\'') + "]";
+        return new CodecError(path, "Unknown key");
+    }
+    
+    ///
+    /// If the given key is not empty and holds no bracket, dot, quote, backslash, or control character.
+    ///
+    private static boolean isPlainKey(String key) {
+        return !key.isEmpty() && key.chars().noneMatch(c -> "[].'\"\\".indexOf(c) >= 0 || Character.isISOControl(c));
     }
 
     ///

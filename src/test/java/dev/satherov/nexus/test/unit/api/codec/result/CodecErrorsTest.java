@@ -1,7 +1,11 @@
 package dev.satherov.nexus.test.unit.api.codec.result;
 
+import dev.satherov.nexus.api.codec.Access;
+import dev.satherov.nexus.api.codec.NexusCodec;
+import dev.satherov.nexus.api.codec.format.CodecFormat;
 import dev.satherov.nexus.api.codec.result.CodecError;
 import dev.satherov.nexus.api.codec.result.NexusCodecException;
+import dev.satherov.nexus.api.codec.struct.StructCodec;
 import dev.satherov.nexus.internal.codec.CodecErrors;
 
 import net.minecraft.nbt.CompoundTag;
@@ -10,10 +14,13 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
 
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 
 import org.assertj.core.api.Assertions;
+import org.assertj.core.api.ThrowableAssert;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -225,6 +232,27 @@ public class CodecErrorsTest {
         Assertions.assertThat(CodecErrors.decodeFailure("recipe", "JSON", inner).getMessage().lines()).hasSize(3);
     }
 
+    @Test
+    public void unknownKeysThatCouldBeReadAsPathsAreQuotedAsMapKeys() {
+        StructCodec<Counted, Access.Plain> counted = NexusCodec.struct("counted", NexusCodec.INT.field("count", Counted::count), Counted::new);
+        CodecFormat<JsonElement, Access.Plain> strict = CodecFormat.JSON.strict();
+        
+        Assertions.assertThat(CodecErrorsTest.errors(() -> counted.decode(strict, JsonParser.parseString("{\"count\":1,\"extra\":0}"))))
+                .containsExactly(new CodecError("extra", "Unknown key"));
+        Assertions.assertThat(CodecErrorsTest.errors(() -> counted.decode(strict, JsonParser.parseString("{\"count\":1,\"[1]\":0}"))))
+                .containsExactly(new CodecError("['[1]']", "Unknown key"));
+        Assertions.assertThat(CodecErrorsTest.errors(() -> counted.decode(strict, JsonParser.parseString("{\"count\":1,\"a\\nb\":0}"))))
+                .containsExactly(new CodecError("['a\\nb']", "Unknown key"));
+        Assertions.assertThat(CodecErrorsTest.errors(() -> counted.decode(strict, JsonParser.parseString("{\"count\":1,\"\":0}"))))
+                .containsExactly(new CodecError("['']", "Unknown key"));
+        Assertions.assertThat(CodecErrorsTest.errors(() -> counted.list().decode(strict, JsonParser.parseString("[{\"count\":1,\"a.b\":0}]"))))
+                .containsExactly(new CodecError("[0]['a.b']", "Unknown key"));
+    }
+    
+    private static List<CodecError> errors(ThrowableAssert.ThrowingCallable call) {
+        return Assertions.catchThrowableOfType(NexusCodecException.class, call).errors();
+    }
+    
     private static NexusCodecException at(String path) {
         return new NexusCodecException(List.of(new CodecError(path, "missing")));
     }
@@ -232,4 +260,6 @@ public class CodecErrorsTest {
     private static String path(NexusCodecException failure) {
         return failure.errors().getFirst().path();
     }
+    
+    public record Counted(int count) { }
 }

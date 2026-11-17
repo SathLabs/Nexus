@@ -732,7 +732,7 @@ public class Structs {
             if (present != null && !this.keys.containsAll(present)) {
                 List<CodecError> unknown = present.stream()
                         .filter(key -> !this.keys.contains(key))
-                        .map(key -> new CodecError(key, "Unknown key"))
+                        .map(CodecErrors::unknownKey)
                         .toList();
                 errors = Struct.collect(errors, unknown);
             }
