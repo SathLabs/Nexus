@@ -79,6 +79,19 @@ public class TranslationTest {
     }
     
     @Test
+    public void refusesAComponentWithoutArgumentsForAKeyWithPlaceholders() {
+        Translation translation = new Translation(TranslationTest.KEY, "Costs {{cost}} mana, 50% off");
+        Assertions.assertThatThrownBy(translation::component).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("'cost'");
+    }
+    
+    @Test
+    public void refusesATranslatableArgumentWithPlaceholders() {
+        Translation item = new Translation("item.examplemod.crystal", "Crystal of {{owner}}");
+        Translation translation = new Translation(TranslationTest.KEY, "Costs {{cost}} {{item}}");
+        Assertions.assertThatThrownBy(() -> translation.with(Map.of("cost", 5, "item", item))).isInstanceOf(IllegalArgumentException.class);
+    }
+    
+    @Test
     public void createsAComponentWithoutArguments() {
         Translation translation = new Translation(TranslationTest.KEY, "Mana");
         Assertions.assertThat(translation.component().getContents()).isInstanceOfSatisfying(TranslatableContents.class, contents -> {

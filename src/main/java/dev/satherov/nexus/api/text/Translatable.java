@@ -25,8 +25,14 @@ public interface Translatable {
     ///
     /// @return The created component.
     ///
+    /// @throws IllegalArgumentException If the key has a placeholder.
+    ///
     default MutableComponent component() {
         Translation translation = this.getTranslation();
+        if (!translation.getPlaceholders().isEmpty()) {
+            throw new IllegalArgumentException("Placeholder '" + translation.getPlaceholders().getFirst() + "' of '" + translation.getKey() + "' has no argument");
+        }
+        
         return Component.translatableWithFallback(translation.getKey(), translation.getPattern());
     }
     
