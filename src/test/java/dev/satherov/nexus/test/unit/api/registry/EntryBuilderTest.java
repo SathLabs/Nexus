@@ -44,6 +44,10 @@ public class EntryBuilderTest {
     private static @Nullable RegistryEntry<GameEvent, GameEvent> parentEntry;
     private static @Nullable ParentBuilder takenParent;
     private static @Nullable Throwable subRefusal;
+    private static @Nullable RegistryEntry<GameEvent, GameEvent> calledBack;
+    private static boolean boundInCallback;
+    private static @Nullable Identifier idInCallback;
+    private static @Nullable Throwable reentrantRefusal;
     private static boolean clientCodeRan;
     
     @Test
@@ -67,6 +71,21 @@ public class EntryBuilderTest {
     public void runsTheCallbacksOfBothInCallOrder() {
         Assertions.assertThat(EntryBuilderTest.event().isBound()).isTrue();
         Assertions.assertThat(EntryBuilderTest.CALLBACKS).containsExactly("taken", "taking");
+    }
+    
+    @Test
+    public void runsTheCallbacksOnceTheObjectIsInTheRegistry() {
+        RegistryEntry<GameEvent, GameEvent> calledBack = Objects.requireNonNull(EntryBuilderTest.calledBack);
+        Assertions.assertThat(EntryBuilderTest.boundInCallback).isTrue();
+        Assertions.assertThat(EntryBuilderTest.idInCallback).isEqualTo(calledBack.getId());
+    }
+    
+    @Test
+    public void refusesARegisterFromACallbackOfTheSameRegistry() {
+        Assertions.assertThat(EntryBuilderTest.reentrantRefusal)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Could not register 'nexus:entry_builder_test_reentrant' because the registry event of 'minecraft:game_event' already ran");
+        Assertions.assertThat(Nexus.getMod().getRegistrations().getAll()).noneMatch(entry -> entry.getName().equals("entry_builder_test_reentrant"));
     }
     
     @Test
@@ -269,6 +288,22 @@ public class EntryBuilderTest {
             new Takeover<>(takenParent.sub).tag(EntryBuilderTest.SECOND_TAG);
             takenParent.register();
             EntryBuilderTest.takenParent = takenParent;
+            
+            EntryBuilderTest.calledBack = registrations
+                    .register(Registries.GAME_EVENT, "entry_builder_test_called_back", () -> new GameEvent(16))
+                    .onRegister(value -> {
+                        EntryBuilderTest.boundInCallback = Objects.requireNonNull(EntryBuilderTest.calledBack).isBound();
+                        EntryBuilderTest.idInCallback = BuiltInRegistries.GAME_EVENT.getKey(value);
+                    })
+                    .register();
+            
+            registrations
+                    .register(Registries.GAME_EVENT, "entry_builder_test_reentering", () -> new GameEvent(16))
+                    .onRegister(_ -> EntryBuilderTest.reentrantRefusal = Assertions.catchThrowable(() -> registrations
+                            .register(Registries.GAME_EVENT, "entry_builder_test_reentrant", () -> new GameEvent(16))
+                            .register()
+                    ))
+                    .register();
         }
     }
 }

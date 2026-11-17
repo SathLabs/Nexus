@@ -80,7 +80,7 @@ public abstract class EntryBuilder
     private final Map<ProviderKind<?>, Object> factsByKind = new HashMap<>();
     
     ///
-    /// The callbacks that run with the object right after it is created, in call order.
+    /// The callbacks that run with the object right after it is registered, in call order.
     ///
     private final List<Consumer<VALUE>> callbacks = new ArrayList<>();
     
@@ -152,7 +152,8 @@ public abstract class EntryBuilder
     ///
     /// @return The still unbound entry of the sub-object.
     ///
-    /// @throws IllegalStateException If the sub-object was already registered, if the registry event of its registry already ran, or if its identifier is already registered in the registry.
+    /// @throws IllegalArgumentException If the registry of the sub-object is a datapack registry.
+    /// @throws IllegalStateException    If the sub-object was already registered, if the registry event of its registry already ran, or if its identifier is already registered in the registry.
     ///
     @CanIgnoreReturnValue
     protected static <SUB extends RegistryEntry<?, ?>> SUB registerSubObject(EntryBuilder<?, ?, SUB, ?, ?> builder) {
@@ -221,7 +222,7 @@ public abstract class EntryBuilder
     }
     
     ///
-    /// Runs the given callback with the object right after it is created inside its registry event.
+    /// Runs the given callback with the object right after it is registered inside its registry event.
     ///
     /// Called with all previous callbacks, in order, oldest first.
     ///
@@ -263,6 +264,9 @@ public abstract class EntryBuilder
     ///
     /// Meant to be used for adding a listener for any client event.
     ///
+    /// Sub-objects of a registry whose event runs later will still be unbound when the code runs,
+    /// so they have to be read inside the listeners that the code adds.
+    ///
     /// Never runs on a dedicated server.
     ///
     /// @param code The client code, called with the mod bus and the entry.
@@ -291,7 +295,8 @@ public abstract class EntryBuilder
     ///
     /// @return The still unbound entry of the object.
     ///
-    /// @throws IllegalStateException - If [#end()] returns another builder, which registers this one.
+    /// @throws IllegalArgumentException If the registry is a datapack registry.
+    /// @throws IllegalStateException    - If [#end()] returns another builder, which registers this one.
     /// - If this was already called.
     /// - If another builder took over this one.
     /// - If the registry event of the registry already ran.
@@ -315,11 +320,7 @@ public abstract class EntryBuilder
         // Check before creating the entry, or a late call would leave the listeners and sub-objects of the entry behind.
         this.registrations.checkAddable(this.key.registryKey(), this.key.identifier());
         ENTRY entry = this.createEntry(this.key);
-        this.registrations.add(entry, () -> {
-            VALUE value = this.create();
-            this.callbacks.forEach(callback -> callback.accept(value));
-            return value;
-        });
+        this.registrations.add(entry, this::create, value -> this.callbacks.forEach(callback -> callback.accept(value)));
         
         this.registered = true;
         this.clientCode.forEach(code -> this.addClientHook(bus -> code.get().accept(bus, entry)));
@@ -344,6 +345,8 @@ public abstract class EntryBuilder
     /// Stacks with previous calls, in the order they were written.
     ///
     /// Meant to be used for the client code of a mod's own builders.
+    ///
+    /// Sub-objects of a registry whose event runs later will still be unbound when the hook runs.
     ///
     /// Never runs on a dedicated server.
     ///
