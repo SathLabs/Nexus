@@ -81,6 +81,9 @@ public final class ParticleBuilder
     ///
     /// Replaces previous calls of this and of [#provider(ClientOnly)].
     ///
+    /// The factory should be given as a constructor reference or a method reference, e.g. `() -> SparkProvider::new`.
+    /// If it is a lambda that creates the provider, a dedicated server will crash when the class that holds the lambda loads.
+    ///
     /// @param provider The factory of the provider, called with the sprite set of the type.
     ///
     /// @return The builder for chaining.
@@ -100,6 +103,9 @@ public final class ParticleBuilder
     /// Replaces previous calls of this and of [#sprites(ClientOnly)].
     ///
     /// Should be used for particles that have no own sprite set.
+    ///
+    /// The provider should be given as a constructor reference or a method reference, e.g. `() -> SparkProvider::new`.
+    /// If it is a lambda that creates the provider, a dedicated server will crash when the class that holds the lambda loads.
     ///
     /// @param provider The supplier of the provider.
     ///
