@@ -76,10 +76,10 @@ public final class DataComponentEntry<VALUE> extends RegistryEntry<DataComponent
     ///
     /// Updates this component on the given holder with the given operator.
     ///
-    /// @param holder   The holder of the attachment.
+    /// @param holder   The holder of the component.
     /// @param operator The operator to apply to the current value.
     ///
-    /// @return The previous value of the attachment or `null` if the value did not change.
+    /// @return The previous value of the component, or `null` if the value did not change or the component was absent.
     ///
     public @Nullable VALUE update(MutableDataComponentHolder holder, UnaryOperator<@Nullable VALUE> operator) {
         VALUE old = holder.get(this.value());
@@ -94,10 +94,10 @@ public final class DataComponentEntry<VALUE> extends RegistryEntry<DataComponent
     ///
     /// Updates this component on the given holder by replacing it with the given value.
     ///
-    /// @param holder   The holder of the attachment.
+    /// @param holder   The holder of the component.
     /// @param supplier The supplier to replace the value with.
     ///
-    /// @return The previous value of the attachment or `null` if the value did not change.
+    /// @return The previous value of the component, or `null` if the value did not change or the component was absent.
     ///
     public @Nullable VALUE update(MutableDataComponentHolder holder, Supplier<@Nullable VALUE> supplier) {
         VALUE old = holder.get(this.value());

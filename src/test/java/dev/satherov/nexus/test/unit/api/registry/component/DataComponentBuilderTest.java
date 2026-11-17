@@ -70,6 +70,32 @@ public class DataComponentBuilderTest {
     }
     
     @Test
+    public void updateSetsAnAbsentComponentAndReturnsNull() {
+        DataComponentEntry<Counter> counter = DataComponentBuilderTest.counter();
+        PatchedHolder holder = new PatchedHolder();
+        Assertions.assertThat(counter.update(holder, _ -> new Counter(1))).isNull();
+        Assertions.assertThat(counter.get(holder)).isEqualTo(new Counter(1));
+    }
+    
+    @Test
+    public void updateReturnsTheValueItReplaced() {
+        DataComponentEntry<Counter> counter = DataComponentBuilderTest.counter();
+        PatchedHolder holder = new PatchedHolder();
+        counter.set(holder, new Counter(3));
+        Assertions.assertThat(counter.update(holder, current -> new Counter(Objects.requireNonNull(current).count() + 1))).isEqualTo(new Counter(3));
+        Assertions.assertThat(counter.get(holder)).isEqualTo(new Counter(4));
+    }
+    
+    @Test
+    public void updateWithAnEqualValueReturnsNull() {
+        DataComponentEntry<Counter> counter = DataComponentBuilderTest.counter();
+        PatchedHolder holder = new PatchedHolder();
+        counter.set(holder, new Counter(3));
+        Assertions.assertThat(counter.update(holder, () -> new Counter(3))).isNull();
+        Assertions.assertThat(counter.get(holder)).isEqualTo(new Counter(3));
+    }
+    
+    @Test
     public void savesTheValueWithTheCodec() {
         DataComponentType<Counter> type = DataComponentBuilderTest.counter().value();
         JsonElement json = type.codecOrThrow().encodeStart(JsonOps.INSTANCE, new Counter(3)).getOrThrow();
