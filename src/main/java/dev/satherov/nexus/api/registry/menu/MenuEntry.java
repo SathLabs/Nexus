@@ -47,6 +47,8 @@ public final class MenuEntry<MENU extends AbstractContainerMenu> extends Registr
     ///
     /// The factory of the menu type will receive `null` instead of the extra data on the client.
     ///
+    /// If no screen is registered for the menu type, the menu will only open on the server.
+    ///
     /// @param player The player to open the menu for.
     /// @param menu   The constructor of the menu on the server.
     ///
@@ -59,6 +61,8 @@ public final class MenuEntry<MENU extends AbstractContainerMenu> extends Registr
     /// and writes the extra data that the factory of the menu type reads on the client.
     ///
     /// If the writer doesn't write anything, the factory will receive `null` instead of the byte buffer.
+    ///
+    /// If no screen is registered for the menu type, the menu will only open on the server.
     ///
     /// @param player The player to open the menu for.
     /// @param menu   The constructor of the menu on the server.
