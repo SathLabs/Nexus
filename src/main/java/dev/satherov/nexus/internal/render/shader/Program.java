@@ -23,7 +23,6 @@ import org.jspecify.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -51,11 +50,11 @@ public final class Program {
     private static final String HOOK_PREFIX = "nexus_";
     
     ///
-    /// The vertex format element of every input name that a program declared so far.
+    /// The vertex format elements created for the inputs of every program so far, oldest first.
     ///
-    /// Should only ever be accessed from [#element(Identifier, Input)].
+    /// Should only ever be accessed from [#elements(Identifier, List)].
     ///
-    private static final Map<String, VertexFormatElement> ELEMENTS_BY_NAME = new HashMap<>();
+    private static final List<VertexFormatElement> ELEMENTS = new ArrayList<>();
     
     ///
     /// The identifier of the program file.
@@ -89,9 +88,19 @@ public final class Program {
     private final Set<Hook> hooks;
     
     ///
-    /// The `#define` lines of the program file outside of any conditional, each ending in a line break.
+    /// The `#extension` lines of the program file, each ending in a line break.
+    ///
+    private final String extensions;
+    
+    ///
+    /// The `#define` lines of the program file outside of any conditional that come before every `#undef` of their macro, each ending in a line break.
     ///
     private final String defines;
+    
+    ///
+    /// The macros that the defines of the program file define.
+    ///
+    private final @Unmodifiable Set<String> defined;
     
     ///
     /// The text that replaces the declarations anchor of each stage.
@@ -103,7 +112,8 @@ public final class Program {
     ///
     /// Every file-scope item of the text is copied into the declarations of one or both stages:
     /// - The base directive is left out.
-    /// - A `#define` outside of any conditional is copied into the defines of both stages.
+    /// - An `#extension` is copied into the extensions of both stages.
+    /// - A `#define` outside of any conditional is copied into the defines of both stages, unless an `#undef` of its macro comes before it.
     /// - An input and the vertex hook are copied into the vertex stage only.
     /// - The albedo hook is copied into the fragment stage only.
     /// - An output is copied into the vertex stage as it is and into the fragment stage as an input.
@@ -121,7 +131,7 @@ public final class Program {
     /// - If a function starts with `nexus_` and is not a hook.
     /// - If an input declares more than one variable or has a type other than `float`, `int`, and their vectors.
     /// - If an input has the name of an input of the base.
-    /// - If a conditional holds a `#nexus` or `#version` directive, a function starting with `nexus_`, an input, an output, a uniform block, or a sampler.
+    /// - If a conditional holds a `#nexus`, `#version`, or `#extension` directive, a function starting with `nexus_`, an input, an output, a uniform block, or a sampler.
     ///
     public static Program parse(Identifier id, String text) {
         Base base = null;
@@ -129,14 +139,31 @@ public final class Program {
         Set<String> blocks = new HashSet<>();
         Set<String> samplers = new HashSet<>();
         Set<Hook> hooks = EnumSet.noneOf(Hook.class);
+        StringBuilder extensions = new StringBuilder();
         StringBuilder defines = new StringBuilder();
+        Set<String> defined = new HashSet<>();
+        Set<String> undefined = new HashSet<>();
         List<String> vertex = new ArrayList<>();
         List<String> fragment = new ArrayList<>();
         for (Item item : Parser.parse(id, text)) {
             switch (item) {
                 case Item.Directive(String name, String directive, int line) when name.equals("nexus") -> base = Program.readBase(id, base, directive, line);
                 case Item.Directive(String name, _, int line) when name.equals("version") -> throw new IllegalArgumentException(StringUtils.format("The program '%s' has a version directive on line '%d'", id, line));
-                case Item.Directive(String name, String directive, _) when name.equals("define") -> defines.append(directive).append('\n');
+                case Item.Directive(String name, String directive, _) when name.equals("extension") -> extensions.append(directive).append('\n');
+                case Item.Directive(String name, String directive, _) when name.equals("define") || name.equals("undef") -> {
+                    String macro = Program.macro(directive);
+                    if (name.equals("undef")) {
+                        undefined.add(macro);
+                    }
+                    
+                    if (undefined.contains(macro)) {
+                        vertex.add(directive);
+                        fragment.add(directive);
+                    } else {
+                        defines.append(directive).append('\n');
+                        defined.add(macro);
+                    }
+                }
                 case Item.Conditional(List<Item> items, String conditional, _) -> {
                     Program.checkConditional(id, items);
                     vertex.add(conditional);
@@ -192,7 +219,9 @@ public final class Program {
                 Set.copyOf(blocks),
                 Set.copyOf(samplers),
                 Set.copyOf(hooks),
+                extensions.toString(),
                 defines.toString(),
+                Set.copyOf(defined),
                 Map.of(ShaderType.VERTEX, String.join("\n", vertex), ShaderType.FRAGMENT, String.join("\n", fragment))
         );
     }
@@ -233,7 +262,7 @@ public final class Program {
     /// @param program The identifier of the program file, used in the failure messages.
     /// @param items   The items of the conditional.
     ///
-    /// @throws IllegalArgumentException If an item is a `#nexus` or `#version` directive, a function starting with `nexus_`, an input, an output, a uniform block, or a sampler.
+    /// @throws IllegalArgumentException If an item is a `#nexus`, `#version`, or `#extension` directive, a function starting with `nexus_`, an input, an output, a uniform block, or a sampler.
     ///
     private static void checkConditional(Identifier program, List<Item> items) {
         for (Item item : items) {
@@ -242,7 +271,7 @@ public final class Program {
                     Program.checkConditional(program, nested);
                     yield null;
                 }
-                case Item.Directive(String name, _, _) when name.equals("nexus") || name.equals("version") -> "the directive '#" + name + "'";
+                case Item.Directive(String name, _, _) when name.equals("nexus") || name.equals("version") || name.equals("extension") -> "the directive '#" + name + "'";
                 case Item.Function(String name, _, _) when name.startsWith(Program.HOOK_PREFIX) -> "the function '" + name + "'";
                 case Item.Input(_, String name, _, _) -> "the input '" + name + "'";
                 case Item.Output _ -> "an output";
@@ -258,50 +287,64 @@ public final class Program {
     }
     
     ///
-    /// Gets the vertex format element of the given input, creating it if no program declared the name of the input yet.
+    /// Gets the name of the macro of the given `#define` or `#undef` directive.
     ///
-    /// @param program The identifier of the program file, used in the failure messages.
-    /// @param input   The input.
+    /// @param directive The text of the directive.
     ///
-    /// @return The vertex format element.
+    /// @return The name of the macro, or an empty string if the directive has none.
     ///
-    /// @throws IllegalArgumentException If the element of the name has another type or count than the input, or if every vertex format element identifier is taken.
+    private static String macro(String directive) {
+        String[] words = directive.substring(1).strip().split("\\W+", 3);
+        return words.length > 1 ? words[1] : "";
+    }
+    
+    ///
+    /// Gets the vertex format elements of the given inputs, in order, creating every element that no program created yet.
+    ///
+    /// The n-th input of a type and count gets the n-th element of that type and count that was ever created.
+    ///
+    /// @param program The identifier of the program file, used in the failure message.
+    /// @param inputs  The inputs of the program.
+    ///
+    /// @return The vertex format elements, one for each input.
+    ///
+    /// @throws IllegalArgumentException If every vertex format element identifier is taken.
     ///
     @Synchronized
-    private static VertexFormatElement element(Identifier program, Input input) {
-        VertexFormatElement element;
-        try {
-            element = Program.ELEMENTS_BY_NAME.computeIfAbsent(input.name(), _ -> VertexFormatElement.register(VertexFormatElement.findNextId(), 0, input.type(), false, input.count()));
-        } catch (IllegalStateException exception) {
-            throw new IllegalArgumentException(StringUtils.format("Could not create an element for the input '%s' of the program '%s', every element identifier is taken", input.name(), program), exception);
+    private static List<VertexFormatElement> elements(Identifier program, List<Input> inputs) {
+        List<VertexFormatElement> elements = new ArrayList<>();
+        for (Input input : inputs) {
+            VertexFormatElement element = Program.ELEMENTS.stream()
+                    .filter(created -> created.type() == input.type() && created.count() == input.count() && !elements.contains(created))
+                    .findFirst()
+                    .orElse(null);
+            if (element == null) {
+                try {
+                    element = VertexFormatElement.register(VertexFormatElement.findNextId(), 0, input.type(), false, input.count());
+                } catch (IllegalStateException exception) {
+                    throw new IllegalArgumentException(StringUtils.format("Could not create an element for the input '%s' of the program '%s', every vertex format element identifier is taken across all mods", input.name(), program), exception);
+                }
+                
+                Program.ELEMENTS.add(element);
+            }
+            
+            elements.add(element);
         }
         
-        if (element.type() != input.type() || element.count() != input.count()) {
-            throw new IllegalArgumentException(StringUtils.format(
-                    "The input '%s' of the program '%s' is a '%dx%s', but another program declared it as a '%dx%s'",
-                    input.name(),
-                    program,
-                    input.count(),
-                    input.type(),
-                    element.count(),
-                    element.type()
-            ));
-        }
-        
-        return element;
+        return elements;
     }
     
     ///
     /// Creates the vertex format of the program, with the elements of the base and then the inputs in file order,
     /// or returns the format of the base if there are no inputs.
     ///
-    /// Every program that declares an input of the same name, type, and count shares its element.
+    /// The first input of a type and count has the same element in every program, and so does the second.
     ///
     /// May be called from any thread.
     ///
     /// @return The vertex format.
     ///
-    /// @throws IllegalArgumentException If another program declared an input of the same name with another type or count, or if every vertex format element identifier is taken.
+    /// @throws IllegalArgumentException If every vertex format element identifier is taken.
     ///
     public VertexFormat format() {
         VertexFormat baseFormat = this.base.getFormat();
@@ -313,8 +356,9 @@ public final class Program {
         baseFormat.getElementMapping().forEach(builder::add);
         // The entity format ends in a byte of padding, and the inputs have to start after it.
         builder.padding(baseFormat.getVertexSize() - baseFormat.getElements().stream().mapToInt(VertexFormatElement::byteSize).sum());
-        for (Input input : this.inputs) {
-            builder.add(input.name(), Program.element(this.id, input));
+        List<VertexFormatElement> elements = Program.elements(this.id, this.inputs);
+        for (int i = 0; i < this.inputs.size(); i++) {
+            builder.add(this.inputs.get(i).name(), elements.get(i));
         }
         
         return builder.build();
@@ -339,6 +383,17 @@ public final class Program {
     }
     
     ///
+    /// If the defines of the program file define the given macro.
+    ///
+    /// @param macro The name of the macro.
+    ///
+    /// @return `true` if a `#define` of the macro outside of any conditional comes before every `#undef` of it.
+    ///
+    public boolean isDefined(String macro) {
+        return this.defined.contains(macro);
+    }
+    
+    ///
     /// Generates the text of the given stage from the given template, leaving every `#moj_import` directive as it is.
     ///
     /// The anchors of the template are replaced:
@@ -346,7 +401,7 @@ public final class Program {
     /// - `#nexus vertex`: The call to the vertex hook, or nothing if the program doesn't define it.
     /// - `#nexus albedo`: The call to the albedo hook, or nothing if the program doesn't define it.
     ///
-    /// The define `NEXUS_VERTEX` or `NEXUS_FRAGMENT` and then the defines of the program file are inserted directly after the `#version` line.
+    /// The extensions of the program file, the define `NEXUS_VERTEX` or `NEXUS_FRAGMENT`, and then the defines of the program file are inserted directly after the `#version` line.
     ///
     /// @param stage    The shader stage.
     /// @param template The text of the template of the base for the given stage.
@@ -362,7 +417,7 @@ public final class Program {
         }
         
         int versionEnd = template.indexOf('\n') + 1;
-        String header = "#define NEXUS_" + StringUtils.upper(stage.getName()) + "\n" + this.defines;
+        String header = this.extensions + "#define NEXUS_" + StringUtils.upper(stage.getName()) + "\n" + this.defines;
         String text = template.substring(0, versionEnd) + header + template.substring(versionEnd).replace(Program.DECLARATIONS, declarations);
         for (Hook hook : Hook.values()) {
             text = text.replace(hook.anchor, this.hooks.contains(hook) ? hook.call : "");
