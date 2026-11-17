@@ -1,6 +1,7 @@
 package dev.satherov.nexus.api.render;
 
 import lombok.Getter;
+import lombok.Synchronized;
 
 import dev.satherov.nexus.api.mod.NexusMod;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
@@ -16,7 +17,6 @@ import dev.satherov.nexus.internal.render.client.RenderDispatch;
 import dev.satherov.nexus.internal.render.debug.DebugRenderers;
 import dev.satherov.nexus.internal.render.glow.GlowOutlines;
 import dev.satherov.nexus.internal.render.iris.IrisBridge;
-import dev.satherov.nexus.internal.render.shader.Programs;
 import dev.satherov.nexus.internal.render.shape.Scenes;
 
 import net.neoforged.fml.ModList;
@@ -25,7 +25,6 @@ import net.neoforged.fml.loading.FMLEnvironment;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.world.phys.Vec3;
 
-import com.google.common.base.Suppliers;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -106,6 +105,7 @@ public final class Render {
     ///
     /// @throws IllegalStateException If called on a dedicated server.
     ///
+    @Synchronized
     public Scene getScene() {
         if (!FMLEnvironment.getDist().isClient()) {
             throw new IllegalStateException("A dedicated server has no scene, asked for by '" + this.mod.getModId() + "'");
@@ -141,6 +141,7 @@ public final class Render {
     ///
     /// @throws IllegalStateException If called on a dedicated server.
     ///
+    @Synchronized
     public Glows getGlows() {
         if (!FMLEnvironment.getDist().isClient()) {
             throw new IllegalStateException("A dedicated server has no glows, asked for by '" + this.mod.getModId() + "'");
@@ -156,6 +157,8 @@ public final class Render {
     
     ///
     /// Projects the given world position onto the screen, in GUI-scaled pixels.
+    ///
+    /// The position is projected as the level was last drawn, with the view bobbing, the hurt tilt, and the nausea warp of that frame.
     ///
     /// @param position The world position to project.
     ///
@@ -174,6 +177,8 @@ public final class Render {
     ///
     /// Registers the given render pipeline and the shading a shader pack gives it.
     ///
+    /// The supplier is called once on the client, and [Pipeline#getPipeline()] always supplies the render pipeline it created.
+    ///
     /// @param pipeline The render pipeline to register.
     /// @param shading  The shading a shader pack gives the pipeline.
     ///
@@ -183,12 +188,11 @@ public final class Render {
     ///
     @CanIgnoreReturnValue
     public Pipeline pipeline(ClientOnly<Supplier<RenderPipeline>> pipeline, Shading shading) {
-        Pipeline registered = new Pipeline(pipeline, shading);
-        if (FMLEnvironment.getDist().isClient()) {
-            RenderDispatch.pipeline(registered);
+        if (!FMLEnvironment.getDist().isClient()) {
+            return new Pipeline(pipeline, shading);
         }
         
-        return registered;
+        return RenderDispatch.pipeline(this.mod, pipeline, shading);
     }
     
     ///
@@ -228,7 +232,7 @@ public final class Render {
             return new Pipeline(this::noPipeline, shading);
         }
         
-        return this.programPipeline(program, state.get().get(), shading);
+        return RenderDispatch.program(this.mod, program, state.get().get(), shading);
     }
     
     ///
@@ -259,29 +263,7 @@ public final class Render {
             return new Pipeline(this::noPipeline, shading);
         }
         
-        return this.programPipeline(program, null, shading);
-    }
-    
-    ///
-    /// Creates the pipeline of the given program file with the given state and registers it with the given shading.
-    ///
-    /// Should only ever be called on the client.
-    ///
-    /// @param program The name of the program.
-    /// @param state   The state of the pipeline, or `null` to use the default state.
-    /// @param shading The shading a shader pack gives the pipeline.
-    ///
-    /// @return The registered pipeline.
-    ///
-    /// @throws IllegalArgumentException If the program file is missing or fails [Programs#create(NexusMod, String, RenderPipeline.Snippet)].
-    /// @throws IllegalStateException    If the client already registered its render pipelines.
-    ///
-    private Pipeline programPipeline(String program, RenderPipeline.@Nullable Snippet state, Shading shading) {
-        // The program file is only read once RenderDispatch#program knows that the render pipelines aren't registered yet.
-        Supplier<RenderPipeline> created = Suppliers.memoize(() -> Programs.create(this.mod, program, state));
-        Pipeline registered = new Pipeline(() -> created, shading);
-        RenderDispatch.program(registered);
-        return registered;
+        return RenderDispatch.program(this.mod, program, null, shading);
     }
     
     ///
@@ -296,6 +278,8 @@ public final class Render {
     /// Runs the given drawer on every frame that renders a level, after the translucent features.
     /// The pose stack is relative to the camera and the buffer source is our own.
     ///
+    /// Every change the drawer makes to the pose stack is undone once it returns.
+    ///
     /// A render type over a pipeline registered with [#pipeline(ClientOnly, Shading)] or created from a program file ends in the slot its shading asks for.
     /// Any other render type ends inside the level.
     ///
@@ -305,12 +289,16 @@ public final class Render {
     ///
     public void draw(ClientOnly<BiConsumer<PoseStack, MultiBufferSource>> drawer) {
         if (FMLEnvironment.getDist().isClient()) {
-            RenderDispatch.draw(drawer);
+            RenderDispatch.draw(this.mod, drawer);
         }
     }
     
     ///
     /// Registers the given HUD layer as `<modid>:<name>` at the given slot.
+    ///
+    /// The layer is registered from the bus of the mod, so its anchor has to be a layer of vanilla, of the mod itself, or of a mod loaded before it.
+    /// The anchor may be another layer of the mod that is registered after this one.
+    /// If the anchor is a layer that the mod registers itself, it has to be registered by a listener above the lowest priority.
     ///
     /// @param name  The name of the layer.
     /// @param slot  The place of the layer among the others.
@@ -320,7 +308,7 @@ public final class Render {
     ///
     public void hudLayer(String name, HudSlot slot, ClientOnly<HudLayer> layer) {
         if (FMLEnvironment.getDist().isClient()) {
-            RenderDispatch.hudLayer(this.mod.id(name), slot, layer);
+            RenderDispatch.hudLayer(this.mod, name, slot, layer);
         }
     }
     

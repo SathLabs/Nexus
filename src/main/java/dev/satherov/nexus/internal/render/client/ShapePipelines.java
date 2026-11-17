@@ -3,11 +3,10 @@ package dev.satherov.nexus.internal.render.client;
 import lombok.experimental.UtilityClass;
 
 import dev.satherov.nexus.Nexus;
-import dev.satherov.nexus.api.render.pipeline.Pipeline;
+import dev.satherov.nexus.api.mod.NexusMod;
 import dev.satherov.nexus.api.render.pipeline.Shading;
 import dev.satherov.nexus.api.render.shape.Paint;
 import dev.satherov.nexus.internal.render.iris.IrisBridge;
-import dev.satherov.nexus.internal.render.shader.Programs;
 import dev.satherov.nexus.internal.render.shader.VanillaSampler;
 
 import net.neoforged.bus.api.IEventBus;
@@ -141,7 +140,7 @@ public class ShapePipelines {
     ///
     /// Creates the pipeline of the shape program of Nexus with translucent blending, no culling, and the depth test of the given depth mode.
     ///
-    /// The pipeline takes vanilla's Globals block from its state and is stored through [RenderDispatch#program(Pipeline)] with [Shading#OWN].
+    /// The pipeline takes vanilla's Globals block from its state and is stored through [RenderDispatch#program(NexusMod, String, RenderPipeline.Snippet, Shading)] with [Shading#OWN].
     ///
     /// @param depth The depth mode.
     ///
@@ -153,9 +152,7 @@ public class ShapePipelines {
                 .withCull(false)
                 .withDepthStencilState(ShapePipelines.depthTest(depth))
                 .buildSnippet();
-        RenderPipeline pipeline = Programs.create(Nexus.getMod(), "shape", state);
-        RenderDispatch.program(new Pipeline(() -> () -> pipeline, Shading.OWN));
-        return pipeline;
+        return RenderDispatch.program(Nexus.getMod(), "shape", state, Shading.OWN).getPipeline().get().get();
     }
     
     ///
@@ -281,7 +278,7 @@ public class ShapePipelines {
     /// @throws NullPointerException If the render type is not one of this class.
     ///
     public static Map<String, RenderSetup.TextureAndSampler> getTextures(RenderType type) {
-        return Objects.requireNonNull(ShapePipelines.SETUPS.get(type), "Render type '" + type + "' is not a shape render type").getTextures();
+        return Objects.requireNonNull(ShapePipelines.SETUPS.get(type), () -> "Render type '" + type + "' is not a shape render type").getTextures();
     }
     
     ///

@@ -7,7 +7,8 @@ import org.jspecify.annotations.Nullable;
 ///
 /// The place of a HUD layer among the others.
 ///
-/// The anchor has to be registered before the layer in this slot.
+/// The anchor has to be a layer of vanilla, of the mod that registers the layer in this slot, or of a mod loaded before it.
+/// The anchor may be another layer of the same mod that is registered after the layer in this slot.
 ///
 /// @param relation The side of the anchor the layer draws on.
 /// @param anchor   The identifier of the layer it sits next to, or `null` for all of them.
