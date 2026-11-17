@@ -58,6 +58,8 @@ public final class LivingEntityBuilder<ENTITY extends LivingEntity, PARENT>
     ///
     /// Registers the given attributes as the default attributes of the entities of the type.
     ///
+    /// If this was not called, registering the type will throw an [IllegalStateException].
+    ///
     /// @param attributes The supplier of the attributes, called once when the attributes are registered.
     ///
     /// @return The builder for chaining.
@@ -72,21 +74,23 @@ public final class LivingEntityBuilder<ENTITY extends LivingEntity, PARENT>
     }
     
     ///
-    /// Creates the entry as [EntityBuilder#createEntry(ResourceKey)] does, and adds a listener for the attributes to
-    /// the event bus of the mod if they were given.
+    /// Creates the entry as [EntityBuilder#createEntry(ResourceKey)] does, and adds a listener for the attributes to the event bus of the mod.
     ///
     /// @param key The key of the entity type.
     ///
     /// @return The created entry.
     ///
+    /// @throws IllegalStateException If [#attributes(Supplier)] was not called.
+    ///
     @Override
     protected EntityEntry<ENTITY> createEntry(ResourceKey<EntityType<?>> key) {
-        EntityEntry<ENTITY> entry = super.createEntry(key);
         Supplier<AttributeSupplier.Builder> attributes = this.attributes;
-        if (attributes != null) {
-            this.getRegistrations().getMod().getEventBus().addListener(EntityAttributeCreationEvent.class, event -> event.put(entry.value(), attributes.get().build()));
+        if (attributes == null) {
+            throw new IllegalStateException("Could not register '" + key.identifier() + "' because it has no attributes");
         }
         
+        EntityEntry<ENTITY> entry = super.createEntry(key);
+        this.getRegistrations().getMod().getEventBus().addListener(EntityAttributeCreationEvent.class, event -> event.put(entry.value(), attributes.get().build()));
         return entry;
     }
 }
