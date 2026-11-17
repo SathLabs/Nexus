@@ -111,6 +111,7 @@ public final class Keybind {
     /// If the key is down on this client, as Nexus tracks it.
     ///
     /// A key in the context [Context#IN_SCREEN] or [Context#EVERYWHERE] is tracked while a screen is open too.
+    /// A key that the player held down while a screen closed will stay up until it is pressed again, unless its mapping is a toggle that vanilla turned back on.
     ///
     /// Will always return `false` on a dedicated server, and for a key on an existing mapping that no mod on this client declares.
     ///
@@ -147,7 +148,7 @@ public final class Keybind {
     }
     
     ///
-    /// The number of server ticks since the given player's key went down, `1` on the tick it arrives and `0` while it is up.
+    /// The number of server ticks since the given player's key went down, `1` while its press is handled and on the first server tick after it, and `0` while it is up.
     ///
     /// @param player The player whose key is read.
     ///

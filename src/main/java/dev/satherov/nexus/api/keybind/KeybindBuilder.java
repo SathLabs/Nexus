@@ -131,6 +131,8 @@ public final class KeybindBuilder extends BindingBuilder<KeybindBuilder> {
     ///
     /// Sets the category the key is listed in.
     ///
+    /// If the category belongs to a mod that did not declare it through Nexus, the key will be listed under a header of its own.
+    ///
     /// @param category The identifier of a category the mod declared, of a vanilla category, or of a category of another mod.
     ///
     /// @return The builder for chaining.
