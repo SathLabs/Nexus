@@ -15,6 +15,7 @@ import net.neoforged.neoforge.client.gui.VanillaGuiLayers;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.core.BlockPos;
+import net.minecraft.util.ARGB;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 
@@ -37,6 +38,8 @@ public class HudLayerSamples {
     
     private static final String MARKER = "marker";
     
+    private static final String BOTTOM = "bottom";
+    
     private static final int RED = 0xFFFF0000;
     
     private static final int BLUE = 0xFF0000FF;
@@ -50,6 +53,14 @@ public class HudLayerSamples {
     private static final int GOLDEN_HALF = 12;
     
     private static final int HIDDEN_FRAMES = 3;
+    
+    private static final int CROSSHAIR_SIZE = 15;
+    
+    private static final int OFF_CROSSHAIR = 3;
+    
+    private static final int STRONG = 0xC0;
+    
+    private static final int WEAK = 0x40;
     
     private static final int STILL_FRAMES = 10;
     
@@ -154,6 +165,27 @@ public class HudLayerSamples {
         }
     }
     
+    @ClientTest
+    public static void bottomSlotDrawsUnderCrosshair(Client client) {
+        HudLayerSamples.enter(client);
+        int x = (client.minecraft().getWindow().getGuiScaledWidth() - HudLayerSamples.CROSSHAIR_SIZE) / 2 + HudLayerSamples.CROSSHAIR_SIZE / 2;
+        int y = (client.minecraft().getWindow().getGuiScaledHeight() - HudLayerSamples.CROSSHAIR_SIZE) / 2 + HudLayerSamples.CROSSHAIR_SIZE / 2;
+        HudLayerSamples.shown = Shown.BOTTOM;
+        try {
+            client.tick();
+            
+            Capture capture = client.capture();
+            int beside = HudLayerSamples.guiPixel(client, capture, x + HudLayerSamples.OFF_CROSSHAIR, y + HudLayerSamples.OFF_CROSSHAIR);
+            Assertions.assertThat(ARGB.red(beside)).as("the red of the layer beside the crosshair").isGreaterThanOrEqualTo(HudLayerSamples.STRONG);
+            Assertions.assertThat(ARGB.green(beside)).as("the green of the layer beside the crosshair").isLessThanOrEqualTo(HudLayerSamples.WEAK);
+            int center = HudLayerSamples.guiPixel(client, capture, x, y);
+            Assertions.assertThat(ARGB.red(center)).as("the red of the crosshair over the layer").isLessThanOrEqualTo(HudLayerSamples.WEAK);
+            Assertions.assertThat(ARGB.green(center)).as("the green of the crosshair over the layer").isGreaterThanOrEqualTo(HudLayerSamples.STRONG);
+        } finally {
+            HudLayerSamples.shown = Shown.NONE;
+        }
+    }
+    
     private static Vec3 enter(Client client) {
         client.joinWorld();
         client.hideHud(false);
@@ -213,6 +245,12 @@ public class HudLayerSamples {
         }
     }
     
+    private static void bottom(GuiGraphicsExtractor graphics, DeltaTracker delta) {
+        if (HudLayerSamples.shown == Shown.BOTTOM) {
+            HudLayerSamples.square(graphics, graphics.guiWidth() / 2, graphics.guiHeight() / 2, HudLayerSamples.LOWER_HALF, HudLayerSamples.RED);
+        }
+    }
+    
     private static void marker(GuiGraphicsExtractor graphics, DeltaTracker delta) {
         Vec3 point = HudLayerSamples.marked;
         if (HudLayerSamples.shown != Shown.MARKER || point == null) {
@@ -229,7 +267,8 @@ public class HudLayerSamples {
         NONE,
         CROSSHAIR,
         ORDER,
-        MARKER
+        MARKER,
+        BOTTOM
     }
     
     @EventBusSubscriber(modid = Nexus.MOD_ID)
@@ -242,6 +281,7 @@ public class HudLayerSamples {
             render.hudLayer(HudLayerSamples.UPPER, HudSlot.top(), () -> HudLayerSamples::upper);
             render.hudLayer(HudLayerSamples.LOWER, HudSlot.below(Nexus.getMod().id(HudLayerSamples.UPPER)), () -> HudLayerSamples::lower);
             render.hudLayer(HudLayerSamples.MARKER, HudSlot.top(), () -> HudLayerSamples::marker);
+            render.hudLayer(HudLayerSamples.BOTTOM, HudSlot.bottom(), () -> HudLayerSamples::bottom);
         }
     }
 }
