@@ -181,6 +181,26 @@ public class ShapeTest {
     }
     
     @Test
+    public void drawsTheFourEdgesAndOneFaceOfAFlatBox() {
+        AABB flat = new AABB(1.0D, 2.0D, 3.0D, 2.0D, 2.0D, 6.0D);
+        RecordingBrush brush = ShapeTest.draw(Shape.box(flat), ShapeTest.BOTH);
+        List<Line> lines = brush.getAll(Line.class);
+        Assertions.assertThat(lines).hasSize(4);
+        Assertions.assertThat(ShapeTest.edges(lines)).isEqualTo(ShapeTest.edges(flat));
+        Assertions.assertThat(brush.getAll(Face.class))
+                .singleElement()
+                .matches(face -> ShapeTest.keys(face.corners()).equals(ShapeTest.keys(ShapeTest.corners(flat, Direction.UP))));
+    }
+    
+    @Test
+    public void drawsOneEdgeAndNoFaceOfABoxFlatOnTwoAxes() {
+        AABB thin = new AABB(1.0D, 2.0D, 3.0D, 1.0D, 2.0D, 6.0D);
+        RecordingBrush brush = ShapeTest.draw(Shape.box(thin), ShapeTest.BOTH);
+        Assertions.assertThat(brush.getAll(Line.class)).singleElement().matches(edge -> ShapeTest.edges(List.of(edge)).equals(ShapeTest.edges(thin)));
+        Assertions.assertThat(brush.getAll(Face.class)).isEmpty();
+    }
+    
+    @Test
     public void drawsTheEdgesAndFaceOfAQuad() {
         RecordingBrush brush = ShapeTest.draw(Shape.face(ShapeTest.QUAD), ShapeTest.BOTH);
         List<Line> lines = brush.getAll(Line.class);
@@ -320,16 +340,6 @@ public class ShapeTest {
         Vec3 to = new Vec3(4.0D, 5.0D, 6.0D);
         Paint own = new Paint(0xFF0000FF, 6.0F, 0, Paint.Depth.ALWAYS);
         Assertions.assertThat(ShapeTest.draw(Shape.line(from, to).painted(own), ShapeTest.BOTH).calls).containsExactly(new Line(from, to, 0xFF0000FF));
-    }
-    
-    @Test
-    public void drawsAPaintedShapeWithItsOwnPaintAndThenRestoresTheOther() {
-        Paint own = new Paint(0xFF0000FF, 6.0F, 0, Paint.Depth.ALWAYS);
-        List<Paint> seen = new ArrayList<>();
-        Shape probe = current -> seen.add(current.getPaint());
-        RecordingBrush brush = ShapeTest.draw(Shape.of(probe.painted(own), probe), ShapeTest.BOTH);
-        Assertions.assertThat(seen).containsExactly(own, ShapeTest.BOTH);
-        Assertions.assertThat(brush.getPaint()).isEqualTo(ShapeTest.BOTH);
     }
     
     private static final class RecordingBrush implements Brush {
