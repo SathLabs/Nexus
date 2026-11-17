@@ -4,6 +4,7 @@ import net.minecraft.client.MouseHandler;
 import net.minecraft.client.input.MouseButtonInfo;
 
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.gen.Invoker;
 
 ///
@@ -41,4 +42,12 @@ public interface MouseHandlerAccess {
     ///
     @Invoker("onScroll")
     void invokeOnScroll(long handle, double xoffset, double yoffset);
+    
+    ///
+    /// Sets the button of the last click that a screen handled, which vanilla compares the next press against to detect a double click.
+    ///
+    /// @param button The button of the last click.
+    ///
+    @Accessor("lastClickButton")
+    void setLastClickButton(int button);
 }

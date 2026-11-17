@@ -25,6 +25,11 @@ import java.util.Set;
 public final class Mouse {
     
     ///
+    /// A button that no click has, which makes vanilla count the next press as a single click.
+    ///
+    private static final int NO_BUTTON = -1;
+    
+    ///
     /// The client that this mouse belongs to.
     ///
     private final Client client;
@@ -64,9 +69,13 @@ public final class Mouse {
     ///
     /// Clicks the given button and then releases it.
     ///
+    /// The click is always a single click. Vanilla counts a second click on the same screen within 250 ms of wall-clock time as a
+    /// double click, so two clicks in a row would depend on how fast the machine runs the test. [#doubleClick(double, double)] double-clicks.
+    ///
     /// @param button The button to click.
     ///
     public void click(@MouseButtonInfo.MouseButton int button) {
+        this.forgetLastClick();
         this.send(button, GLFW.GLFW_PRESS);
         this.send(button, GLFW.GLFW_RELEASE);
     }
@@ -83,12 +92,29 @@ public final class Mouse {
     }
     
     ///
+    /// Moves to the position and double-clicks the left button.
+    ///
+    /// The second click only counts as the second half of a double click if the screen handled the first one.
+    ///
+    /// @param x The horizontal position to move, starting from the left side.
+    /// @param y The vertical position to move, starting from the top side.
+    ///
+    public void doubleClick(double x, double y) {
+        this.click(x, y);
+        this.send(GLFW.GLFW_MOUSE_BUTTON_LEFT, GLFW.GLFW_PRESS);
+        this.send(GLFW.GLFW_MOUSE_BUTTON_LEFT, GLFW.GLFW_RELEASE);
+    }
+    
+    ///
     /// Clicks the given button and holds it down until [#release(int)] is called.
+    ///
+    /// The press is always a single click, the same as [#click(int)].
     ///
     /// @param button The button to hold down.
     ///
     public void hold(@MouseButtonInfo.MouseButton int button) {
         this.held.add(button);
+        this.forgetLastClick();
         this.send(button, GLFW.GLFW_PRESS);
     }
     
@@ -127,6 +153,13 @@ public final class Mouse {
         for (int button : Set.copyOf(this.held)) {
             this.release(button);
         }
+    }
+    
+    ///
+    /// Makes vanilla forget the last click, so that the next press is a single click.
+    ///
+    private void forgetLastClick() {
+        ((MouseHandlerAccess) this.client.minecraft().mouseHandler).setLastClickButton(Mouse.NO_BUTTON);
     }
     
     ///
