@@ -76,6 +76,9 @@ import java.util.function.UnaryOperator;
 /// Similar to DFU's [Codec].
 /// It writes the same JSON and NBT as the equivalent DFU codec, and the same bytes as the equivalent vanilla stream codec.
 ///
+/// A decoded value should never be modified.
+/// The fallback of an optional field or a [KeyedCodec] will be the same instance every time its key is missing.
+///
 /// @param <T> The type of value this codec encodes and decodes.
 /// @param <A> The access a format has to offer to be used with this codec.
 ///
@@ -209,7 +212,9 @@ public interface NexusCodec<T, A extends Access.Plain> {
     /// Creates a codec that writes no data and always decodes to the given value.
     ///
     /// In JSON and NBT, it writes an empty object and reads any object, the same as DFU.
-    /// On the network, it writes nothing.
+    /// On the network, it writes nothing, the same as [StreamCodec#unit(Object)].
+    ///
+    /// Fails to encode a value other than the given value on the network.
     ///
     /// @param value The value to decode to.
     ///
