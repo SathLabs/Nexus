@@ -15,6 +15,9 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.util.Unit;
 
 import com.google.gson.JsonElement;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.JsonOps;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import io.netty.buffer.Unpooled;
 
 import org.assertj.core.api.Assertions;
@@ -29,7 +32,8 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 ///
-/// Checks that a struct of every arity round trips with a value of a distinct type at every position.
+/// Checks that a struct of every arity round trips with a value of a distinct type at every position,
+/// and that a struct of more than four fields writes its keys in the same order as its DFU twin.
 ///
 public class ArityTest {
     
@@ -260,6 +264,72 @@ public class ArityTest {
             )
     );
     
+    private static final StructCodec<List<Integer>, Access.Plain> FIVE_NUMBERS = NexusCodec.struct(
+            "five_numbers",
+            ArityTest.number(0),
+            ArityTest.number(1),
+            ArityTest.number(2),
+            ArityTest.number(3),
+            ArityTest.number(4),
+            (a, b, c, d, e) -> List.of(a, b, c, d, e)
+    );
+    
+    private static final Codec<List<Integer>> FIVE_NUMBERS_DFU = RecordCodecBuilder.create(instance -> instance.group(
+            ArityTest.dfuNumber(0),
+            ArityTest.dfuNumber(1),
+            ArityTest.dfuNumber(2),
+            ArityTest.dfuNumber(3),
+            ArityTest.dfuNumber(4)
+    ).apply(instance, (a, b, c, d, e) -> List.of(a, b, c, d, e)));
+    
+    private static final StructCodec<List<Integer>, Access.Plain> SIXTEEN_NUMBERS = NexusCodec.struct(
+            "sixteen_numbers",
+            ArityTest.number(0),
+            ArityTest.number(1),
+            ArityTest.number(2),
+            ArityTest.number(3),
+            ArityTest.number(4),
+            ArityTest.number(5),
+            ArityTest.number(6),
+            ArityTest.number(7),
+            ArityTest.number(8),
+            ArityTest.number(9),
+            ArityTest.number(10),
+            ArityTest.number(11),
+            ArityTest.number(12),
+            ArityTest.number(13),
+            ArityTest.number(14),
+            ArityTest.number(15),
+            (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p) -> List.of(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p)
+    );
+    
+    private static final Codec<List<Integer>> SIXTEEN_NUMBERS_DFU = RecordCodecBuilder.create(instance -> instance.group(
+            ArityTest.dfuNumber(0),
+            ArityTest.dfuNumber(1),
+            ArityTest.dfuNumber(2),
+            ArityTest.dfuNumber(3),
+            ArityTest.dfuNumber(4),
+            ArityTest.dfuNumber(5),
+            ArityTest.dfuNumber(6),
+            ArityTest.dfuNumber(7),
+            ArityTest.dfuNumber(8),
+            ArityTest.dfuNumber(9),
+            ArityTest.dfuNumber(10),
+            ArityTest.dfuNumber(11),
+            ArityTest.dfuNumber(12),
+            ArityTest.dfuNumber(13),
+            ArityTest.dfuNumber(14),
+            ArityTest.dfuNumber(15)
+    ).apply(instance, (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p) -> List.of(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p)));
+    
+    private static StructField<List<Integer>, Integer, Access.Plain> number(int index) {
+        return NexusCodec.INT.field("number_" + index, values -> values.get(index));
+    }
+    
+    private static RecordCodecBuilder<List<Integer>, Integer> dfuNumber(int index) {
+        return Codec.INT.fieldOf("number_" + index).forGetter(values -> values.get(index));
+    }
+    
     public static Stream<Arguments> structs() {
         return IntStream.rangeClosed(1, ArityTest.STRUCTS.size()).mapToObj(arity -> Arguments.of(arity, ArityTest.STRUCTS.get(arity - 1)));
     }
@@ -293,6 +363,23 @@ public class ArityTest {
         
         Assertions.assertThat(codec.decode(CodecFormat.netty(buffer))).isEqualTo(value);
         Assertions.assertThat(buffer.readableBytes()).isZero();
+    }
+    
+    public static Stream<Arguments> twins() {
+        return Stream.of(
+                Arguments.of(5, ArityTest.FIVE_NUMBERS, ArityTest.FIVE_NUMBERS_DFU),
+                Arguments.of(16, ArityTest.SIXTEEN_NUMBERS, ArityTest.SIXTEEN_NUMBERS_DFU)
+        );
+    }
+    
+    @ParameterizedTest(name = "arity {0}")
+    @MethodSource("twins")
+    public void writesKeysInTheOrderOfItsDfuTwinInJson(int arity, StructCodec<List<Integer>, Access.Plain> codec, Codec<List<Integer>> dfu) {
+        List<Integer> value = IntStream.range(0, arity).boxed().toList();
+        String json = dfu.encodeStart(JsonOps.INSTANCE, value).getOrThrow().toString();
+        
+        Assertions.assertThat(codec.encode(CodecFormat.JSON, value)).hasToString(json);
+        Assertions.assertThat(codec.asDfu().encodeStart(JsonOps.INSTANCE, value).getOrThrow()).hasToString(json);
     }
     
     @Test
