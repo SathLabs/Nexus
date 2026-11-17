@@ -58,6 +58,24 @@ public abstract sealed class ComponentFilter permits ComponentFilter.Has, Compon
     public static final ComponentFilter ANY = new AllOf(List.of());
     
     ///
+    /// The deepest nesting of filters that [#CODEC] encodes and decodes, counting the outermost filter as one.
+    ///
+    public static final int MAX_DEPTH = 64;
+    
+    ///
+    /// The most levels of NBT that a filter which [#CODEC] decodes from the network may take once it's saved.
+    ///
+    /// The value of an exact or a matching filter counts one level for every compound in its NBT and two for every list, since vanilla can write the elements of a list in compounds of their own.
+    /// A string in the value counts the deepest nesting of `{` and `[` in its text outside of quoted strings,
+    /// since vanilla saves some compounds, such as the one of a `minecraft:custom_data` predicate, as SNBT text and parses that text with no bound on its nesting.
+    /// Every filter that holds the value counts two more levels, for its object and the list of the filter around it.
+    ///
+    /// The bound is half of the 512 levels that vanilla reads NBT with, and leaves the other half to what holds the filter.
+    /// A chest in a chunk takes 6 levels down to the components of an item, and every container item around the filter takes up to 4 more.
+    ///
+    public static final int MAX_NETWORK_NBT_DEPTH = 256;
+    
+    ///
     /// The codec of a filter in JSON, NBT, and on the network.
     ///
     /// In JSON and NBT, a filter is an object with the keys of one case:
@@ -71,11 +89,16 @@ public abstract sealed class ComponentFilter permits ComponentFilter.Has, Compon
     /// Decoding picks the first case in this list whose first key is present.
     /// If the format is strict, decoding will fail on a key that the case doesn't have.
     /// The `value` of a path is read as a boolean if it is one, as a number if it is one, and as a string otherwise.
+    /// A byte of `0` or `1` in NBT is a boolean, unless the operator is ordered, which makes it a number.
     /// If the registries haven't frozen yet, decoding a path will fail like any other value that can't be decoded.
     ///
     /// In JSON and NBT, a whole number that fits into an `int` is written as an `int`, except for `-0.0`, and every other number as a `double`.
     /// On the network, a filter is written with the index of its case in the list above, and every number as a `double`.
+    /// A component is written as its network id there and a predicate type as its identifier, since the registry of predicate types isn't synced.
     /// Encoding fails if a component, the component of a path, or a predicate type in the filter isn't registered.
+    /// Encoding and decoding fail if more than {@value #MAX_DEPTH} filters are nested inside each other.
+    /// On the network, decoding an exact or a matching filter fails if the DFU codec of its component or its predicate type can't encode the value,
+    /// or if the filter could take more than {@value #MAX_NETWORK_NBT_DEPTH} levels of NBT once it's saved.
     ///
     public static final NexusCodec<ComponentFilter, Access.Registries> CODEC = new FilterCodec();
     

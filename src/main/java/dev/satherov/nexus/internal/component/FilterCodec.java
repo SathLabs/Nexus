@@ -23,8 +23,16 @@ import net.minecraft.core.component.TypedDataComponent;
 import net.minecraft.core.component.predicates.DataComponentPredicate;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.StringTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.resources.Identifier;
+import net.minecraft.resources.RegistryOps;
 import net.minecraft.util.Util;
+
+import com.mojang.serialization.Codec;
 
 import org.jetbrains.annotations.ApiStatus;
 
@@ -41,7 +49,11 @@ import java.util.stream.Stream;
 /// The cases are the constants of [Case], whose ordinal is the index of the case on the network and which hold its keys.
 /// Every error is reported at the key of the value that failed.
 ///
-/// On the network, a predicate type is written as its network id in the built-in registry, since the registry of predicate types isn't synced.
+/// On the network, a data component type is written as its network id and a predicate type as its identifier.
+/// The registry of predicate types isn't synced, so its network ids can differ between the server and the client.
+///
+/// Encoding and decoding fail in every format once more than [ComponentFilter#MAX_DEPTH] filters are nested inside each other.
+/// On the network, decoding also fails once a filter could take more than [ComponentFilter#MAX_NETWORK_NBT_DEPTH] levels of NBT when it's saved.
 ///
 @ApiStatus.Internal
 public final class FilterCodec extends Traversal<ComponentFilter, Access.Registries> {
@@ -122,6 +134,11 @@ public final class FilterCodec extends Traversal<ComponentFilter, Access.Registr
     private static final Traversal<ComponentPath, Access.Plain> PATH = (Traversal<ComponentPath, Access.Plain>) ComponentPath.CODEC;
     
     ///
+    /// The number of filters that the current thread is encoding or decoding, each nested inside the one before it.
+    ///
+    private static final ThreadLocal<Integer> DEPTH = ThreadLocal.withInitial(() -> 0);
+    
+    ///
     /// The codec of the filters of [ComponentFilter.AllOf] and [ComponentFilter.AnyOf].
     ///
     private final Traversal<List<ComponentFilter>, Access.Registries> children = CollectionCodecs.list(this, CollectionCodecs.LIMIT);
@@ -184,7 +201,7 @@ public final class FilterCodec extends Traversal<ComponentFilter, Access.Registr
     }
     
     ///
-    /// Writes the network id of the given element on the network and its identifier otherwise.
+    /// Writes the network id of the given element on the network if its registry is synced, and its identifier otherwise.
     ///
     /// @param operations The operations of the format.
     /// @param registry   The registry of the element.
@@ -200,11 +217,11 @@ public final class FilterCodec extends Traversal<ComponentFilter, Access.Registr
             throw CodecErrors.unregistered(registry.key());
         }
         
-        return operations.isPositional() ? operations.ofVarInt(registry.getId(element)) : Scalars.IDENTIFIER.write(operations, id);
+        return operations.isPositional() && registry.doesSync() ? operations.ofVarInt(registry.getId(element)) : Scalars.IDENTIFIER.write(operations, id);
     }
     
     ///
-    /// Reads the network id of an element on the network and its identifier otherwise.
+    /// Reads the network id of an element on the network if its registry is synced, and its identifier otherwise.
     ///
     /// @param operations The operations of the format.
     /// @param input      The network id or the identifier.
@@ -215,7 +232,7 @@ public final class FilterCodec extends Traversal<ComponentFilter, Access.Registr
     /// @throws NexusCodecException If the registry doesn't have the network id or the identifier.
     ///
     private static <V, ELEMENT> ELEMENT readElement(Operations<V> operations, V input, Registry<ELEMENT> registry) {
-        if (operations.isPositional()) {
+        if (operations.isPositional() && registry.doesSync()) {
             int id = operations.asVarInt(input);
             ELEMENT element = registry.byId(id);
             if (element == null) {
@@ -279,6 +296,119 @@ public final class FilterCodec extends Traversal<ComponentFilter, Access.Registr
     }
     
     ///
+    /// Reads a value of the given data component type with the codec of its values.
+    ///
+    /// On the network, the value is then checked with [#requireSavable(Operations, Codec, Object)] against the DFU codec of the data component type,
+    /// since the stream codec of a vanilla component can read values that its DFU codec refuses to save.
+    ///
+    /// @param operations The operations of the format.
+    /// @param input      The encoded value.
+    /// @param component  The data component type of the value.
+    ///
+    /// @return The value.
+    ///
+    private static <V, VALUE> VALUE readValue(Operations<V> operations, V input, DataComponentType<VALUE> component) {
+        return FilterCodec.requireSavable(operations, component.codecOrThrow(), FilterCodec.valueCodec(component).read(operations, input));
+    }
+    
+    ///
+    /// Checks that the given value of a filter can be saved in NBT with the given codec, if the value was read from the network.
+    ///
+    /// The value counts one level for every compound in its NBT and two for every list, since vanilla can write the elements of a list in compounds of their own.
+    /// A string in it counts the deepest nesting of brackets in its text, since vanilla saves some compounds as SNBT text and parses that text with no bound on its nesting.
+    /// Every filter that the current thread is decoding counts two more levels, for its object and the list of the filter around it.
+    ///
+    /// @param operations The operations of the format.
+    /// @param codec      The DFU codec that saves the value.
+    /// @param value      The value.
+    ///
+    /// @return The value.
+    ///
+    /// @throws NexusCodecException If the value was read from the network, and the codec can't encode it or the levels come to more than [ComponentFilter#MAX_NETWORK_NBT_DEPTH].
+    ///
+    private static <V, VALUE> VALUE requireSavable(Operations<V> operations, Codec<VALUE> codec, VALUE value) {
+        if (!operations.isPositional()) {
+            return value;
+        }
+        
+        //noinspection DataFlowIssue A filter only ever runs on formats with registries.
+        Tag tag = codec.encodeStart(RegistryOps.create(NbtOps.INSTANCE, operations.lookup()), value).getOrThrow(NexusCodecException::new);
+        int depth = 2 * FilterCodec.DEPTH.get() + FilterCodec.depthOf(tag);
+        if (depth > ComponentFilter.MAX_NETWORK_NBT_DEPTH) {
+            throw new NexusCodecException("Expected at most " + ComponentFilter.MAX_NETWORK_NBT_DEPTH + " levels of NBT in a filter from the network, found " + depth);
+        }
+        
+        return value;
+    }
+    
+    ///
+    /// Gets the number of levels that the given tag takes in NBT, counting two for a list and the nesting of brackets in the text of a string.
+    ///
+    /// @param tag The tag.
+    ///
+    /// @return The number of levels, which is `0` for a tag that is neither a compound, a list, nor a string with brackets.
+    ///
+    private static int depthOf(Tag tag) {
+        return switch (tag) {
+            case CompoundTag compound -> 1 + FilterCodec.deepestOf(compound.values());
+            case ListTag list -> 2 + FilterCodec.deepestOf(list);
+            case StringTag(String text) -> FilterCodec.nestingOf(text);
+            default -> 0;
+        };
+    }
+    
+    ///
+    /// Gets the deepest nesting of `{` and `[` in the given text outside of quoted strings, which is how deep vanilla parses the text if it's SNBT.
+    ///
+    /// The text is scanned once and without recursion, so text of any nesting can't overflow the stack here.
+    /// A quoted string starts and ends with the same `"` or `'`, and a backslash in it escapes the character after it, as in SNBT.
+    ///
+    /// @param text The text.
+    ///
+    /// @return The deepest nesting, which is `0` for text without brackets outside of quoted strings.
+    ///
+    private static int nestingOf(String text) {
+        int depth = 0;
+        int deepest = 0;
+        char quote = 0;
+        for (int index = 0; index < text.length(); index++) {
+            char character = text.charAt(index);
+            if (quote == 0) {
+                switch (character) {
+                    case '"', '\'' -> quote = character;
+                    case '{', '[' -> deepest = Math.max(deepest, ++depth);
+                    case '}', ']' -> depth = Math.max(0, depth - 1);
+                    default -> {
+                    }
+                }
+            } else if (character == '\\') {
+                // The escaped character is part of the string, even if it's a quote.
+                index++;
+            } else if (character == quote) {
+                quote = 0;
+            }
+        }
+        
+        return deepest;
+    }
+    
+    ///
+    /// Gets the largest number of levels that one of the given tags takes in NBT.
+    ///
+    /// @param tags The tags.
+    ///
+    /// @return The largest number of levels, or `0` if there are no tags.
+    ///
+    private static int deepestOf(Iterable<Tag> tags) {
+        int deepest = 0;
+        for (Tag tag : tags) {
+            deepest = Math.max(deepest, FilterCodec.depthOf(tag));
+        }
+        
+        return deepest;
+    }
+    
+    ///
     /// Reads the value of an exact filter on the given data component type.
     ///
     /// @param operations The operations of the format.
@@ -288,7 +418,7 @@ public final class FilterCodec extends Traversal<ComponentFilter, Access.Registr
     /// @return The exact filter.
     ///
     private static <V, VALUE> ComponentFilter readExact(Operations<V> operations, V input, DataComponentType<VALUE> component) {
-        return ComponentFilter.exact(component, FilterCodec.field(operations, input, FilterCodec.VALUE_KEY, value -> FilterCodec.valueCodec(component).read(operations, value)));
+        return ComponentFilter.exact(component, FilterCodec.field(operations, input, FilterCodec.VALUE_KEY, value -> FilterCodec.readValue(operations, value, component)));
     }
     
     ///
@@ -380,15 +510,17 @@ public final class FilterCodec extends Traversal<ComponentFilter, Access.Registr
     ///
     /// A bare value is read as a flag first, then as a number, and then as text.
     /// It's only a flag if it equals what the format writes for `true` or `false`, so in NBT a byte of `0` or `1` is a flag.
+    /// If the operator is ordered, such a value is read as a number first, since a flag has no order and vanilla converts a small JSON number to an NBT byte.
     ///
     /// @param operations The operations of the format.
     /// @param input      The encoded literal.
+    /// @param operator   The operator that the literal is compared with.
     ///
     /// @return The literal.
     ///
     /// @throws NexusCodecException If the kind on the network is unknown, or the bare value isn't a flag, a number, or text.
     ///
-    private static <V> Comparison.Literal readLiteral(Operations<V> operations, V input) {
+    private static <V> Comparison.Literal readLiteral(Operations<V> operations, V input, Comparison.Operator operator) {
         if (operations.isPositional()) {
             int kind = operations.asVarInt(input);
             return switch (kind) {
@@ -399,17 +531,19 @@ public final class FilterCodec extends Traversal<ComponentFilter, Access.Registr
             };
         }
         
-        if (input.equals(operations.ofBoolean(true))) {
-            return new Comparison.Literal.Flag(true);
-        }
-        
-        if (input.equals(operations.ofBoolean(false))) {
-            return new Comparison.Literal.Flag(false);
+        boolean isTrue = input.equals(operations.ofBoolean(true));
+        boolean flag = isTrue || input.equals(operations.ofBoolean(false));
+        if (flag && !operator.isOrdered()) {
+            return new Comparison.Literal.Flag(isTrue);
         }
         
         try {
             return new Comparison.Literal.Numeric(operations.asDouble(input));
         } catch (NexusCodecException _) {
+            if (flag) {
+                return new Comparison.Literal.Flag(isTrue);
+            }
+            
             try {
                 return new Comparison.Literal.Text(Scalars.STRING.read(operations, input));
             } catch (NexusCodecException _) {
@@ -433,7 +567,7 @@ public final class FilterCodec extends Traversal<ComponentFilter, Access.Registr
     private static <V> ComponentFilter readCompare(Operations<V> operations, V input) {
         ComponentPath path = FilterCodec.field(operations, input, FilterCodec.PATH_KEY, value -> FilterCodec.PATH.read(operations, value));
         Comparison.Operator operator = FilterCodec.field(operations, input, FilterCodec.IS_KEY, value -> FilterCodec.readOperator(operations, value));
-        Comparison.Literal literal = FilterCodec.field(operations, input, FilterCodec.VALUE_KEY, value -> FilterCodec.readLiteral(operations, value));
+        Comparison.Literal literal = FilterCodec.field(operations, input, FilterCodec.VALUE_KEY, value -> FilterCodec.readLiteral(operations, value, operator));
         try {
             return ComponentFilter.compare(path, new Comparison(operator, literal));
         } catch (IllegalArgumentException failure) {
@@ -458,6 +592,8 @@ public final class FilterCodec extends Traversal<ComponentFilter, Access.Registr
     ///
     /// Reads the predicate of [ComponentFilter.Matching] with the given predicate type.
     ///
+    /// On the network, the predicate is then checked with [#requireSavable(Operations, Codec, Object)] against the DFU codec of the predicate type.
+    ///
     /// @param operations The operations of the format.
     /// @param input      The object to read from.
     /// @param type       The predicate type.
@@ -465,7 +601,8 @@ public final class FilterCodec extends Traversal<ComponentFilter, Access.Registr
     /// @return The matching filter.
     ///
     private static <V, PREDICATE extends DataComponentPredicate> ComponentFilter readMatching(Operations<V> operations, V input, DataComponentPredicate.Type<PREDICATE> type) {
-        return ComponentFilter.matching(type, FilterCodec.field(operations, input, FilterCodec.VALUE_KEY, value -> VanillaAdapters.ofRegistryDfu(type.codec()).read(operations, value)));
+        Traversal<PREDICATE, Access.Registries> codec = VanillaAdapters.ofRegistryDfu(type.codec());
+        return ComponentFilter.matching(type, FilterCodec.field(operations, input, FilterCodec.VALUE_KEY, value -> FilterCodec.requireSavable(operations, type.codec(), codec.read(operations, value))));
     }
     
     ///
@@ -487,6 +624,59 @@ public final class FilterCodec extends Traversal<ComponentFilter, Access.Registr
     }
     
     ///
+    /// Runs the given encoding or decoding of a filter nested inside the filters that the current thread is encoding or decoding.
+    ///
+    /// @param coding The encoding or decoding of the filter.
+    ///
+    /// @return What the encoding or decoding returned.
+    ///
+    /// @throws NexusCodecException If the current thread is already encoding or decoding {@value ComponentFilter#MAX_DEPTH} filters nested inside each other.
+    ///
+    private static <RESULT> RESULT nested(Supplier<RESULT> coding) {
+        int depth = FilterCodec.DEPTH.get();
+        if (depth >= ComponentFilter.MAX_DEPTH) {
+            throw new NexusCodecException("Expected at most " + ComponentFilter.MAX_DEPTH + " nested filters, found more");
+        }
+        
+        FilterCodec.DEPTH.set(depth + 1);
+        try {
+            return coding.get();
+        } finally {
+            FilterCodec.DEPTH.set(depth);
+        }
+    }
+    
+    ///
+    /// Writes the given filter, which counts as nested inside every filter that the current thread is encoding or decoding.
+    ///
+    /// @param operations The operations of the format.
+    /// @param value      The filter.
+    ///
+    /// @return The encoded filter.
+    ///
+    /// @throws NexusCodecException If the filter is nested inside {@value ComponentFilter#MAX_DEPTH} other filters.
+    ///
+    @Override
+    public <V> V write(Operations<V> operations, ComponentFilter value) {
+        return FilterCodec.nested(() -> this.writeFilter(operations, value));
+    }
+    
+    ///
+    /// Reads a filter, which counts as nested inside every filter that the current thread is encoding or decoding.
+    ///
+    /// @param operations The operations of the format.
+    /// @param input      The encoded filter.
+    ///
+    /// @return The filter.
+    ///
+    /// @throws NexusCodecException If the filter is nested inside {@value ComponentFilter#MAX_DEPTH} other filters.
+    ///
+    @Override
+    public <V> ComponentFilter read(Operations<V> operations, V input) {
+        return FilterCodec.nested(() -> this.readFilter(operations, input));
+    }
+    
+    ///
     /// Writes the case index and then the fields of the filter on the network, and an object with the keys of its case otherwise.
     ///
     /// @param operations The operations of the format.
@@ -494,8 +684,7 @@ public final class FilterCodec extends Traversal<ComponentFilter, Access.Registr
     ///
     /// @return The encoded filter.
     ///
-    @Override
-    public <V> V write(Operations<V> operations, ComponentFilter value) {
+    private <V> V writeFilter(Operations<V> operations, ComponentFilter value) {
         V object = operations.emptyObject();
         if (operations.isPositional()) {
             //noinspection ResultOfMethodCallIgnored This can only be reached with a positional format.
@@ -537,8 +726,7 @@ public final class FilterCodec extends Traversal<ComponentFilter, Access.Registr
     ///
     /// @throws NexusCodecException If the object has none of the case keys, or a strict format finds a key that the case doesn't have.
     ///
-    @Override
-    public <V> ComponentFilter read(Operations<V> operations, V input) {
+    private <V> ComponentFilter readFilter(Operations<V> operations, V input) {
         if (operations.isPositional()) {
             return this.readCase(operations, input, FilterCodec.byIndex(Case.values(), operations.asVarInt(input)));
         }

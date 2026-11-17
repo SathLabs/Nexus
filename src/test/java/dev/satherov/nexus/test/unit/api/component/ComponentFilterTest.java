@@ -13,18 +13,25 @@ import dev.satherov.nexus.api.component.PathReader;
 import dev.satherov.nexus.api.event.component.RegisterPathReadersEvent;
 import dev.satherov.nexus.api.registry.Registrations;
 import dev.satherov.nexus.api.registry.component.DataComponentEntry;
+import dev.satherov.nexus.internal.component.LookupGeneration;
+import dev.satherov.nexus.internal.component.vanilla.FilterPredicate;
 
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLConstructModEvent;
+import net.neoforged.neoforge.event.TagsUpdatedEvent;
 import net.neoforged.neoforge.network.connection.ConnectionType;
 
 import net.minecraft.advancements.criterion.MinMaxBounds;
+import net.minecraft.advancements.criterion.NbtPredicate;
 import net.minecraft.core.RegistryAccess;
+import net.minecraft.core.component.DataComponentGetter;
 import net.minecraft.core.component.DataComponentMap;
+import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.component.PatchedDataComponentMap;
+import net.minecraft.core.component.predicates.CustomDataPredicate;
 import net.minecraft.core.component.predicates.DamagePredicate;
 import net.minecraft.core.component.predicates.DataComponentPredicate;
 import net.minecraft.core.component.predicates.DataComponentPredicates;
@@ -37,6 +44,7 @@ import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.util.Unit;
+import net.minecraft.world.item.component.CustomData;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
@@ -52,10 +60,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
 import java.util.function.Predicate;
 
 ///
-/// Checks what each filter passes, how filters combine, the order filters are tested in, and the data and network form of every case.
+/// Checks what each filter passes, how filters combine, the order filters are tested in, the result that a patched map stores, and the data and network form of every case.
 ///
 public class ComponentFilterTest {
     
@@ -75,6 +85,7 @@ public class ComponentFilterTest {
     private static final Comparison AT_LEAST_ZERO = new Comparison(Comparison.Operator.GREATER_OR_EQUAL, new Comparison.Literal.Numeric(0.0D));
     private static final Comparison EQUAL_TO_ZERO = new Comparison(Comparison.Operator.EQUAL, new Comparison.Literal.Numeric(0.0D));
     private static final DataComponentType<Integer> UNREGISTERED = DataComponentType.<Integer>builder().persistent(Codec.INT).build();
+    private static final String TOO_DEEP = "Expected at most " + ComponentFilter.MAX_DEPTH + " nested filters, found more";
     
     private static @Nullable DataComponentEntry<Integer> level;
     
@@ -466,6 +477,171 @@ public class ComponentFilterTest {
                 .containsExactly(new CodecError("matches", "Expected an element of the registry 'minecraft:data_component_predicate_type', found an unregistered value"));
     }
     
+    @Test
+    public void storesTheResultOfAMemoizedFilterOnAPatchedMapUntilItChanges() {
+        PatchedDataComponentMap map = new PatchedDataComponentMap(DataComponentMap.EMPTY);
+        map.set(ComponentFilterTest.level(), 3);
+        ComponentFilter filter = ComponentFilterTest.compare("scan");
+        ComponentFilterTest.assertThreeTests(filter, map, true, 2);
+        
+        map.set(ComponentFilterTest.level(), -1);
+        ComponentFilterTest.assertThreeTests(filter, map, false, 1);
+        
+        map.applyPatch(DataComponentPatch.builder().set(ComponentFilterTest.level(), 5).build());
+        ComponentFilterTest.assertThreeTests(filter, map, true, 1);
+        
+        map.remove(ComponentFilterTest.level());
+        ComponentFilterTest.assertThreeTests(filter, map, false, 0);
+        
+        map.set(ComponentFilterTest.level(), 3);
+        ComponentFilterTest.assertThreeTests(filter, map, true, 1);
+        
+        //noinspection UnstableApiUsage The event of the client stands in for any update of the tags.
+        LookupGeneration.onTagsUpdated(new TagsUpdatedEvent.ClientPacketReceived(ComponentFilterTest.REGISTRIES, false));
+        ComponentFilterTest.assertThreeTests(filter, map, true, 1);
+    }
+    
+    @Test
+    public void storesTheResultOfAFilterThatTestsAnotherFilterOnTheSameMap() {
+        PatchedDataComponentMap map = new PatchedDataComponentMap(DataComponentMap.EMPTY);
+        map.set(ComponentFilterTest.level(), 3);
+        ComponentFilter outer = ComponentFilter.matching(FilterPredicate.TYPE, new FilterPredicate(ComponentFilterTest.compare("scan")));
+        ComponentFilterTest.assertThreeTests(outer, map, true, 2);
+    }
+    
+    @Test
+    public void refusesMoreNestedFiltersThanTheLimitOnTheNetwork() {
+        int unbreakable = BuiltInRegistries.DATA_COMPONENT_TYPE.getId(DataComponents.UNBREAKABLE);
+        RegistryFriendlyByteBuf nots = ComponentFilterTest.buffer();
+        for (int level = 0; level < 10_000; level++) {
+            nots.writeVarInt(6);
+        }
+        
+        nots.writeVarInt(0);
+        nots.writeVarInt(unbreakable);
+        Assertions.assertThat(ComponentFilterTest.errors(() -> ComponentFilter.CODEC.decode(CodecFormat.netty(nots))))
+                .extracting(CodecError::message)
+                .containsExactly(ComponentFilterTest.TOO_DEEP);
+        
+        RegistryFriendlyByteBuf combined = ComponentFilterTest.buffer();
+        for (int level = 0; level < 100; level++) {
+            combined.writeVarInt(level % 2 == 0 ? 4 : 5);
+            combined.writeVarInt(2);
+            combined.writeVarInt(0);
+            combined.writeVarInt(unbreakable);
+        }
+        
+        combined.writeVarInt(0);
+        combined.writeVarInt(unbreakable);
+        Assertions.assertThat(ComponentFilterTest.errors(() -> ComponentFilter.CODEC.decode(CodecFormat.netty(combined))))
+                .extracting(CodecError::message)
+                .containsExactly(ComponentFilterTest.TOO_DEEP);
+    }
+    
+    @Test
+    public void refusesMoreNestedFiltersThanTheLimitInJsonAndNbt() {
+        String json = "{\"not\": ".repeat(ComponentFilter.MAX_DEPTH) + "{\"has\": \"minecraft:unbreakable\"}" + "}".repeat(ComponentFilter.MAX_DEPTH);
+        Assertions.assertThat(ComponentFilterTest.errors(() -> ComponentFilterTest.decode(json))).extracting(CodecError::message).containsExactly(ComponentFilterTest.TOO_DEEP);
+        
+        Tag nbt = ComponentFilterTest.nbtNots(ComponentFilter.MAX_DEPTH);
+        Assertions.assertThat(ComponentFilterTest.errors(() -> ComponentFilter.CODEC.decode(ComponentFilterTest.NBT, nbt)))
+                .extracting(CodecError::message)
+                .containsExactly(ComponentFilterTest.TOO_DEEP);
+    }
+    
+    @Test
+    public void roundTripsAFilterAtTheLimitAndRefusesToEncodeADeeperOne() {
+        ComponentFilter deepest = ComponentFilterTest.nested(ComponentFilter.MAX_DEPTH);
+        Assertions.assertThat(ComponentFilter.CODEC.decode(ComponentFilterTest.JSON, ComponentFilter.CODEC.encode(ComponentFilterTest.JSON, deepest))).as("JSON").isEqualTo(deepest);
+        Assertions.assertThat(ComponentFilter.CODEC.decode(ComponentFilterTest.NBT, ComponentFilter.CODEC.encode(ComponentFilterTest.NBT, deepest))).as("NBT").isEqualTo(deepest);
+        
+        RegistryFriendlyByteBuf buffer = ComponentFilterTest.buffer();
+        ComponentFilter.CODEC.encode(CodecFormat.netty(buffer), deepest);
+        Assertions.assertThat(ComponentFilter.CODEC.decode(CodecFormat.netty(buffer))).as("network").isEqualTo(deepest);
+        
+        // Both filters of the innermost list sit one level past the limit, and a list reports every element that fails.
+        ComponentFilter deeper = ComponentFilterTest.nested(ComponentFilter.MAX_DEPTH + 1);
+        Assertions.assertThat(ComponentFilterTest.errors(() -> ComponentFilter.CODEC.encode(ComponentFilterTest.JSON, deeper)))
+                .extracting(CodecError::message)
+                .containsExactly(ComponentFilterTest.TOO_DEEP, ComponentFilterTest.TOO_DEEP);
+    }
+    
+    @Test
+    public void writesTheIdentifierOfAPredicateTypeOnTheNetwork() {
+        RegistryFriendlyByteBuf buffer = ComponentFilterTest.buffer();
+        ComponentFilter.CODEC.encode(CodecFormat.netty(buffer), ComponentFilterTest.damage(5));
+        Assertions.assertThat(buffer.readVarInt()).isEqualTo(3);
+        Assertions.assertThat(buffer.readUtf()).isEqualTo("minecraft:damage");
+    }
+    
+    @Test
+    public void refusesAnExactValueFromTheNetworkThatItsComponentCannotSave() {
+        RegistryFriendlyByteBuf damage = ComponentFilterTest.buffer();
+        damage.writeVarInt(1);
+        damage.writeVarInt(BuiltInRegistries.DATA_COMPONENT_TYPE.getId(DataComponents.DAMAGE));
+        damage.writeVarInt(-1);
+        Assertions.assertThat(ComponentFilterTest.errors(() -> ComponentFilter.CODEC.decode(CodecFormat.netty(damage)))).extracting(CodecError::path).containsExactly("value");
+        
+        RegistryFriendlyByteBuf stackSize = ComponentFilterTest.buffer();
+        stackSize.writeVarInt(1);
+        stackSize.writeVarInt(BuiltInRegistries.DATA_COMPONENT_TYPE.getId(DataComponents.MAX_STACK_SIZE));
+        stackSize.writeVarInt(1000);
+        Assertions.assertThat(ComponentFilterTest.errors(() -> ComponentFilter.CODEC.decode(CodecFormat.netty(stackSize)))).extracting(CodecError::path).containsExactly("value");
+    }
+    
+    @Test
+    public void comparesAByteOfZeroOrOneInNbtWithANumber() {
+        DataComponentMap undamaged = DataComponentMap.builder().set(DataComponents.DAMAGE, 0).build();
+        Assertions.assertThat(ComponentFilterTest.nbtCompare("minecraft:damage", "==", ByteTag.valueOf((byte) 0)).test(undamaged)).isTrue();
+        Assertions.assertThat(ComponentFilterTest.nbtCompare("minecraft:damage", "!=", ByteTag.valueOf((byte) 1)).test(undamaged)).isTrue();
+        Assertions.assertThat(ComponentFilterTest.nbtCompare("minecraft:damage", "<", ByteTag.valueOf((byte) 1)).test(undamaged)).isTrue();
+        Assertions.assertThat(ComponentFilterTest.nbtCompare("minecraft:damage", ">=", ByteTag.valueOf((byte) 1)).test(undamaged)).isFalse();
+    }
+    
+    @Test
+    public void refusesAnExactOrMatchingValueFromTheNetworkThatTakesTooManyLevelsOfNbt() {
+        RegistryFriendlyByteBuf exact = ComponentFilterTest.customDataOnTheNetwork(0, 500);
+        Assertions.assertThat(ComponentFilterTest.errors(() -> ComponentFilterTest.decodeOnALargeStack(exact)))
+                .containsExactly(new CodecError("value", ComponentFilterTest.tooManyLevels(502)));
+        
+        CompoundTag filter = new CompoundTag();
+        filter.putString("exact", "minecraft:custom_data");
+        filter.put("value", ComponentFilterTest.compound(500));
+        RegistryFriendlyByteBuf matching = ComponentFilterTest.matchingOnTheNetwork("nexus:filter", filter);
+        Assertions.assertThat(ComponentFilterTest.errors(() -> ComponentFilterTest.decodeOnALargeStack(matching)))
+                .containsExactly(new CodecError("value", ComponentFilterTest.tooManyLevels(503)));
+    }
+    
+    @Test
+    public void refusesACustomDataPredicateFromTheNetworkWhoseSnbtNestsTooDeeply() {
+        RegistryFriendlyByteBuf buffer = ComponentFilterTest.matchingOnTheNetwork("minecraft:custom_data", ComponentFilterTest.compound(300));
+        Assertions.assertThat(ComponentFilterTest.errors(() -> ComponentFilter.CODEC.decode(CodecFormat.netty(buffer))))
+                .containsExactly(new CodecError("value", ComponentFilterTest.tooManyLevels(302)));
+    }
+    
+    @Test
+    public void readsACustomDataPredicateFromTheNetworkWhoseSnbtQuotesItsBrackets() {
+        CompoundTag tag = new CompoundTag();
+        tag.putString("single", "{[\"'\\".repeat(300));
+        tag.putString("double", "'{[\"\\".repeat(300));
+        ComponentFilter filter = ComponentFilter.CODEC.decode(CodecFormat.netty(ComponentFilterTest.matchingOnTheNetwork("minecraft:custom_data", tag)));
+        Assertions.assertThat(filter).isEqualTo(ComponentFilter.matching(DataComponentPredicates.CUSTOM_DATA, new CustomDataPredicate(new NbtPredicate(tag))));
+    }
+    
+    @Test
+    public void readsAFilterFromTheNetworkUpToTheBoundOnLevelsOfNbt() throws InterruptedException {
+        int bound = ComponentFilter.MAX_NETWORK_NBT_DEPTH;
+        Assertions.assertThat(ComponentFilterTest.decodeOnALargeStack(ComponentFilterTest.customDataOnTheNetwork(0, bound - 2)))
+                .isEqualTo(ComponentFilterTest.exactCustomData(bound - 2));
+        Assertions.assertThat(ComponentFilterTest.decodeOnALargeStack(ComponentFilterTest.customDataOnTheNetwork(1, bound - 4)))
+                .isEqualTo(ComponentFilterTest.exactCustomData(bound - 4).negate());
+        
+        Assertions.assertThat(ComponentFilterTest.errors(() -> ComponentFilterTest.decodeOnALargeStack(ComponentFilterTest.customDataOnTheNetwork(0, bound - 1))))
+                .containsExactly(new CodecError("value", ComponentFilterTest.tooManyLevels(bound + 1)));
+        Assertions.assertThat(ComponentFilterTest.errors(() -> ComponentFilterTest.decodeOnALargeStack(ComponentFilterTest.customDataOnTheNetwork(1, bound - 3))))
+                .containsExactly(new CodecError("not.value", ComponentFilterTest.tooManyLevels(bound + 1)));
+    }
+    
     private static List<ComponentFilter> everyCase() {
         ComponentFilter unbreakable = ComponentFilter.has(DataComponents.UNBREAKABLE);
         return List.of(
@@ -510,6 +686,95 @@ public class ComponentFilterTest {
     private static Comparison.Literal jsonLiteral(String json) {
         ComponentFilter filter = ComponentFilterTest.decode("{\"path\": \"nexus:component_filter_test_level.unordered\", \"is\": \"==\", \"value\": " + json + "}");
         return ((ComponentFilter.Compare) filter).getComparison().literal();
+    }
+    
+    private static ComponentFilter nbtCompare(String path, String operator, Tag value) {
+        CompoundTag input = new CompoundTag();
+        input.putString("path", path);
+        input.putString("is", operator);
+        input.put("value", value);
+        return ComponentFilter.CODEC.decode(ComponentFilterTest.NBT, input);
+    }
+    
+    private static Tag nbtNots(int count) {
+        Tag filter = ComponentFilter.CODEC.encode(ComponentFilterTest.NBT, ComponentFilter.has(DataComponents.UNBREAKABLE));
+        for (int level = 0; level < count; level++) {
+            CompoundTag not = new CompoundTag();
+            not.put("not", filter);
+            filter = not;
+        }
+        
+        return filter;
+    }
+    
+    private static ComponentFilter nested(int depth) {
+        ComponentFilter filter = ComponentFilter.has(DataComponents.DAMAGE);
+        for (int level = 1; level < depth; level++) {
+            List<ComponentFilter> filters = List.of(ComponentFilter.has(DataComponents.UNBREAKABLE), filter);
+            filter = level % 2 == 0 ? ComponentFilter.allOf(filters) : ComponentFilter.anyOf(filters);
+        }
+        
+        return filter;
+    }
+    
+    private static RegistryFriendlyByteBuf customDataOnTheNetwork(int nots, int depth) {
+        RegistryFriendlyByteBuf buffer = ComponentFilterTest.buffer();
+        for (int level = 0; level < nots; level++) {
+            buffer.writeVarInt(6);
+        }
+        
+        buffer.writeVarInt(1);
+        buffer.writeVarInt(BuiltInRegistries.DATA_COMPONENT_TYPE.getId(DataComponents.CUSTOM_DATA));
+        buffer.writeNbt(ComponentFilterTest.compound(depth));
+        return buffer;
+    }
+    
+    private static RegistryFriendlyByteBuf matchingOnTheNetwork(String type, Tag predicate) {
+        RegistryFriendlyByteBuf buffer = ComponentFilterTest.buffer();
+        buffer.writeVarInt(3);
+        buffer.writeUtf(type);
+        buffer.writeNbt(predicate);
+        return buffer;
+    }
+    
+    private static ComponentFilter exactCustomData(int depth) {
+        return ComponentFilter.exact(DataComponents.CUSTOM_DATA, CustomData.of(ComponentFilterTest.compound(depth)));
+    }
+    
+    private static CompoundTag compound(int depth) {
+        CompoundTag tag = new CompoundTag();
+        for (int level = 1; level < depth; level++) {
+            CompoundTag outer = new CompoundTag();
+            outer.put("a", tag);
+            tag = outer;
+        }
+        
+        return tag;
+    }
+    
+    private static String tooManyLevels(int levels) {
+        return "Expected at most " + ComponentFilter.MAX_NETWORK_NBT_DEPTH + " levels of NBT in a filter from the network, found " + levels;
+    }
+    
+    private static ComponentFilter decodeOnALargeStack(RegistryFriendlyByteBuf buffer) throws InterruptedException {
+        FutureTask<ComponentFilter> task = new FutureTask<>(() -> ComponentFilter.CODEC.decode(CodecFormat.netty(buffer)));
+        // Converting NBT between two ops takes several frames for every level, which a thread of 1 MB may not hold for hundreds of levels before the JIT compiles it.
+        new Thread(null, task, "component-filter-test", 16 * 1024 * 1024).start();
+        try {
+            return task.get();
+        } catch (ExecutionException failure) {
+            if (failure.getCause() instanceof RuntimeException cause) {
+                throw cause;
+            }
+            
+            throw new IllegalStateException(failure);
+        }
+    }
+    
+    private static void assertThreeTests(ComponentFilter filter, DataComponentGetter holder, boolean expected, int reads) {
+        ComponentFilterTest.READS.clear();
+        Assertions.assertThat(List.of(filter.test(holder), filter.test(holder), filter.test(holder))).containsExactly(expected, expected, expected);
+        Assertions.assertThat(ComponentFilterTest.READS).hasSize(reads);
     }
     
     private static Comparison.Literal nbtLiteral(Tag tag) {
