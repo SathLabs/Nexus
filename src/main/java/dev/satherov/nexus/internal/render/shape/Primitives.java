@@ -3,6 +3,7 @@ package dev.satherov.nexus.internal.render.shape;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 
+import dev.satherov.nexus.api.render.shape.Sprite;
 import dev.satherov.nexus.internal.render.client.ShapePipelines;
 
 import net.minecraft.client.Minecraft;
@@ -10,6 +11,8 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.texture.TextureAtlas;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.LightCoordsUtil;
 import net.minecraft.world.phys.Vec2;
@@ -49,6 +52,9 @@ public final class Primitives {
     
     ///
     /// Writes the vertices into the buffer builder of their render type, relative to the given origin.
+    ///
+    /// The sprites are looked up in the current stitch of their atlas.
+    /// If the texture of an atlas is not a [TextureAtlas], the whole texture will be shown.
     ///
     /// @param builders The buffer builders by render type, which should hold one for every render type of [ShapePipelines].
     /// @param origin   The position that the written positions are relative to.
@@ -101,25 +107,27 @@ public final class Primitives {
     ///
     /// @param position  The position of the vertex, in the coordinates of its shape.
     /// @param argb      The ARGB color of the vertex.
-    /// @param u         The horizontal texture coordinate in the atlas, or `0` if the vertex shows no sprite.
-    /// @param v         The vertical texture coordinate in the atlas, or `0` if the vertex shows no sprite.
+    /// @param sprite    The sprite the vertex shows, or `null` if it doesn't show one.
+    /// @param u         The horizontal position on the sprite, from `0` to `1`, or `0` if the vertex shows no sprite.
+    /// @param v         The vertical position on the sprite, from `0` to `1`, or `0` if the vertex shows no sprite.
     /// @param normal    The direction of the line, or [Vec3#ZERO] if the vertex is not part of a line.
     /// @param lineWidth The width of the line in pixels, or `0` if the vertex is not part of a line.
     /// @param shape     The inputs of the shape program, or `null` if the vertex is not part of a disc, ring, or sphere.
     ///
-    record Vertex(Vec3 position, int argb, float u, float v, Vec3 normal, float lineWidth, @Nullable ShapeInputs shape) {
+    record Vertex(Vec3 position, int argb, @Nullable Sprite sprite, float u, float v, Vec3 normal, float lineWidth, @Nullable ShapeInputs shape) {
         
         ///
         /// Creates a new vertex that is not part of a disc, ring, or sphere.
         ///
-        Vertex(Vec3 position, int argb, float u, float v, Vec3 normal, float lineWidth) {
-            this(position, argb, u, v, normal, lineWidth, null);
+        Vertex(Vec3 position, int argb, @Nullable Sprite sprite, float u, float v, Vec3 normal, float lineWidth) {
+            this(position, argb, sprite, u, v, normal, lineWidth, null);
         }
         
         ///
         /// Writes this vertex into the given buffer builder, relative to the given origin.
         ///
         /// The buffer builder skips every element that its vertex format doesn't have.
+        /// If the vertex shows a sprite of a [TextureAtlas], its position on the sprite will be written as a position in the atlas.
         ///
         /// @param builder The buffer builder of the render type of the vertex.
         /// @param format  The vertex format of the pipeline of the render type.
@@ -127,9 +135,17 @@ public final class Primitives {
         ///
         private void writeInto(BufferBuilder builder, VertexFormat format, Vec3 origin) {
             Vec3 relative = this.position.subtract(origin);
+            float u = this.u;
+            float v = this.v;
+            if (this.sprite != null && Minecraft.getInstance().getTextureManager().getTexture(this.sprite.atlas()) instanceof TextureAtlas atlas) {
+                TextureAtlasSprite resolved = atlas.getSprite(this.sprite.texture());
+                u = resolved.getU(this.u);
+                v = resolved.getV(this.v);
+            }
+            
             builder.addVertex((float) relative.x, (float) relative.y, (float) relative.z)
                     .setColor(this.argb)
-                    .setUv(this.u, this.v)
+                    .setUv(u, v)
                     .setNormal((float) this.normal.x, (float) this.normal.y, (float) this.normal.z)
                     .setLineWidth(this.lineWidth);
             if (this.shape != null) {

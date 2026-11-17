@@ -69,6 +69,8 @@ public interface Brush {
     /// @param radius The radius of the circle.
     /// @param argb   The ARGB color of the circle.
     ///
+    /// @throws IllegalArgumentException If the normal is shorter than `1.0E-5`.
+    ///
     void disc(Vec3 center, Vec3 normal, double radius, int argb);
     
     ///
@@ -82,6 +84,8 @@ public interface Brush {
     /// @param normal The normal of the plane the circle lies in.
     /// @param radius The radius of the circle.
     /// @param argb   The ARGB color of the outline.
+    ///
+    /// @throws IllegalArgumentException If the normal is shorter than `1.0E-5`.
     ///
     void ring(Vec3 center, Vec3 normal, double radius, int argb);
     

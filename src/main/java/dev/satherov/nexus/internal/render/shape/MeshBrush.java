@@ -7,11 +7,8 @@ import dev.satherov.nexus.api.render.shape.Shape;
 import dev.satherov.nexus.api.render.shape.Sprite;
 import dev.satherov.nexus.internal.render.client.ShapePipelines;
 
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.rendertype.RenderType;
-import net.minecraft.client.renderer.texture.TextureAtlas;
-import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
@@ -66,6 +63,24 @@ public final class MeshBrush implements Brush {
     }
     
     ///
+    /// Normalizes the given normal of a disc or ring.
+    ///
+    /// @param normal The normal of the plane the circle lies in.
+    ///
+    /// @return The unit normal.
+    ///
+    /// @throws IllegalArgumentException If the normal is shorter than `1.0E-5`.
+    ///
+    private static Vec3 normalize(Vec3 normal) {
+        Vec3 axis = normal.normalize();
+        if (axis.equals(Vec3.ZERO)) {
+            throw new IllegalArgumentException("Normal '" + normal + "' is shorter than 1.0E-5");
+        }
+        
+        return axis;
+    }
+    
+    ///
     /// The current paint.
     ///
     /// @return The current paint.
@@ -86,8 +101,8 @@ public final class MeshBrush implements Brush {
     public void line(Vec3 from, Vec3 to, int argb) {
         Vec3 normal = to.subtract(from).normalize();
         List<Primitives.Vertex> vertices = this.vertices(ShapePipelines.lines(this.paint.depth()));
-        vertices.add(new Primitives.Vertex(from, argb, 0.0F, 0.0F, normal, this.paint.lineWidth()));
-        vertices.add(new Primitives.Vertex(to, argb, 0.0F, 0.0F, normal, this.paint.lineWidth()));
+        vertices.add(new Primitives.Vertex(from, argb, null, 0.0F, 0.0F, normal, this.paint.lineWidth()));
+        vertices.add(new Primitives.Vertex(to, argb, null, 0.0F, 0.0F, normal, this.paint.lineWidth()));
     }
     
     ///
@@ -126,17 +141,16 @@ public final class MeshBrush implements Brush {
     ///
     private void fill(int argb, Vec3 first, Vec3 second, Vec3 third, Vec3 fourth) {
         List<Primitives.Vertex> vertices = this.vertices(ShapePipelines.fill(this.paint.depth()));
-        vertices.add(new Primitives.Vertex(first, argb, 0.0F, 0.0F, Vec3.ZERO, 0.0F));
-        vertices.add(new Primitives.Vertex(second, argb, 0.0F, 0.0F, Vec3.ZERO, 0.0F));
-        vertices.add(new Primitives.Vertex(third, argb, 0.0F, 0.0F, Vec3.ZERO, 0.0F));
-        vertices.add(new Primitives.Vertex(fourth, argb, 0.0F, 0.0F, Vec3.ZERO, 0.0F));
+        vertices.add(new Primitives.Vertex(first, argb, null, 0.0F, 0.0F, Vec3.ZERO, 0.0F));
+        vertices.add(new Primitives.Vertex(second, argb, null, 0.0F, 0.0F, Vec3.ZERO, 0.0F));
+        vertices.add(new Primitives.Vertex(third, argb, null, 0.0F, 0.0F, Vec3.ZERO, 0.0F));
+        vertices.add(new Primitives.Vertex(fourth, argb, null, 0.0F, 0.0F, Vec3.ZERO, 0.0F));
     }
     
     ///
     /// Records the quad in the sprite render type of the sprite's atlas and the current depth mode.
     ///
-    /// The texture coordinates of the sprite are looked up while recording.
-    /// If the texture of the atlas is not a [TextureAtlas], the whole texture will be shown.
+    /// The texture coordinates of the sprite are looked up each time the vertices are written.
     ///
     /// @param quad   The quad to show the sprite on.
     /// @param sprite The sprite to show.
@@ -144,24 +158,12 @@ public final class MeshBrush implements Brush {
     ///
     @Override
     public void quad(Quad quad, Sprite sprite, int argb) {
-        float u0 = 0.0F;
-        float v0 = 0.0F;
-        float u1 = 1.0F;
-        float v1 = 1.0F;
-        if (Minecraft.getInstance().getTextureManager().getTexture(sprite.atlas()) instanceof TextureAtlas atlas) {
-            TextureAtlasSprite resolved = atlas.getSprite(sprite.texture());
-            u0 = resolved.getU0();
-            v0 = resolved.getV0();
-            u1 = resolved.getU1();
-            v1 = resolved.getV1();
-        }
-        
         Vec3 cornerU = quad.origin().add(quad.edgeU());
         List<Primitives.Vertex> vertices = this.vertices(ShapePipelines.sprite(sprite.atlas(), this.paint.depth()));
-        vertices.add(new Primitives.Vertex(quad.origin(), argb, u0, v0, Vec3.ZERO, 0.0F));
-        vertices.add(new Primitives.Vertex(cornerU, argb, u1, v0, Vec3.ZERO, 0.0F));
-        vertices.add(new Primitives.Vertex(cornerU.add(quad.edgeV()), argb, u1, v1, Vec3.ZERO, 0.0F));
-        vertices.add(new Primitives.Vertex(quad.origin().add(quad.edgeV()), argb, u0, v1, Vec3.ZERO, 0.0F));
+        vertices.add(new Primitives.Vertex(quad.origin(), argb, sprite, 0.0F, 0.0F, Vec3.ZERO, 0.0F));
+        vertices.add(new Primitives.Vertex(cornerU, argb, sprite, 1.0F, 0.0F, Vec3.ZERO, 0.0F));
+        vertices.add(new Primitives.Vertex(cornerU.add(quad.edgeV()), argb, sprite, 1.0F, 1.0F, Vec3.ZERO, 0.0F));
+        vertices.add(new Primitives.Vertex(quad.origin().add(quad.edgeV()), argb, sprite, 0.0F, 1.0F, Vec3.ZERO, 0.0F));
     }
     
     ///
@@ -172,9 +174,11 @@ public final class MeshBrush implements Brush {
     /// @param radius The radius of the circle.
     /// @param argb   The ARGB color of the circle.
     ///
+    /// @throws IllegalArgumentException If the normal is shorter than `1.0E-5`.
+    ///
     @Override
     public void disc(Vec3 center, Vec3 normal, double radius, int argb) {
-        this.round(Primitives.ShapeInputs.Kind.DISC, center, normal.normalize(), radius, argb);
+        this.round(Primitives.ShapeInputs.Kind.DISC, center, MeshBrush.normalize(normal), radius, argb);
     }
     
     ///
@@ -185,9 +189,11 @@ public final class MeshBrush implements Brush {
     /// @param radius The radius of the circle.
     /// @param argb   The ARGB color of the outline.
     ///
+    /// @throws IllegalArgumentException If the normal is shorter than `1.0E-5`.
+    ///
     @Override
     public void ring(Vec3 center, Vec3 normal, double radius, int argb) {
-        this.round(Primitives.ShapeInputs.Kind.RING, center, normal.normalize(), radius, argb);
+        this.round(Primitives.ShapeInputs.Kind.RING, center, MeshBrush.normalize(normal), radius, argb);
     }
     
     ///
@@ -219,7 +225,7 @@ public final class MeshBrush implements Brush {
         List<Primitives.Vertex> vertices = ring ? this.ringsByType.computeIfAbsent(type, _ -> new ArrayList<>()) : this.vertices(type);
         float width = ring ? this.paint.lineWidth() : 0.0F;
         for (Vec2 corner : MeshBrush.CORNERS) {
-            vertices.add(new Primitives.Vertex(center, argb, 0.0F, 0.0F, Vec3.ZERO, 0.0F, new Primitives.ShapeInputs(center, axis, (float) radius, width, corner, kind)));
+            vertices.add(new Primitives.Vertex(center, argb, null, 0.0F, 0.0F, Vec3.ZERO, 0.0F, new Primitives.ShapeInputs(center, axis, (float) radius, width, corner, kind)));
         }
     }
     
