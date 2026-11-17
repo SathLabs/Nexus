@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -46,14 +47,17 @@ public class SlotLayoutSamples {
 
     private static final Identifier POUCH = Identifier.fromNamespaceAndPath(Nexus.MOD_ID, "slot_layout_samples_pouch");
     private static final Identifier POCKETS = Identifier.fromNamespaceAndPath(Nexus.MOD_ID, "slot_layout_samples_pockets");
+    private static final Identifier LATE = Identifier.fromNamespaceAndPath(Nexus.MOD_ID, "slot_layout_samples_late");
     private static final String LEFT = "left";
     private static final String RIGHT = "right";
     private static final String BAG = "bag";
     private static final String PICKY = "picky";
+    private static final String MIRROR = "mirror";
     private static final String POUCH_GROUP = SlotLayoutSamples.POUCH.toString();
     private static final String LEFT_GROUP = SlotLayoutSamples.POCKETS + "/" + SlotLayoutSamples.LEFT;
     private static final String RIGHT_GROUP = SlotLayoutSamples.POCKETS + "/" + SlotLayoutSamples.RIGHT;
     private static final String ABSENT_GROUP = Nexus.MOD_ID + ":slot_layout_samples_absent";
+    private static final String UNKNOWN_ITEM = Nexus.MOD_ID + ":slot_layout_samples_unknown";
     private static final String INVENTORY_GROUP = "minecraft:inventory";
     private static final String ARMOR_GROUP = "minecraft:armor";
     private static final String OFFHAND_GROUP = "minecraft:offhand";
@@ -66,7 +70,10 @@ public class SlotLayoutSamples {
     private static final String SLOT_TAG = "Slot";
     private static final String ID_TAG = "id";
 
+    private static @Nullable RegisterSlotSourcesEvent registration;
     private static @Nullable Throwable secondRegistration;
+    private static boolean pocketsRegistered;
+    private static boolean pouchReplaced;
 
     private static SlotLayoutBuilder<Carrier> slots() {
         return Nexus.getMod().getPersistence().slots(Carrier.class);
@@ -180,6 +187,29 @@ public class SlotLayoutSamples {
     }
 
     @ServerTest
+    public static void tryRegisterKeepsTheFirstSourceOfOneId(GameTestHelper helper) {
+        helper.assertTrue(SlotLayoutSamples.pocketsRegistered, "The source of a free id was not registered");
+        helper.assertFalse(SlotLayoutSamples.pouchReplaced, "A second source of one id was registered");
+
+        Carrier carrier = new Carrier();
+        carrier.pouch.setItem(0, new ItemStack(Items.DIAMOND));
+        SlotSnapshot snapshot = SlotLayoutSamples.slots().source(SlotLayoutSamples.POUCH).build().capture(carrier);
+        SlotLayoutSamples.assertStacks(helper, snapshot.stacks(SlotLayoutSamples.POUCH_GROUP), List.of(new ItemStack(Items.DIAMOND)), "stacks of the pouch source");
+        helper.succeed();
+    }
+
+    @ServerTest
+    public static void registrationAfterTheEventIsLeftOut(GameTestHelper helper) {
+        Objects.requireNonNull(SlotLayoutSamples.registration).tryRegister(SlotLayoutSamples.LATE, SlotSource.of(SimpleContainer.class, SlotLayoutSamples::whole));
+        SlotLayout<SimpleContainer> layout = Nexus.getMod().getPersistence().slots(SimpleContainer.class).source(SlotLayoutSamples.LATE).build();
+        helper.assertTrue(
+                Assertions.catchThrowable(() -> layout.capture(new SimpleContainer(1))) instanceof IllegalStateException,
+                "A source registered after the event was posted is in the table"
+        );
+        helper.succeed();
+    }
+
+    @ServerTest
     public static void captureCopiesTheStacksAndLeavesTheHolderAlone(GameTestHelper helper) {
         Carrier carrier = new Carrier(SlotLayoutSamples.LEFT);
         carrier.pouch.setItem(0, new ItemStack(Items.DIAMOND, 4));
@@ -219,6 +249,49 @@ public class SlotLayoutSamples {
     }
 
     @ServerTest
+    public static void takeThatThrowsLeavesTheHolderAlone(GameTestHelper helper) {
+        Carrier carrier = new Carrier(SlotLayoutSamples.LEFT);
+        carrier.bag.setItem(0, new ItemStack(Items.DIAMOND, 4));
+        carrier.pouch.setItem(0, new ItemStack(Items.GOLD_INGOT, 2));
+        carrier.getPocket(SlotLayoutSamples.LEFT).setItem(0, new ItemStack(Items.DIRT, 3));
+        Predicate<ItemStack> filter = stack -> {
+            if (stack.is(Items.DIRT)) {
+                throw new IllegalStateException("The filter refuses to look at dirt");
+            }
+
+            return true;
+        };
+
+        Throwable failure = Assertions.catchThrowable(() -> SlotLayoutSamples.layout().take(carrier, filter));
+        helper.assertTrue(failure instanceof IllegalStateException, "The take did not pass on the failure of the filter");
+        SlotLayoutSamples.assertSlot(helper, carrier.bag, 0, new ItemStack(Items.DIAMOND, 4), "bag slot taken before the failure");
+        SlotLayoutSamples.assertSlot(helper, carrier.pouch, 0, new ItemStack(Items.GOLD_INGOT, 2), "pouch slot taken before the failure");
+        SlotLayoutSamples.assertSlot(helper, carrier.getPocket(SlotLayoutSamples.LEFT), 0, new ItemStack(Items.DIRT, 3), "left pocket slot of the failure");
+        helper.succeed();
+    }
+
+    @ServerTest
+    public static void overlappingGroupsHoldEachStackOnce(GameTestHelper helper) {
+        SlotLayout<Carrier> layout = SlotLayoutSamples.slots()
+                .group(SlotLayoutSamples.BAG, carrier -> SlotLayoutSamples.whole(carrier.bag))
+                .group(SlotLayoutSamples.MIRROR, carrier -> SlotLayoutSamples.whole(carrier.bag))
+                .fallback(SlotLayoutSamples.BAG)
+                .build();
+        Carrier before = new Carrier();
+        before.bag.setItem(0, new ItemStack(Items.DIAMOND));
+        SlotSnapshot captured = layout.capture(before);
+        SlotLayoutSamples.assertStacks(helper, captured.gather(), List.of(new ItemStack(Items.DIAMOND)), "captured stacks");
+
+        SlotLayoutSamples.assertStacks(helper, layout.take(before).gather(), List.of(new ItemStack(Items.DIAMOND)), "taken stacks");
+        helper.assertTrue(before.bag.isEmpty(), "The take left a stack in the bag");
+
+        Carrier after = new Carrier();
+        SlotLayoutSamples.assertStacks(helper, layout.restore(after, captured), List.of(), "leftovers");
+        SlotLayoutSamples.assertStacks(helper, after.bag.getItems(), List.of(new ItemStack(Items.DIAMOND)), "restored bag stacks");
+        helper.succeed();
+    }
+
+    @ServerTest
     public static void restoreTopsUpMatchingStacksBeforeTakingAFreeSlot(GameTestHelper helper) {
         SlotLayout<Carrier> layout = SlotLayoutSamples.layout();
         Carrier before = new Carrier();
@@ -228,13 +301,13 @@ public class SlotLayoutSamples {
 
         Carrier after = new Carrier();
         after.pouch.setItem(0, new ItemStack(Items.DIRT));
-        after.bag.setItem(0, new ItemStack(Items.DIAMOND, 60));
+        after.bag.setItem(1, new ItemStack(Items.DIAMOND, 60));
         List<ItemStack> left = layout.restore(after, snapshot);
         SlotLayoutSamples.assertStacks(helper, left, List.of(), "leftovers");
         SlotLayoutSamples.assertSlot(helper, after.pouch, 0, new ItemStack(Items.DIRT), "occupied pouch slot");
         SlotLayoutSamples.assertSlot(helper, after.pouch, 1, new ItemStack(Items.GOLD_INGOT, 5), "empty pouch slot");
-        SlotLayoutSamples.assertSlot(helper, after.bag, 0, new ItemStack(Items.DIAMOND, 64), "bag slot with matching stacks");
-        SlotLayoutSamples.assertSlot(helper, after.bag, 1, new ItemStack(Items.DIAMOND, 6), "free bag slot");
+        SlotLayoutSamples.assertSlot(helper, after.bag, 1, new ItemStack(Items.DIAMOND, 64), "bag slot with matching stacks");
+        SlotLayoutSamples.assertSlot(helper, after.bag, 0, new ItemStack(Items.DIAMOND, 6), "free bag slot");
         helper.succeed();
     }
 
@@ -371,6 +444,27 @@ public class SlotLayoutSamples {
     }
 
     @ServerTest
+    public static void unknownItemCostsOnlyItself(GameTestHelper helper) {
+        CompoundTag groups = new CompoundTag();
+        groups.put(SlotLayoutSamples.POUCH_GROUP, SlotLayoutSamples.group(
+                SlotLayoutSamples.POUCH_SIZE,
+                SlotLayoutSamples.item(0, "minecraft:diamond", 2),
+                SlotLayoutSamples.item(1, SlotLayoutSamples.UNKNOWN_ITEM, 1)
+        ));
+        groups.put(SlotLayoutSamples.LEFT_GROUP, SlotLayoutSamples.group(SlotLayoutSamples.GROUP_SIZE, SlotLayoutSamples.item(1, "minecraft:gold_ingot", 3)));
+        SlotSnapshot snapshot = SlotSnapshot.FORMAT.read(SlotLayoutSamples.documented(groups), helper.getLevel().registryAccess());
+        helper.assertValueEqual(snapshot.size(SlotLayoutSamples.POUCH_GROUP), SlotLayoutSamples.POUCH_SIZE, "decoded size of the pouch group");
+        SlotLayoutSamples.assertStacks(helper, snapshot.stacks(SlotLayoutSamples.POUCH_GROUP), List.of(new ItemStack(Items.DIAMOND, 2)), "decoded pouch stacks");
+
+        Carrier carrier = new Carrier(SlotLayoutSamples.LEFT);
+        List<ItemStack> left = SlotLayoutSamples.layout().restore(carrier, snapshot);
+        SlotLayoutSamples.assertStacks(helper, left, List.of(), "leftovers");
+        SlotLayoutSamples.assertSlot(helper, carrier.pouch, 0, new ItemStack(Items.DIAMOND, 2), "restored pouch slot");
+        SlotLayoutSamples.assertSlot(helper, carrier.getPocket(SlotLayoutSamples.LEFT), 1, new ItemStack(Items.GOLD_INGOT, 3), "restored left pocket slot");
+        helper.succeed();
+    }
+
+    @ServerTest
     public static void emptySnapshotHoldsNoGroups(GameTestHelper helper) {
         helper.assertTrue(SlotSnapshot.EMPTY.groups().isEmpty(), "The empty snapshot has groups");
         helper.assertTrue(SlotSnapshot.EMPTY.isEmpty(), "The empty snapshot is not empty");
@@ -484,12 +578,14 @@ public class SlotLayoutSamples {
 
         @SubscribeEvent
         public static void onRegisterSlotSources(RegisterSlotSourcesEvent event) {
+            SlotLayoutSamples.registration = event;
             event.register(SlotLayoutSamples.POUCH, SlotSource.of(Carrier.class, carrier -> SlotLayoutSamples.whole(carrier.pouch)));
-            event.register(SlotLayoutSamples.POCKETS, new PocketSlots());
+            SlotLayoutSamples.pocketsRegistered = event.tryRegister(SlotLayoutSamples.POCKETS, new PocketSlots());
             SlotLayoutSamples.secondRegistration = Assertions.catchThrowable(() -> event.register(
                     SlotLayoutSamples.POUCH,
                     SlotSource.of(Carrier.class, carrier -> SlotLayoutSamples.whole(carrier.bag))
             ));
+            SlotLayoutSamples.pouchReplaced = event.tryRegister(SlotLayoutSamples.POUCH, SlotSource.of(Carrier.class, carrier -> SlotLayoutSamples.whole(carrier.bag)));
         }
     }
 }

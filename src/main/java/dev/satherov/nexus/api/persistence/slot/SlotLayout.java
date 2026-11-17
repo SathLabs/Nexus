@@ -13,10 +13,13 @@ import org.jetbrains.annotations.UnmodifiableView;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
+import java.util.function.ObjIntConsumer;
 import java.util.function.Predicate;
 
 ///
@@ -26,6 +29,8 @@ import java.util.function.Predicate;
 /// The registered sources will be looked up on the first use of the layout.
 ///
 /// Works on a live holder only.
+///
+/// If the same item stack is in two groups, such as through two sources over one slot of a container, only the first group will hold it.
 ///
 /// @param <HOLDER> The type of the holders of the slots.
 ///
@@ -62,15 +67,23 @@ public final class SlotLayout<HOLDER> {
     }
 
     ///
-    /// Copies the item stacks that match the given filter from the given groups into a new snapshot.
+    /// Copies the matching item stacks of the given groups into a new snapshot, each item stack only once,
+    /// and passes every copied slot to the given action right away.
     ///
-    private static SlotSnapshot capture(Map<String, SlotAccess> groups, Predicate<ItemStack> filter) {
+    private static SlotSnapshot capture(Map<String, SlotAccess> groups, Predicate<ItemStack> filter, ObjIntConsumer<SlotAccess> copied) {
+        Set<ItemStack> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         Map<String, List<ItemStack>> stacksByGroup = new LinkedHashMap<>();
         groups.forEach((name, access) -> {
             List<ItemStack> stacks = new ArrayList<>(access.size());
             for (int slot = 0; slot < access.size(); slot++) {
                 ItemStack stack = access.get(slot);
-                stacks.add(stack.isEmpty() || !filter.test(stack) ? ItemStack.EMPTY : stack.copy());
+                if (stack.isEmpty() || !filter.test(stack) || !seen.add(stack)) {
+                    stacks.add(ItemStack.EMPTY);
+                    continue;
+                }
+
+                stacks.add(stack.copy());
+                copied.accept(access, slot);
             }
 
             stacksByGroup.put(name, stacks);
@@ -113,13 +126,14 @@ public final class SlotLayout<HOLDER> {
     /// - If two groups of the given holder have the same name in the layout.
     ///
     public SlotSnapshot capture(HOLDER holder, Predicate<ItemStack> filter) {
-        return SlotLayout.capture(this.groups.apply(holder), filter);
+        return SlotLayout.capture(this.groups.apply(holder), filter, (_, _) -> { });
     }
 
     ///
     /// Moves the item stacks of every group of the given holder into a new snapshot.
     ///
     /// Every slot of every group will be empty.
+    /// If a slot throws, the holder will be left as it was.
     ///
     /// @param holder The holder of the slots.
     ///
@@ -139,6 +153,7 @@ public final class SlotLayout<HOLDER> {
     /// Moves the item stacks that match the given filter from every group of the given holder into a new snapshot.
     ///
     /// Every slot that held a matching item stack will be empty.
+    /// If the filter or a slot throws, the holder will be left as it was.
     ///
     /// @param holder The holder of the slots.
     /// @param filter The predicate of the item stacks to move.
@@ -152,18 +167,17 @@ public final class SlotLayout<HOLDER> {
     ///
     @CanIgnoreReturnValue
     public SlotSnapshot take(HOLDER holder, Predicate<ItemStack> filter) {
-        Map<String, SlotAccess> groups = this.groups.apply(holder);
-        SlotSnapshot snapshot = SlotLayout.capture(groups, filter);
-        groups.forEach((name, access) -> {
-            List<ItemStack> taken = snapshot.stacks(name);
-            for (int slot = 0; slot < taken.size(); slot++) {
-                if (!taken.get(slot).isEmpty()) {
-                    access.set(slot, ItemStack.EMPTY);
-                }
-            }
-        });
-
-        return snapshot;
+        List<Runnable> putBack = new ArrayList<>();
+        try {
+            return SlotLayout.capture(this.groups.apply(holder), filter, (access, slot) -> {
+                ItemStack taken = access.get(slot);
+                access.set(slot, ItemStack.EMPTY);
+                putBack.add(() -> access.set(slot, taken));
+            });
+        } catch (RuntimeException failure) {
+            putBack.reversed().forEach(Runnable::run);
+            throw failure;
+        }
     }
 
     ///
