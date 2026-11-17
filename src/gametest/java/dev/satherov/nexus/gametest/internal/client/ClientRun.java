@@ -20,6 +20,7 @@ import net.minecraft.client.CloudStatus;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.PrioritizeChunkUpdates;
 import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.tutorial.TutorialSteps;
 import net.minecraft.resources.Identifier;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
@@ -103,39 +104,72 @@ public class ClientRun {
     ///
     /// The pump is released afterwards, so the client shuts down on vanilla's timing.
     ///
-    /// The number of failed tests corresponds to the system exit code.
+    /// The number of failed tests corresponds to the system exit code, up to the largest one the system keeps.
     ///
     /// Every test runs in a window of {@value ClientRun#WIDTH} by {@value ClientRun#HEIGHT} pixels at GUI scale {@value ClientRun#GUI_SCALE}.
     ///
     /// @param minecraft The client the tests run on.
     ///
+    /// @see TestReport#exitCode()
+    ///
     public static void run(Minecraft minecraft) {
         RunOptions options = RunOptions.fromProperties();
         TestReport report = new TestReport(options.report());
         
-        int failed;
         try {
-            failed = ClientRun.runTests(minecraft, options, report);
+            ClientRun.runTests(minecraft, options, report);
         } finally {
             Pump.release();
             report.write();
         }
         
-        if (failed > 0) {
-            System.exit(failed);
+        if (report.exitCode() > 0) {
+            System.exit(report.exitCode());
         }
     }
     
     ///
-    /// Configures the client and then runs every test selected.
+    /// Configures the client and then runs every test selected, resetting the client after each one.
+    ///
+    /// If the client could not be reset after a test, every test after it is recorded as failed instead of run.
     ///
     /// @param minecraft The client that all tests run on.
     /// @param options   The configured options of the run.
     /// @param report    The report every outcome is written into.
     ///
-    /// @return The number of required tests that failed.
+    private static void runTests(Minecraft minecraft, RunOptions options, TestReport report) {
+        Pump pump = new Pump(minecraft, options.realtime());
+        List<Discovered> tests = ClientRun.TESTS.get();
+        
+        ClientRun.awaitLoaded(minecraft, pump);
+        ClientRun.reset(minecraft, pump);
+        ClientRun.baseline(pump);
+        
+        int failed = 0;
+        for (int index = 0; index < tests.size(); index++) {
+            Discovered test = tests.get(index);
+            if (!ClientRun.runTest(test, minecraft, pump, report) && test.required()) {
+                failed++;
+            }
+            
+            try {
+                ClientRun.reset(minecraft, pump);
+            } catch (Throwable failure) {
+                ClientRun.log.error("Could not reset the client after '{}', so the remaining tests will not run", test.id(), failure);
+                failed += ClientRun.abort(tests.subList(index + 1, tests.size()), test.id(), failure, report);
+                break;
+            }
+        }
+        
+        ClientRun.log.info("Ran {} client tests, {} tests marked as required failed", tests.size(), failed);
+    }
+    
     ///
-    private static int runTests(Minecraft minecraft, RunOptions options, TestReport report) {
+    /// Sets the options that every test runs with.
+    ///
+    /// @param minecraft The client whose options are set.
+    ///
+    private static void pinOptions(Minecraft minecraft) {
         // Accidentally clicking off the screen would open the pause-screen which would cause issues in the tests.
         minecraft.options.pauseOnLostFocus = false;
         
@@ -144,31 +178,11 @@ public class ClientRun {
         minecraft.options.panoramaSpeed().set(0.0D);
         minecraft.options.cloudStatus().set(CloudStatus.OFF);
         minecraft.options.vignette().set(false);
+        minecraft.options.chunkSectionFadeInTime().set(0.0D);
+        minecraft.options.tutorialStep = TutorialSteps.NONE;
         
         // Rebuild every changed section near the camera in the frame that changed it, so a block change shows up in the next capture.
         minecraft.options.prioritizeChunkUpdates().set(PrioritizeChunkUpdates.NEARBY);
-        
-        Pump pump = new Pump(minecraft, options.realtime());
-        List<Discovered> tests = ClientRun.TESTS.get();
-        
-        ClientRun.awaitLoaded(minecraft, pump);
-        
-        // Goldens only match if every machine renders them at the same size.
-        ClientRun.pinWindow(minecraft, pump);
-        ClientRun.reset(minecraft, pump);
-        ClientRun.baseline(pump);
-        
-        int failed = 0;
-        for (Discovered test : tests) {
-            if (!ClientRun.runTest(test, minecraft, pump, report) && test.required()) {
-                failed++;
-            }
-            
-            ClientRun.reset(minecraft, pump);
-        }
-        
-        ClientRun.log.info("Ran {} client tests, {} tests marked as required failed", tests.size(), failed);
-        return failed;
     }
     
     ///
@@ -365,14 +379,48 @@ public class ClientRun {
     }
     
     ///
-    /// Disconnects the client from any server it is connected to and places it back on the title screen and then runs a single frame.
+    /// Disconnects the client from any server it is connected to and places it back on the title screen,
+    /// sets every option, the window, and the GUI scale back to those of the run, and then runs a single frame.
+    ///
+    /// Also clears every toast and hides the debug overlay, so nothing a test left behind shows up in the next one.
     ///
     /// @param minecraft The client to reset.
     /// @param pump      The pump that executes the frame.
     ///
+    /// @throws IllegalStateException If the main render target does not have the size of the run after {@value ClientRun#RESIZE_FRAMES} frames.
+    ///
     private static void reset(Minecraft minecraft, Pump pump) {
         minecraft.disconnect(new TitleScreen(), false);
+        minecraft.getToastManager().clear();
+        minecraft.debugEntries.setOverlayVisible(false);
+        ClientRun.pinOptions(minecraft);
+        
+        // Goldens only match if every machine renders them at the same size.
+        ClientRun.pinWindow(minecraft, pump);
         pump.frame();
+    }
+    
+    ///
+    /// Records every remaining test as failed, since the client could not be reset after the given test.
+    ///
+    /// @param remaining The tests that would have run after the given test.
+    /// @param last      The identifier of the test after which the client could not be reset.
+    /// @param failure   Why the client could not be reset.
+    /// @param report    The report every outcome is written into.
+    ///
+    /// @return The number of required tests among the remaining ones.
+    ///
+    private static int abort(List<Discovered> remaining, Identifier last, Throwable failure, TestReport report) {
+        IllegalStateException aborted = new IllegalStateException("The run was aborted because the client could not be reset after '" + last + "'", failure);
+        int required = 0;
+        for (Discovered test : remaining) {
+            report.failed(test.id(), 0L, aborted, test.required());
+            if (test.required()) {
+                required++;
+            }
+        }
+        
+        return required;
     }
     
     ///

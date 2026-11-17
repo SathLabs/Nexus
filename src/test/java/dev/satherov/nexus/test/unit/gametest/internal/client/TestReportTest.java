@@ -111,6 +111,26 @@ public class TestReportTest {
         Assertions.assertThat(file).isRegularFile();
     }
     
+    @Test
+    public void exitsWithTheNumberOfRequiredFailures(@TempDir Path directory) {
+        TestReport report = new TestReport(directory.resolve("report.xml"));
+        Assertions.assertThat(report.exitCode()).isZero();
+    
+        report.passed(TestReportTest.TEST, 10L);
+        report.failed(TestReportTest.TEST, 10L, new IllegalStateException("Broke on purpose"), false);
+        Assertions.assertThat(report.exitCode()).isZero();
+    
+        TestReportTest.failRequired(report, 3);
+        Assertions.assertThat(report.exitCode()).isEqualTo(3);
+    }
+    
+    @Test
+    public void capsTheExitCodeAtTheLargestOneTheSystemKeeps(@TempDir Path directory) {
+        TestReport report = new TestReport(directory.resolve("report.xml"));
+        TestReportTest.failRequired(report, 256);
+        Assertions.assertThat(report.exitCode()).isEqualTo(255);
+    }
+    
     private static Element read(Path file) throws IOException, ParserConfigurationException, SAXException {
         return DocumentBuilderFactory.newInstance()
                 .newDocumentBuilder()
@@ -129,5 +149,9 @@ public class TestReportTest {
                 .filter(node -> node instanceof Element element && element.getTagName().equals(tag))
                 .map(Element.class::cast)
                 .toList();
+    }
+    
+    private static void failRequired(TestReport report, int count) {
+        IntStream.range(0, count).forEach(_ -> report.failed(TestReportTest.TEST, 10L, new IllegalStateException("Broke on purpose"), true));
     }
 }

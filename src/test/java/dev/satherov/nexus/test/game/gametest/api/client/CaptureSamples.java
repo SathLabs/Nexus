@@ -23,12 +23,19 @@ import java.util.Locale;
 ///
 public class CaptureSamples {
     
+    private static final int WIDTH = 854;
+    
+    private static final int HEIGHT = 480;
+    
+    private static final int GUI_SCALE = 2;
+    
     @ClientTest
     public static void sizeOfRenderTarget(Client client) {
         Capture capture = client.capture();
         RenderTarget target = client.minecraft().getMainRenderTarget();
-        Assertions.assertThat(capture.width()).isEqualTo(target.width);
-        Assertions.assertThat(capture.height()).isEqualTo(target.height);
+        Assertions.assertThat(capture.width()).isEqualTo(target.width).isEqualTo(CaptureSamples.WIDTH);
+        Assertions.assertThat(capture.height()).isEqualTo(target.height).isEqualTo(CaptureSamples.HEIGHT);
+        Assertions.assertThat(client.minecraft().getWindow().getGuiScale()).isEqualTo(CaptureSamples.GUI_SCALE);
     }
     
     @ClientTest
