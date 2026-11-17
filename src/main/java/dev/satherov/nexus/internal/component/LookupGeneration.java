@@ -8,6 +8,7 @@ import dev.satherov.nexus.internal.network.client.ClientConnection;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.neoforge.data.loading.DatagenModLoader;
 import net.neoforged.neoforge.event.TagsUpdatedEvent;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
@@ -15,6 +16,7 @@ import net.minecraft.server.MinecraftServer;
 
 import org.jetbrains.annotations.ApiStatus;
 
+import java.lang.ref.WeakReference;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -41,21 +43,23 @@ public class LookupGeneration {
     ///
     /// The owner of the registries that the current generation started with.
     ///
-    private static volatile Object owner = LookupGeneration.NO_OWNER;
+    /// The owner is held weakly, so a stopped server or a closed connection can be collected before a filter test finds the next owner.
+    ///
+    private static volatile WeakReference<Object> owner = new WeakReference<>(LookupGeneration.NO_OWNER);
     
     ///
     /// Gets the number of the current generation, starting a new one if the owner of the registries changed.
     ///
-    /// Two owners only match if they are the same object.
+    /// Two owners only match if they are the same object, and an owner that was collected matches nothing.
     ///
     /// @return The number of the current generation.
     ///
     public static int current() {
         Object found = LookupGeneration.findOwner();
-        if (found != LookupGeneration.owner) {
+        if (found != LookupGeneration.owner.get()) {
             // Count first, so a thread that sees the new owner also sees the new generation.
             LookupGeneration.GENERATION.incrementAndGet();
-            LookupGeneration.owner = found;
+            LookupGeneration.owner = new WeakReference<>(found);
         }
         
         return LookupGeneration.GENERATION.get();
@@ -76,7 +80,7 @@ public class LookupGeneration {
     ///
     /// The owner is the first of these that exists:
     /// - The running server.
-    /// - On a client, the registry access of the client's play connection.
+    /// - On a client outside of data generation, the registry access of the client's play connection.
     /// - [#NO_OWNER].
     ///
     /// @return The owner of the registries.
@@ -87,7 +91,8 @@ public class LookupGeneration {
             return server;
         }
         
-        if (!FMLEnvironment.getDist().isClient()) {
+        // A client data run has no instance of the game, so it has no connection either.
+        if (!FMLEnvironment.getDist().isClient() || DatagenModLoader.isRunningDataGen()) {
             return LookupGeneration.NO_OWNER;
         }
         
