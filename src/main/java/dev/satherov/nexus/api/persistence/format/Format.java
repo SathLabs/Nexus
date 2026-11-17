@@ -76,6 +76,9 @@ public final class Format<VALUE> {
     ///
     /// Creates a new format of the given codec at version `1`.
     ///
+    /// Data written before Nexus, which a step from version `0` reads, must not be a compound with a number under `version` and a tag under `data`,
+    /// since [#read(Tag, HolderLookup.Provider)] reads such a compound as the versioned form, never as data of version `0`.
+    ///
     /// @param codec The codec of the value.
     ///
     /// @return The new format.
@@ -122,6 +125,9 @@ public final class Format<VALUE> {
     ///
     /// If the version is the current one, the new format will be one version higher.
     /// If the version is one below the oldest version this format reads, the new format will read that version too.
+    ///
+    /// A step from version `0` upgrades data written before Nexus, which must not be a compound with a number under `version` and a tag under `data`,
+    /// since [#read(Tag, HolderLookup.Provider)] reads such a compound as the versioned form.
     ///
     /// This format will be left as it was.
     ///

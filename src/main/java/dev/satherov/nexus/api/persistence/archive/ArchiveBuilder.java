@@ -116,7 +116,8 @@ public final class ArchiveBuilder<KEY extends ArchiveKey<KEY>, VALUE> {
     /// If the reader returns empty, the file will be left where it is.
     ///
     /// A marker file will then be written into the folder of the archive, and the import won't run again while it exists.
-    /// A moved file that only holds a bare tag will be read as version `0` of the format.
+    /// A moved file that only holds a bare tag will be read as version `0` of the format,
+    /// so the format has to read version `0` or [#register()] will throw.
     ///
     /// If a file could not be moved, it will stay where it is and the failure will be logged.
     /// If the reader returns a key that can't be written, an [IllegalArgumentException] will be thrown once the server starts.
@@ -139,9 +140,16 @@ public final class ArchiveBuilder<KEY extends ArchiveKey<KEY>, VALUE> {
     ///
     /// @return The new archive.
     ///
-    /// @throws IllegalStateException If a server already started, or if the mod already declared a saved value or an archive with the same name.
+    /// @throws IllegalStateException - If a server already started.
+    /// - If the mod already declared a saved value or an archive with the same name.
+    /// - If the name lies inside the folder of a name the mod already declared, or the reverse.
+    /// - If the archive imports an older layout and its format doesn't read version `0`.
     ///
     public Archive<KEY, VALUE> register() {
+        if (this.legacy != null && !this.format.canRead(0)) {
+            throw new IllegalStateException("Could not register '" + this.persistence.getMod().id(this.name) + "' because it imports an older layout and its format doesn't read version '0'");
+        }
+
         return new Archive<>(new ArchiveStore.Declaration<>(this.persistence.declare(this.name), this.keys, this.format, this.active, this.retired, this.legacy));
     }
 }
