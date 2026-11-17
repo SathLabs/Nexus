@@ -9,9 +9,12 @@ import dev.satherov.nexus.api.tick.TickScope;
 import dev.satherov.nexus.api.tick.budget.Budget;
 import dev.satherov.nexus.gametest.api.server.ServerTest;
 
+import net.neoforged.fml.LogicalSide;
 import net.neoforged.fml.ModList;
+import net.neoforged.neoforge.common.util.Lazy;
 
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.util.Util;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -19,36 +22,42 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 
 ///
 /// Checks how the jobs of budgets step on the passes of a level scope and of the server scope.
 ///
 public class BudgetSamples {
     
+    private static final long STEP_NANOS = TimeUnit.MILLISECONDS.toNanos(1L);
+    private static final Map<String, Budget> BUDGETS_BY_NAME = new HashMap<>();
+    private static final Lazy<Budget> FOREIGN = Lazy.of(() -> NexusMod.of(ModList.get().getModContainerById("nexus_gametest").orElseThrow()).getScheduler().budget("budget_samples_foreign", 1, 1));
+    
     @ServerTest
     public static void jobFinishesInLevel(GameTestHelper helper) {
         Scheduler scheduler = Nexus.getMod().getScheduler();
-        BudgetSamples.jobFinishes(helper, scheduler.in(helper.getLevel()), scheduler.budget("budget_samples_finishing_in_level", 1_000, 1_000));
+        BudgetSamples.jobFinishes(helper, scheduler.in(helper.getLevel()), BudgetSamples.budget("budget_samples_finishing_in_level", 1_000, 1_000));
     }
     
     @ServerTest
     public static void jobFinishesOnServer(GameTestHelper helper) {
         Scheduler scheduler = Nexus.getMod().getScheduler();
-        BudgetSamples.jobFinishes(helper, scheduler.server(), scheduler.budget("budget_samples_finishing_on_server", 1_000, 1_000));
+        BudgetSamples.jobFinishes(helper, scheduler.server(), BudgetSamples.budget("budget_samples_finishing_on_server", 1_000, 1_000));
     }
     
     @ServerTest
     public static void jobsOfOneBudgetTakeTurnsInLevel(GameTestHelper helper) {
         Scheduler scheduler = Nexus.getMod().getScheduler();
-        BudgetSamples.jobsOfOneBudgetTakeTurns(helper, scheduler.in(helper.getLevel()), scheduler.budget("budget_samples_turns_in_level", 1, 1));
+        BudgetSamples.jobsOfOneBudgetTakeTurns(helper, scheduler.in(helper.getLevel()), BudgetSamples.budget("budget_samples_turns_in_level", 1, 1));
     }
     
     @ServerTest
     public static void jobsOfOneBudgetTakeTurnsOnServer(GameTestHelper helper) {
         Scheduler scheduler = Nexus.getMod().getScheduler();
-        BudgetSamples.jobsOfOneBudgetTakeTurns(helper, scheduler.server(), scheduler.budget("budget_samples_turns_on_server", 1, 1));
+        BudgetSamples.jobsOfOneBudgetTakeTurns(helper, scheduler.server(), BudgetSamples.budget("budget_samples_turns_on_server", 1, 1));
     }
     
     @ServerTest
@@ -58,9 +67,9 @@ public class BudgetSamples {
                 helper,
                 scheduler.in(helper.getLevel()),
                 List.of(
-                        scheduler.budget("budget_samples_minimum_in_level", 2_000, 2_000),
-                        scheduler.budget("budget_samples_maximum_in_level", 1, 20_000),
-                        scheduler.budget("budget_samples_zero_in_level", 1, 1)
+                        BudgetSamples.budget("budget_samples_minimum_in_level", 2_000, 2_000),
+                        BudgetSamples.budget("budget_samples_maximum_in_level", 1, 20_000),
+                        BudgetSamples.budget("budget_samples_zero_in_level", 1, 1)
                 )
         );
     }
@@ -72,9 +81,9 @@ public class BudgetSamples {
                 helper,
                 scheduler.server(),
                 List.of(
-                        scheduler.budget("budget_samples_minimum_on_server", 2_000, 2_000),
-                        scheduler.budget("budget_samples_maximum_on_server", 1, 20_000),
-                        scheduler.budget("budget_samples_zero_on_server", 1, 1)
+                        BudgetSamples.budget("budget_samples_minimum_on_server", 2_000, 2_000),
+                        BudgetSamples.budget("budget_samples_maximum_on_server", 1, 20_000),
+                        BudgetSamples.budget("budget_samples_zero_on_server", 1, 1)
                 )
         );
     }
@@ -85,7 +94,7 @@ public class BudgetSamples {
         BudgetSamples.jobCancelledInsideItsStepEnds(
                 helper,
                 scheduler.in(helper.getLevel()),
-                scheduler.budget("budget_samples_cancelling_in_level", 1_000, 1_000)
+                BudgetSamples.budget("budget_samples_cancelling_in_level", 1_000, 1_000)
         );
     }
     
@@ -95,18 +104,50 @@ public class BudgetSamples {
         BudgetSamples.jobCancelledInsideItsStepEnds(
                 helper,
                 scheduler.server(),
-                scheduler.budget("budget_samples_cancelling_on_server", 1_000, 1_000)
+                BudgetSamples.budget("budget_samples_cancelling_on_server", 1_000, 1_000)
         );
     }
     
     @ServerTest
     public static void budgetOfAnotherModIsRefused(GameTestHelper helper) {
-        NexusMod other = NexusMod.of(ModList.get().getModContainerById("nexus_gametest").orElseThrow());
-        Budget budget = other.getScheduler().budget("budget_samples_foreign", 1, 1);
         Scheduler scheduler = Nexus.getMod().getScheduler();
-        BudgetSamples.assertRefused(helper, scheduler.in(helper.getLevel()), budget);
-        BudgetSamples.assertRefused(helper, scheduler.server(), budget);
+        BudgetSamples.assertRefused(helper, scheduler.in(helper.getLevel()), BudgetSamples.FOREIGN.get());
+        BudgetSamples.assertRefused(helper, scheduler.server(), BudgetSamples.FOREIGN.get());
         helper.succeed();
+    }
+    
+    @ServerTest
+    public static void jobSpendsTheMinimumWithoutTimeLeft(GameTestHelper helper) {
+        int steps = BudgetSamples.stepsOfOnePass(new TickScope(Nexus.getMod().getScheduler(), LogicalSide.SERVER), () -> false);
+        helper.assertTrue(steps >= 2 && steps <= 5, "The job took '" + steps + "' steps of 1 ms in a pass without time left under a minimum of 5 ms");
+        helper.succeed();
+    }
+    
+    @ServerTest
+    public static void jobSpendsUpToTheMaximumWithTimeLeft(GameTestHelper helper) {
+        int steps = BudgetSamples.stepsOfOnePass(new TickScope(Nexus.getMod().getScheduler(), LogicalSide.SERVER), () -> true);
+        helper.assertTrue(steps > 5 && steps <= 20, "The job took '" + steps + "' steps of 1 ms in a pass with time left under a minimum of 5 ms and a maximum of 20 ms");
+        helper.succeed();
+    }
+    
+    public static int stepsOfOnePass(TickScope scope, BooleanSupplier hasTime) {
+        AtomicInteger steps = new AtomicInteger();
+        scope.job(BudgetSamples.budget("budget_samples_spending", 5_000, 20_000), () -> {
+            long start = Util.getNanos();
+            while (Util.getNanos() - start < BudgetSamples.STEP_NANOS) {
+                Thread.onSpinWait();
+            }
+            
+            steps.incrementAndGet();
+            return true;
+        });
+        scope.pass(hasTime);
+        scope.end();
+        return steps.get();
+    }
+    
+    private static Budget budget(String name, int minimum, int maximum) {
+        return BudgetSamples.BUDGETS_BY_NAME.computeIfAbsent(name, _ -> Nexus.getMod().getScheduler().budget(name, minimum, maximum));
     }
     
     private static void jobFinishes(GameTestHelper helper, TickScope scope, Budget budget) {
