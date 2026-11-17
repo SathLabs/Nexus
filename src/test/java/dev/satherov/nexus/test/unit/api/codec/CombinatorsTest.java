@@ -353,6 +353,34 @@ public class CombinatorsTest {
     }
     
     @Test
+    public void recursiveCodecRoundTripsATreeOf512Levels() {
+        ParityCases.Node deep = CombinatorsTest.chain(512);
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
+        CombinatorsTest.TREE.encode(CodecFormat.netty(buffer), deep);
+        
+        Assertions.assertThat(CombinatorsTest.TREE.decode(CodecFormat.JSON, CombinatorsTest.TREE.encode(CodecFormat.JSON, deep))).isEqualTo(deep);
+        Assertions.assertThat(CombinatorsTest.TREE.decode(CodecFormat.netty(buffer))).isEqualTo(deep);
+        Assertions.assertThat(buffer.readableBytes()).isZero();
+    }
+    
+    @Test
+    public void recursiveCodecRefusesMoreThan512Levels() {
+        FriendlyByteBuf deep = new FriendlyByteBuf(Unpooled.buffer());
+        for (int level = 1; level <= 10_000; level++) {
+            deep.writeInt(level);
+            deep.writeByte(level < 10_000 ? 1 : 0);
+        }
+        
+        Assertions.assertThat(CombinatorsTest.errors(() -> CombinatorsTest.TREE.decode(CodecFormat.netty(deep))))
+                .singleElement()
+                .satisfies(error -> Assertions.assertThat(error.message()).contains("512"));
+        Assertions.assertThat(CombinatorsTest.errors(() -> CombinatorsTest.TREE.encode(CodecFormat.JSON, CombinatorsTest.chain(513))))
+                .singleElement()
+                .satisfies(error -> Assertions.assertThat(error.message()).contains("512"));
+        Assertions.assertThatCode(() -> CombinatorsTest.TREE.encode(CodecFormat.JSON, CombinatorsTest.chain(512))).doesNotThrowAnyException();
+    }
+    
+    @Test
     public void xmapMapsBothWays() {
         NexusCodec<ParityCases.Amount, Access.Plain> amount = NexusCodec.INT.xmap(ParityCases.Amount::new, ParityCases.Amount::value);
         
@@ -445,6 +473,15 @@ public class CombinatorsTest {
     
     private static CompoundTag node(int value, Tag... children) {
         return CombinatorsTest.compound(Map.of("value", IntTag.valueOf(value), "children", CombinatorsTest.list(children)));
+    }
+    
+    private static ParityCases.Node chain(int levels) {
+        ParityCases.Node node = new ParityCases.Node(levels, List.of());
+        for (int level = levels - 1; level > 0; level--) {
+            node = new ParityCases.Node(level, List.of(node));
+        }
+        
+        return node;
     }
     
     private static <T> void assertJson(NexusCodec<T, Access.Plain> codec, T value, String json) {
