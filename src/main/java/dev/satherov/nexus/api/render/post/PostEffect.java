@@ -18,6 +18,8 @@ import org.jetbrains.annotations.ApiStatus;
 /// The active effects of all mods run after vanilla's own effect, in activation order.
 /// They run under a shader pack as well.
 ///
+/// Every effect is deactivated once the level of the client unloads, on a dimension change and on logout alike.
+///
 /// Can be accessed through [Render#postEffect(String)].
 ///
 public final class PostEffect {
@@ -27,11 +29,6 @@ public final class PostEffect {
     ///
     @Getter
     private final Identifier id;
-    
-    ///
-    /// If the effect is active.
-    ///
-    private boolean active;
     
     ///
     /// Should only ever be called by Nexus itself.
@@ -54,7 +51,6 @@ public final class PostEffect {
     ///
     public void activate() {
         this.checkClientThread();
-        this.active = true;
         PostEffects.INSTANCE.activate(this);
     }
     
@@ -67,7 +63,6 @@ public final class PostEffect {
     ///
     public void deactivate() {
         this.checkClientThread();
-        this.active = false;
         PostEffects.INSTANCE.deactivate(this);
     }
     
@@ -78,7 +73,7 @@ public final class PostEffect {
     ///
     public boolean isActive() {
         this.checkClientThread();
-        return this.active;
+        return PostEffects.INSTANCE.isActive(this);
     }
     
     ///
