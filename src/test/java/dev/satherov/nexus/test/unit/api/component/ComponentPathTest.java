@@ -21,12 +21,15 @@ import com.google.gson.JsonPrimitive;
 import org.assertj.core.api.Assertions;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
 import java.util.stream.Stream;
 
 ///
@@ -81,6 +84,20 @@ public class ComponentPathTest {
         Assertions.assertThat(path.getAllSteps()).isEmpty();
         Assertions.assertThat(path.getComponent()).isSameAs(DataComponents.CUSTOM_DATA);
         Assertions.assertThat(path).hasToString("minecraft:custom_data");
+    }
+    
+    @Test
+    public void parsesALongQuotedKeyOnAOneMegabyteStack() throws ExecutionException, InterruptedException {
+        String key = "x".repeat(32_000);
+        Assertions.assertThat(ComponentPathTest.ofOnAOneMegabyteStack("['" + key + "']").getAllSteps()).containsExactly(new ComponentPath.Step.Key(key));
+        Assertions.assertThat(ComponentPathTest.ofOnAOneMegabyteStack("['" + "\\'".repeat(16_000) + "']").getAllSteps()).containsExactly(new ComponentPath.Step.Key("'".repeat(16_000)));
+    }
+    
+    @Test
+    public void refusesALongUnterminatedQuotedKeyOnAOneMegabyteStack() {
+        Assertions.assertThatThrownBy(() -> ComponentPathTest.ofOnAOneMegabyteStack("['" + "x".repeat(32_000)))
+                .isInstanceOf(ExecutionException.class)
+                .hasCauseInstanceOf(IllegalArgumentException.class);
     }
     
     @ParameterizedTest
@@ -165,7 +182,28 @@ public class ComponentPathTest {
     @Test
     public void createsThePathOfAnEntry() {
         Assertions.assertThat(ComponentPathTest.tier().path("level")).isEqualTo(ComponentPath.of(ComponentPathTest.tier().value(), "level"));
-        Assertions.assertThat(ComponentPathTest.tier().path("level")).hasToString("nexus:component_path_test_tier.level");
+        Assertions.assertThat(ComponentPathTest.tier().path("level")).hasToString("nexus:component_path_test_tier['level']");
+    }
+    
+    @Test
+    public void quotesTheFirstKeyOfAComponentWhoseIdentifierAnotherOneExtends() {
+        Assertions.assertThat(ComponentPathTest.tier().path("name")).hasToString("nexus:component_path_test_tier['name']");
+        Assertions.assertThat(ComponentPathTest.dotted().path("")).hasToString("nexus:component_path_test_tier.level");
+        Assertions.assertThat(ComponentPath.of(DataComponents.CUSTOM_DATA, "a.b")).hasToString("minecraft:custom_data.a.b");
+    }
+    
+    @Test
+    public void decodesTheTextOfAPathBackToThePath() {
+        List<ComponentPath> paths = List.of(
+                ComponentPathTest.tier().path("level"),
+                ComponentPathTest.tier().path("name"),
+                ComponentPathTest.tier().path(""),
+                ComponentPathTest.dotted().path("")
+        );
+        
+        for (ComponentPath path : paths) {
+            Assertions.assertThat(ComponentPath.CODEC.decode(CodecFormat.JSON, ComponentPath.CODEC.encode(CodecFormat.JSON, path))).as(path.toString()).isEqualTo(path);
+        }
     }
     
     @ParameterizedTest
@@ -186,6 +224,17 @@ public class ComponentPathTest {
                 "nexus:component_path_test_tier.level",
                 "nexus:component_path_test_tier"
         );
+    }
+    
+    @Test
+    @Timeout(2)
+    public void decodesALongTextInLinearTime() {
+        String text = "minecraft:custom_data" + ".a".repeat(16_370);
+        for (int run = 0; run < 10; run++) {
+            ComponentPath path = ComponentPath.CODEC.decode(CodecFormat.JSON, new JsonPrimitive(text));
+            Assertions.assertThat(path.getComponent()).isSameAs(DataComponents.CUSTOM_DATA);
+            Assertions.assertThat(path.getAllSteps()).hasSize(16_370).containsOnly(new ComponentPath.Step.Key("a"));
+        }
     }
     
     @Test
@@ -223,6 +272,12 @@ public class ComponentPathTest {
                 "minecraft:custom_data a",
                 "minecraft:custom_data[0"
         );
+    }
+    
+    private static ComponentPath ofOnAOneMegabyteStack(String steps) throws ExecutionException, InterruptedException {
+        FutureTask<ComponentPath> task = new FutureTask<>(() -> ComponentPath.of(DataComponents.CUSTOM_DATA, steps));
+        new Thread(null, task, "component-path-test", 1024 * 1024).start();
+        return task.get();
     }
     
     private static DataComponentEntry<Tier> tier() {

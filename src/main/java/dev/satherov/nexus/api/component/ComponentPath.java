@@ -46,9 +46,9 @@ public final class ComponentPath {
     private static final Pattern PLAIN_KEY = Pattern.compile("[A-Za-z0-9_-]+");
     
     ///
-    /// The pattern of one step, where only a key at the very start of the input may stand without a dot in front of it.
+    /// The pattern of a plain key, an index, or the wildcard, where only a key at the very start of the input may stand without a dot in front of it.
     ///
-    private static final Pattern STEP = Pattern.compile("(?:^|\\.)(?<key>" + ComponentPath.PLAIN_KEY.pattern() + ")|\\[(?:(?<number>[0-9]{1,9})|\\*|'(?<quoted>(?:[^'\\\\]|\\\\['\\\\])*)')]");
+    private static final Pattern STEP = Pattern.compile("(?:^|\\.)(?<key>" + ComponentPath.PLAIN_KEY.pattern() + ")|\\[(?:(?<number>[0-9]{1,9})|\\*)]");
     
     ///
     /// The data component type that the path starts at.
@@ -110,7 +110,10 @@ public final class ComponentPath {
     ///
     private static ComponentPath fromText(String text) {
         int bracket = text.indexOf('[');
-        for (int end = bracket < 0 ? text.length() : bracket; end > 0; end = text.lastIndexOf('.', end - 1)) {
+        int whole = bracket < 0 ? text.length() : bracket;
+        int longest = PathReaders.getLongestIdentifierLength();
+        // A candidate longer than every registered identifier can't match, so the search starts at the last one that fits.
+        for (int end = whole > longest ? text.lastIndexOf('.', longest) : whole; end > 0; end = text.lastIndexOf('.', end - 1)) {
             DataComponentType<?> component = BuiltInRegistries.DATA_COMPONENT_TYPE.getValue(Identifier.tryParse(text.substring(0, end)));
             if (component != null) {
                 return ComponentPath.of(component, ComponentPath.parse(text, end));
@@ -126,26 +129,63 @@ public final class ComponentPath {
     private static @Unmodifiable List<Step> parse(String text, int start) {
         Matcher matcher = ComponentPath.STEP.matcher(text).useAnchoringBounds(false);
         List<Step> steps = new ArrayList<>();
-        for (int index = start; index < text.length(); index = matcher.end()) {
+        int index = start;
+        while (index < text.length()) {
+            if (text.startsWith("['", index)) {
+                // A quoted key is scanned by hand, since a pattern would take a frame of the stack for every character of it.
+                int quote = ComponentPath.closingQuote(text, index);
+                steps.add(new Step.Key(text.substring(index + 2, quote).replaceAll("\\\\(.)", "$1")));
+                index = quote + 2;
+                continue;
+            }
+            
             if (!matcher.region(index, text.length()).lookingAt()) {
                 throw ComponentPath.malformed(text, index);
             }
             
             String key = matcher.group("key");
-            String quoted = matcher.group("quoted");
             String number = matcher.group("number");
             if (key != null) {
                 steps.add(new Step.Key(key));
-            } else if (quoted != null) {
-                steps.add(new Step.Key(quoted.replaceAll("\\\\(.)", "$1")));
             } else if (number != null) {
                 steps.add(new Step.Index(Integer.parseInt(number)));
             } else {
                 steps.add(new Step.Wildcard());
             }
+            
+            index = matcher.end();
         }
         
         return List.copyOf(steps);
+    }
+    
+    ///
+    /// Finds the quote that closes the quoted key whose bracket is at the given index of the given text.
+    ///
+    private static int closingQuote(String text, int start) {
+        for (int index = start + 2; index < text.length(); index++) {
+            switch (text.charAt(index)) {
+                case '\'' -> {
+                    if (!text.startsWith("]", index + 1)) {
+                        throw ComponentPath.malformed(text, start);
+                    }
+                    
+                    return index;
+                }
+                case '\\' -> {
+                    if (!text.startsWith("'", index + 1) && !text.startsWith("\\", index + 1)) {
+                        throw ComponentPath.malformed(text, start);
+                    }
+                    
+                    // The escaped character is part of the key, even if it's a quote.
+                    index++;
+                }
+                default -> {
+                }
+            }
+        }
+        
+        throw ComponentPath.malformed(text, start);
     }
     
     ///
@@ -168,6 +208,8 @@ public final class ComponentPath {
     /// The text form of this path, which is the identifier of the component followed by the steps.
     ///
     /// A key is written as a plain key with a dot in front of it wherever it can be one, and in quotes otherwise.
+    /// The first key is quoted as well if another registered identifier starts with the identifier of the component and a dot,
+    /// since decoding the text could otherwise pick that other component.
     ///
     /// If the component is not registered, `[unregistered]` will be written in place of its identifier.
     ///
@@ -176,9 +218,11 @@ public final class ComponentPath {
     @Override
     public String toString() {
         StringBuilder text = new StringBuilder(Util.getRegisteredName(BuiltInRegistries.DATA_COMPONENT_TYPE, this.component));
-        for (Step step : this.steps) {
-            switch (step) {
-                case Step.Key(String name) when ComponentPath.PLAIN_KEY.matcher(name).matches() -> text.append('.').append(name);
+        boolean extended = PathReaders.isExtended(this.component);
+        for (int i = 0; i < this.steps.size(); i++) {
+            boolean dotted = i > 0 || !extended;
+            switch (this.steps.get(i)) {
+                case Step.Key(String name) when dotted && ComponentPath.PLAIN_KEY.matcher(name).matches() -> text.append('.').append(name);
                 case Step.Key(String name) -> text.append("['").append(name.replace("\\", "\\\\").replace("'", "\\'")).append("']");
                 case Step.Index(int index) -> text.append('[').append(index).append(']');
                 case Step.Wildcard() -> text.append("[*]");
