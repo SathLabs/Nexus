@@ -62,17 +62,20 @@ public final class AttachmentEntry<VALUE> extends RegistryEntry<AttachmentType<?
     ///
     /// Updates this attachment on the given holder with the given operator.
     ///
-    /// If the value changed on a block entity or a chunk, the holder will be marked as changed.
+    /// If the operator returns the current value itself, it will be set again, so the operator may change the value in place.
+    /// If it returns a different value that is equal to the current one, nothing will be set.
+    ///
+    /// If a value was set on a block entity or a chunk, the holder will be marked as changed.
     ///
     /// @param holder   The holder of the attachment.
     /// @param operator The operator to apply to the current value.
     ///
-    /// @return The previous value of the attachment or `null` if the value did not change.
+    /// @return The previous value of the attachment, or `null` if nothing was set.
     ///
     public @Nullable VALUE update(IAttachmentHolder holder, UnaryOperator<VALUE> operator) {
         VALUE old = holder.getData(this.value());
         VALUE updated = operator.apply(old);
-        if (Objects.equals(old, updated)) {
+        if (updated != old && Objects.equals(old, updated)) {
             return null;
         }
         
@@ -82,21 +85,18 @@ public final class AttachmentEntry<VALUE> extends RegistryEntry<AttachmentType<?
     ///
     /// Updates this attachment on the given holder by replacing it with the given value.
     ///
-    /// If the value changed on a block entity or a chunk, the holder will be marked as changed.
+    /// If the supplier returns the current value itself, it will be set again, so the value may have been changed in place.
+    /// If it returns a different value that is equal to the current one, nothing will be set.
+    ///
+    /// If a value was set on a block entity or a chunk, the holder will be marked as changed.
     ///
     /// @param holder   The holder of the attachment.
     /// @param supplier The supplier to replace the value with.
     ///
-    /// @return The previous value of the attachment or `null` if the value did not change.
+    /// @return The previous value of the attachment, or `null` if nothing was set.
     ///
     public @Nullable VALUE update(IAttachmentHolder holder, Supplier<VALUE> supplier) {
-        VALUE old = holder.getData(this.value());
-        VALUE updated = supplier.get();
-        if (Objects.equals(old, updated)) {
-            return null;
-        }
-        
-        return holder.setData(this.value(), updated);
+        return this.update(holder, _ -> supplier.get());
     }
     
     ///
