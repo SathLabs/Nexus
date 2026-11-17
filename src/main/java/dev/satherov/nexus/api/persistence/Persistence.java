@@ -142,13 +142,20 @@ public final class Persistence {
     ///
     /// @return The identifier `<modid>:<name>`.
     ///
-    /// @throws IllegalStateException If a server already started, or if the mod already declared the name.
+    /// @throws IllegalStateException If a server already started, if the mod already declared the name,
+    /// or if the name lies inside the folder of a name the mod already declared, or the reverse.
     ///
     @ApiStatus.Internal
     public Identifier declare(String name) {
         Identifier id = this.mod.id(name);
         if (Persistence.started) {
             throw new IllegalStateException("Could not declare '" + id + "' because a server already started");
+        }
+        
+        for (String declared : this.names) {
+            if (name.startsWith(declared + "/") || declared.startsWith(name + "/")) {
+                throw new IllegalStateException("Could not declare '" + id + "' because its files would overlap those of '" + this.mod.id(declared) + "'");
+            }
         }
         
         if (!this.names.add(name)) {

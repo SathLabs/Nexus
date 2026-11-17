@@ -26,7 +26,9 @@ public class SavedValueTest {
     @Test
     public void refusesASecondValueOfOneName() {
         Assertions.assertThat(SavedValueTest.firstRefusal).isNull();
-        Assertions.assertThat(SavedValueTest.duplicateRefusal).isNotNull();
+        Assertions.assertThat(SavedValueTest.duplicateRefusal)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(Nexus.MOD_ID + ":saved_value_test_duplicate");
     }
 
     @EventBusSubscriber(modid = Nexus.MOD_ID)
