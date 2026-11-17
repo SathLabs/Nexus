@@ -12,6 +12,7 @@ import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.CreativeModeTab;
+import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
@@ -85,9 +86,16 @@ public final class TabContents {
     ///
     /// Skips every stack the tab already has, so each one shows once.
     ///
+    /// Adds nothing to the operator tab if the event doesn't have operator permissions.
+    ///
     /// @param event The event of the tab.
     ///
     public void onBuildContents(BuildCreativeModeTabContentsEvent event) {
+        // Vanilla only fills the operator tab with permissions, and a filled tab would show up for everyone else.
+        if (event.getTabKey().equals(CreativeModeTabs.OP_BLOCKS) && !event.hasPermissions()) {
+            return;
+        }
+        
         TabEntry own = this.registrations.getAll(Registries.CREATIVE_MODE_TAB).stream()
                 .filter(entry -> entry.getKey().equals(event.getTabKey()))
                 .filter(TabEntry.class::isInstance)
