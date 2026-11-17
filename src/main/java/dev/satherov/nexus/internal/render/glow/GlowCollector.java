@@ -15,7 +15,9 @@ import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.client.renderer.feature.ModelFeatureRenderer;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.network.chat.Component;
@@ -239,6 +241,30 @@ public final class GlowCollector implements SubmitNodeCollector {
         if (outline != null) {
             this.target.submitBlockModel(poseStack, outline, parts, tintLayers, lightCoords, overlayCoords, this.argb);
         }
+    }
+    
+    ///
+    /// Submits the given parts of a block model as an outline in the color, in the outline render type of the block atlas.
+    ///
+    /// @param poseStack     The pose stack.
+    /// @param modelParts    The parts of the block model.
+    /// @param translucent   If the parts have any translucent quads, ignored.
+    /// @param tintLayers    The tint layers.
+    /// @param lightCoords   The light coordinates.
+    /// @param overlayCoords The overlay coordinates.
+    /// @param outlineColor  The outline color, ignored.
+    ///
+    @Override
+    public void submitMultiLayerBlockModel(
+            PoseStack poseStack,
+            List<BlockStateModelPart> modelParts,
+            boolean translucent,
+            int[] tintLayers,
+            int lightCoords,
+            int overlayCoords,
+            int outlineColor
+    ) {
+        this.target.submitBlockModel(poseStack, RenderTypes.outline(TextureAtlas.LOCATION_BLOCKS), modelParts, tintLayers, lightCoords, overlayCoords, this.argb);
     }
     
     ///

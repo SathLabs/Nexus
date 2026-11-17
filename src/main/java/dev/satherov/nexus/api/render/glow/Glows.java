@@ -15,7 +15,10 @@ import com.mojang.blaze3d.vertex.PoseStack;
 
 import org.jetbrains.annotations.ApiStatus;
 
-import java.util.HashMap;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,9 +47,9 @@ public final class Glows {
     private final Map<Object, Glow> glowByKey = new LinkedHashMap<>();
     
     ///
-    /// The latest active glow of every outlined entity.
+    /// The active glows of every outlined entity by the identity of the entity, the latest last.
     ///
-    private final Map<Entity, Glow> glowByEntity = new HashMap<>();
+    private final Map<Entity, Deque<Glow>> glowsByEntity = new IdentityHashMap<>();
     
     ///
     /// The glowing block of every active block glow.
@@ -79,7 +82,7 @@ public final class Glows {
     public Glow entity(Object key, Entity entity, int argb) {
         this.checkUsable();
         Glow glow = this.put(new Glow(this, key, argb, entity));
-        this.glowByEntity.put(entity, glow);
+        this.glowsByEntity.computeIfAbsent(entity, _ -> new ArrayDeque<>()).addLast(glow);
         return glow;
     }
     
@@ -151,7 +154,7 @@ public final class Glows {
     private void dropAll() {
         this.glowByKey.values().forEach(Glow::end);
         this.glowByKey.clear();
-        this.glowByEntity.clear();
+        this.glowsByEntity.clear();
         this.blockByGlow.clear();
     }
     
@@ -182,8 +185,8 @@ public final class Glows {
     @ApiStatus.Internal
     public int colorOf(Entity entity) {
         this.checkUsable();
-        Glow glow = this.glowByEntity.get(entity);
-        return glow == null ? 0 : glow.argb;
+        Deque<Glow> glows = this.glowsByEntity.get(entity);
+        return glows == null ? 0 : glows.getLast().argb;
     }
     
     ///
@@ -200,11 +203,14 @@ public final class Glows {
             return;
         }
         
-        for (Glow glow : List.copyOf(this.glowByKey.values())) {
+        List<Glow> due = new ArrayList<>();
+        for (Glow glow : this.glowByKey.values()) {
             if (glow.age()) {
-                this.drop(glow);
+                due.add(glow);
             }
         }
+        
+        due.forEach(this::drop);
     }
     
     ///
@@ -216,13 +222,11 @@ public final class Glows {
         this.glowByKey.remove(glow.key, glow);
         this.blockByGlow.remove(glow);
         Entity entity = glow.entity;
-        if (entity != null && this.glowByEntity.remove(entity, glow)) {
-            // The latest remaining glow of the entity takes over, or the entity would lose its outline while a glow still outlines it.
-            for (Glow remaining : this.glowByKey.values()) {
-                if (remaining.entity == entity) {
-                    this.glowByEntity.put(entity, remaining);
-                }
-            }
+        if (entity != null) {
+            this.glowsByEntity.computeIfPresent(entity, (_, glows) -> {
+                glows.remove(glow);
+                return glows.isEmpty() ? null : glows;
+            });
         }
         
         glow.end();

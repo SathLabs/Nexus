@@ -69,6 +69,8 @@ public final class GlowingBlock {
     /// Submits the outline of the block in the given color.
     /// The model is resolved again first if the state of the block or the block model set changed.
     ///
+    /// The model will be resolved with the seed of the position and drawn at the random offset of the block, like in the level.
+    ///
     /// If the block entity at the position has a renderer, the outline will also cover what that renderer submits in this frame.
     ///
     /// Does nothing while the position holds air.
@@ -88,15 +90,20 @@ public final class GlowingBlock {
         
         BlockModelSet models = minecraft.getModelManager().getBlockModelSet();
         if (current != this.state || models != this.models) {
-            minecraft.getBlockModelResolver().update(this.model, current, GlowingBlock.CONTEXT);
+            this.model.clear();
+            models.get(current).update(this.model, current, GlowingBlock.CONTEXT, current.getSeed(this.pos));
             this.state = current;
             this.models = models;
         }
         
         pose.pushPose();
         pose.translate(Vec3.atLowerCornerOf(this.pos).subtract(camera));
+        // Only the model takes the random offset of the block, because the block entity renderer draws without it.
+        pose.pushPose();
+        pose.translate(current.getOffset(this.pos));
         // We submit only the model parts, because a special model would draw the item form of what the block entity renderer draws live.
         this.model.submitOnlyOutline(pose, collector, LightCoordsUtil.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, argb);
+        pose.popPose();
         BlockEntity blockEntity = level.getBlockEntity(this.pos);
         if (blockEntity != null) {
             CameraRenderState cameraState = minecraft.gameRenderer.getGameRenderState().levelRenderState.cameraRenderState;

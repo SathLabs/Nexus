@@ -92,7 +92,17 @@ public final class Glow {
     ///
     public boolean isActive() {
         this.glows.checkThread();
-        return this.active;
+        return this.active && !this.hasLostEntity();
+    }
+    
+    ///
+    /// If the glow outlines an entity that left the level of the client.
+    ///
+    /// @return `true` if the entity of the glow was removed or is in another level than the client.
+    ///
+    private boolean hasLostEntity() {
+        Entity outlined = this.entity;
+        return outlined != null && (outlined.isRemoved() || !ClientTicks.isCurrentLevel(outlined.level()));
     }
     
     ///
@@ -150,7 +160,6 @@ public final class Glow {
             this.ticksLeft--;
         }
         
-        Entity outlined = this.entity;
-        return this.ticksLeft == 0 || (outlined != null && (outlined.isRemoved() || !ClientTicks.isCurrentLevel(outlined.level())));
+        return this.ticksLeft == 0 || this.hasLostEntity();
     }
 }
