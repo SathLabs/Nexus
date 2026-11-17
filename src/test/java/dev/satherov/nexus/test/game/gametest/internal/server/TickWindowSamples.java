@@ -10,7 +10,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 ///
-/// Checks the tick windows that measured server tests record and the tick rate of the run.
+/// Checks the tick windows that measured server tests record, that a measured test fails if it leaves work for a later tick,
+/// and the tick rate of the run.
 ///
 public class TickWindowSamples {
 
@@ -26,6 +27,12 @@ public class TickWindowSamples {
     @Measured(2)
     public static void succeedsItself(GameTestHelper helper) {
         helper.succeed();
+    }
+
+    @Measured(3)
+    @ServerTest(required = false)
+    public static void leavesAConditionBehind(GameTestHelper helper) {
+        helper.succeedWhen(() -> helper.fail("The condition of the measured sample never holds"));
     }
 
     @ServerTest

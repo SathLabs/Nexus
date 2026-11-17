@@ -15,6 +15,9 @@ import java.lang.annotation.Target;
 /// - [ServerTest]: Measures the time a specific number of `ticks` took to execute.
 /// - [ClientTest]: Measures the time a specific number of `frames` took to execute.
 ///
+/// The window starts once the method returns.
+/// If the method of a [ServerTest] leaves a sequence or a scheduled callback for a later tick, the test will fail.
+///
 /// The results can optionally be written to a file.
 ///
 @Retention(RetentionPolicy.RUNTIME)
