@@ -12,6 +12,7 @@ import dev.satherov.nexus.internal.codec.CodecErrors;
 import dev.satherov.nexus.internal.codec.Traversal;
 import dev.satherov.nexus.internal.codec.format.NbtOperations;
 import dev.satherov.nexus.internal.codec.format.Operations;
+import dev.satherov.nexus.internal.codec.struct.Structs;
 
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -157,6 +158,17 @@ public final class Format<VALUE> {
     }
 
     ///
+    /// If [#read(Tag, HolderLookup.Provider)] reads data of the given version.
+    ///
+    /// @param version The version to check.
+    ///
+    /// @return `true` if the version is the current one or this format has the steps from it to the current one.
+    ///
+    public boolean canRead(int version) {
+        return version >= this.oldest && version <= this.getVersion();
+    }
+
+    ///
     /// Upgrades the data of the given tag from its version to the current one and then decodes the value.
     ///
     /// If the tag is not a compound with a number under `version` and a tag under `data`,
@@ -212,7 +224,7 @@ public final class Format<VALUE> {
     ///
     /// In JSON and NBT, the current version will be added under `version` to the object the value encodes to,
     /// and on the network the version will be written as a VarInt in front of the value.
-    /// Encoding will fail if the value does not encode to an object or if that object already holds `version`.
+    /// The codec of this format has to be a struct that never writes `version`, so the value always encodes to an object without it.
     ///
     /// Older versions can only be read from NBT,
     /// in which case they will be upgraded the same way as with [#read(Tag, HolderLookup.Provider)].
@@ -220,7 +232,17 @@ public final class Format<VALUE> {
     ///
     /// @return The codec of the flat form.
     ///
+    /// @throws IllegalArgumentException If the codec of this format is not a struct, or if the struct may write `version`.
+    ///
     public NexusCodec<VALUE, Access.Registries> flatCodec() {
+        if (!(this.codec instanceof Structs.Inlinable<?, ?> struct)) {
+            throw new IllegalArgumentException("Could not create the flat codec, the codec of the format is not a struct");
+        }
+
+        if (struct.keys().contains(Format.VERSION)) {
+            throw new IllegalArgumentException("Could not create the flat codec, the struct of the format may write the key '" + Format.VERSION + "'");
+        }
+
         return this.flat;
     }
 
@@ -369,9 +391,7 @@ public final class Format<VALUE> {
         }
 
         ///
-        /// Writes the versioned form on the network, and adds the current version to a copy of the encoded object otherwise.
-        ///
-        /// Fails if the encoded value is not an object or if it already holds the version.
+        /// Writes the versioned form on the network, and adds the current version to the object the struct encodes to otherwise.
         ///
         @Override
         public <V> V write(Operations<V> operations, VALUE value) {
@@ -379,12 +399,7 @@ public final class Format<VALUE> {
                 return Format.this.versioned.write(operations, value);
             }
 
-            V encoded = Format.this.codec.write(operations, value);
-            if (operations.get(encoded, Format.VERSION) != null) {
-                throw CodecErrors.reservedKey(Format.VERSION);
-            }
-
-            return operations.put(Format.copyWithoutVersion(operations, encoded), Format.VERSION, operations.ofVarInt(Format.this.getVersion()));
+            return operations.put(Format.this.codec.write(operations, value), Format.VERSION, operations.ofVarInt(Format.this.getVersion()));
         }
 
         ///
