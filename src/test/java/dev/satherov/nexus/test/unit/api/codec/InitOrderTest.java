@@ -1,6 +1,5 @@
 package dev.satherov.nexus.test.unit.api.codec;
 
-import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.codec.format.CodecFormat;
 import dev.satherov.nexus.api.codec.key.MapKey;
@@ -15,7 +14,6 @@ import java.time.DayOfWeek;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Supplier;
 
 ///
 /// Checks that every constant of [NexusCodec] is set if a [MapKey] is used before any codec.
@@ -25,53 +23,38 @@ public class InitOrderTest {
     @Test
     public void stringKeyFirstLeavesEveryConstantSet() throws ReflectiveOperationException {
         IsolatedLoader loader = new IsolatedLoader();
+        Object key = loader.isolated(MapKey.class).getField("STRING").get(null);
         
-        Assertions.assertThat(loader.run(StringKeyFirst.class)).isEqualTo(Map.of("count", 1));
         Assertions.assertThat(loader.unsetConstants()).isEmpty();
+        Assertions.assertThat(loader.roundTrip(key, Map.of("count", 1))).isEqualTo(Map.of("count", 1));
     }
     
     @Test
     public void enumKeyFirstLeavesEveryConstantSet() throws ReflectiveOperationException {
         IsolatedLoader loader = new IsolatedLoader();
+        Object key = loader.isolated(MapKey.class).getMethod("enumOf", Class.class).invoke(null, DayOfWeek.class);
         
-        Assertions.assertThat(loader.run(EnumKeyFirst.class)).isEqualTo(Map.of(DayOfWeek.MONDAY, 1));
         Assertions.assertThat(loader.unsetConstants()).isEmpty();
-    }
-    
-    public static final class StringKeyFirst implements Supplier<Map<?, ?>> {
-        
-        @Override
-        public Map<?, ?> get() {
-            NexusCodec<Map<String, Integer>, Access.Plain> codec = NexusCodec.mapOf(MapKey.STRING, NexusCodec.INT);
-            return codec.decode(CodecFormat.JSON, codec.encode(CodecFormat.JSON, Map.of("count", 1)));
-        }
-    }
-    
-    public static final class EnumKeyFirst implements Supplier<Map<?, ?>> {
-        
-        @Override
-        public Map<?, ?> get() {
-            NexusCodec<Map<DayOfWeek, Integer>, Access.Plain> codec = NexusCodec.mapOf(MapKey.enumOf(DayOfWeek.class), NexusCodec.INT);
-            return codec.decode(CodecFormat.JSON, codec.encode(CodecFormat.JSON, Map.of(DayOfWeek.MONDAY, 1)));
-        }
+        Assertions.assertThat(loader.roundTrip(key, Map.of(DayOfWeek.MONDAY, 1))).isEqualTo(Map.of(DayOfWeek.MONDAY, 1));
     }
     
     private static final class IsolatedLoader extends ClassLoader {
         
-        private static final String ROOT = "dev.satherov.nexus.";
+        private static final List<String> ISOLATED = List.of("dev.satherov.nexus.api.", "dev.satherov.nexus.internal.");
         
         private IsolatedLoader() {
             super(InitOrderTest.class.getClassLoader());
         }
         
-        private Object run(Class<? extends Supplier<?>> probe) throws ReflectiveOperationException {
-            Supplier<?> isolated = (Supplier<?>) this.loadClass(probe.getName()).getConstructor().newInstance();
-            return isolated.get();
+        private Class<?> isolated(Class<?> type) throws ClassNotFoundException {
+            Class<?> isolated = this.loadClass(type.getName());
+            Assertions.assertThat(isolated).isNotSameAs(type);
+            return isolated;
         }
         
         private List<String> unsetConstants() throws ReflectiveOperationException {
             List<String> unset = new ArrayList<>();
-            for (Field constant : this.loadClass(NexusCodec.class.getName()).getFields()) {
+            for (Field constant : this.isolated(NexusCodec.class).getFields()) {
                 if (constant.get(null) == null) {
                     unset.add(constant.getName());
                 }
@@ -80,9 +63,18 @@ public class InitOrderTest {
             return unset;
         }
         
+        private Object roundTrip(Object key, Map<?, ?> map) throws ReflectiveOperationException {
+            Class<?> codecType = this.isolated(NexusCodec.class);
+            Class<?> formatType = this.isolated(CodecFormat.class);
+            Object codec = codecType.getMethod("mapOf", this.isolated(MapKey.class), codecType).invoke(null, key, codecType.getField("INT").get(null));
+            Object json = formatType.getField("JSON").get(null);
+            Object encoded = codecType.getMethod("encode", formatType, Object.class).invoke(codec, json, map);
+            return codecType.getMethod("decode", formatType, Object.class).invoke(codec, json, encoded);
+        }
+        
         @Override
         protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
-            if (!name.startsWith(IsolatedLoader.ROOT)) {
+            if (IsolatedLoader.ISOLATED.stream().noneMatch(name::startsWith)) {
                 return super.loadClass(name, resolve);
             }
             
