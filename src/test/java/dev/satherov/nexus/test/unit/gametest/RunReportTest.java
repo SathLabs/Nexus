@@ -9,6 +9,7 @@ import com.google.gson.JsonParser;
 
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.condition.DisabledIfSystemProperty;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.w3c.dom.Element;
@@ -35,6 +36,7 @@ public class RunReportTest {
 
     private static final String SELECTOR_PROPERTY = "nexus.gametest.tests";
     private static final String PASSED = "passed";
+    private static final String BASELINE = "nexus_gametest:baseline";
     private static final String SAMPLES = DiscoverySamples.class.getName();
     private static final Path REPORTS = Path.of(Objects.requireNonNull(System.getProperty("nexus.gametest.reports"), "The system property 'nexus.gametest.reports' is not set"));
 
@@ -60,7 +62,7 @@ public class RunReportTest {
     public void reportsEveryCase(Run run) throws IOException, ParserConfigurationException, SAXException {
         Assertions.assertThat(run.readCases())
                 .extracting(Case::id)
-                .containsAll(run.cases.keySet());
+                .containsAll(run.ids(false));
     }
 
     @EnumSource
@@ -69,7 +71,7 @@ public class RunReportTest {
     public void leavesOutEveryExplicitCase(Run run) throws IOException, ParserConfigurationException, SAXException {
         Assertions.assertThat(run.readCases())
                 .extracting(Case::id)
-                .filteredOn(run.explicit::contains)
+                .filteredOn(run.ids(true)::contains)
                 .as("Explicit cases in a run without a selector")
                 .isEmpty();
     }
@@ -123,6 +125,26 @@ public class RunReportTest {
         }
     }
 
+    @ParameterizedTest
+    @EnumSource(names = "SERVER")
+    @EnabledIfSystemProperty(named = RunReportTest.SELECTOR_PROPERTY, matches = ".*")
+    public void reportsTheBaselineWithAMeasuredCase(Run run) throws IOException, ParserConfigurationException, SAXException {
+        List<String> reported = run.readCases()
+                .stream()
+                .map(Case::id)
+                .toList();
+        boolean measured = run.measurements
+                .stream()
+                .map(Measurement::id)
+                .anyMatch(id -> !id.equals(RunReportTest.BASELINE) && reported.contains(id));
+
+        if (measured) {
+            Assertions.assertThat(reported)
+                    .as("Cases of a run that reported a measured case")
+                    .contains(RunReportTest.BASELINE);
+        }
+    }
+
     @EnumSource
     @ParameterizedTest
     @DisabledIfSystemProperty(named = RunReportTest.SELECTOR_PROPERTY, matches = ".*")
@@ -140,6 +162,7 @@ public class RunReportTest {
                 Map.ofEntries(
                         Map.entry("nexus:discovery_samples/meets_constraints", Expected.passed()),
                         Map.entry("nexus:discovery_samples/optional", Expected.passed()),
+                        Map.entry("nexus:discovery_samples/explicit", Expected.passedWhenSelected()),
                         Map.entry("nexus:discovery_samples/measured", Expected.passed()),
                         Map.entry("nexus:discovery_samples/long_window", Expected.passed()),
                         Map.entry("nexus:discovery_samples/not_public", Expected.skipped("Method '" + RunReportTest.SAMPLES + "#notPublic' is not public")),
@@ -160,11 +183,20 @@ public class RunReportTest {
                         Map.entry("nexus:tick_window_samples/profiled_window", Expected.passed()),
                         Map.entry("nexus:tick_window_samples/succeeds_itself", Expected.passed()),
                         Map.entry("nexus:tick_window_samples/tick_rate", Expected.passed()),
+                        Map.entry("nexus:tick_window_samples/leaves_a_condition_behind", Expected.skipped("left a sequence or a callback for a later tick")),
                         Map.entry("nexus:server_test_samples/past_max_ticks", Expected.skipped("within 2 ticks")),
                         Map.entry("nexus:server_test_samples/optional_failure", Expected.skipped("The optional sample failed")),
                         Map.entry("nexus:server_test_samples/throws_an_error", Expected.skipped("The optional sample threw an error")),
                         Map.entry("nexus:server_test_samples/throws_an_error_in_a_callback", Expected.skipped("The optional callback threw an error on run 1")),
                         Map.entry("nexus:server_test_samples/throws_an_error_in_a_condition", Expected.skipped("The optional condition threw an error on run 1")),
+                        Map.entry("nexus:server_test_samples/throws_an_error_without_a_message", Expected.skipped("java.lang.AssertionError")),
+                        Map.entry("nexus:server_test_samples/throws_an_error_without_a_message_in_a_callback", Expected.skipped("java.lang.StackOverflowError")),
+                        Map.entry("nexus:server_test_samples/throws_an_exception_without_a_message", Expected.skipped("java.lang.IllegalStateException")),
+                        Map.entry("nexus:server_test_samples/throws_an_exception_in_a_condition", Expected.skipped("The optional condition threw an exception on run 1")),
+                        Map.entry("nexus:server_test_samples/throws_an_exception_in_a_step", Expected.skipped("The optional step threw an exception")),
+                        Map.entry("nexus:server_test_samples/throws_an_error_on_the_timeout_tick", Expected.skipped("The optional condition threw an error on the timeout tick")),
+                        Map.entry("nexus:server_test_samples/throws_an_exception_on_the_last_tick", Expected.skipped("The optional condition threw an exception on the last tick before the timeout")),
+                        Map.entry("nexus:server_test_samples/fails_an_assertion_in_a_step_at_once", Expected.skipped("The optional step failed an assertion on tick 0")),
                         Map.entry("nexus:server_test_samples/retries_an_assertion_until_it_passes", Expected.passed()),
                         Map.entry("nexus:server_test_samples/retries_an_assertion_until_the_timeout", Expected.skipped("The optional assertion never passed")),
                         Map.entry("nexus:timing_samples/records_a_series", Expected.passed()),
@@ -343,6 +375,11 @@ public class RunReportTest {
                         Map.entry("nexus:dev_operators_samples/leaves_an_unlisted_player_alone", Expected.passed()),
                         Map.entry("nexus:dev_operators_samples/keeps_an_operator_opped_before_login", Expected.passed()),
                         Map.entry("nexus:dev_operators_samples/deops_a_player_left_opped_by_an_unclean_stop_on_the_next_start", Expected.passed()),
+                        Map.entry("nexus:component_filter_speed_samples/times_farm_rules", Expected.passedWhenSelected()),
+                        Map.entry("nexus:component_filter_speed_samples/times_storage_rules", Expected.passedWhenSelected()),
+                        Map.entry("nexus:component_filter_speed_samples/times_modded_loot_rules", Expected.passedWhenSelected()),
+                        Map.entry("nexus:component_filter_speed_samples/times_apotheosis_rules", Expected.passedWhenSelected()),
+                        Map.entry("nexus:component_filter_speed_samples/times_item_resources", Expected.passedWhenSelected()),
                         Map.entry("nexus:attachment_entry_samples/block_entity_keeps_the_formatted_value_through_a_save_and_load", Expected.passed()),
                         Map.entry("nexus:attachment_entry_samples/block_entity_loads_a_map_without_a_version_through_the_steps", Expected.passed()),
                         Map.entry("nexus:attachment_entry_samples/block_entity_writes_the_formatted_value_with_its_chunk", Expected.passed()),
@@ -372,17 +409,9 @@ public class RunReportTest {
                         Map.entry("nexus:slot_layout_samples/sources_give_their_groups_under_the_source_id", Expected.passed()),
                         Map.entry("nexus:slot_layout_samples/take_with_a_filter_empties_only_the_matching_slots", Expected.passed()),
                         Map.entry("nexus:slot_layout_samples/vanilla_sources_carry_the_slots_of_a_player", Expected.passed()),
+                        Map.entry(RunReportTest.BASELINE, Expected.passed()),
                         Map.entry("nexus:entity_builder_samples/never_requests_the_renderer_on_a_dedicated_server", Expected.passed()),
-                        Map.entry("nexus:fluid_builder_samples/never_requests_the_client_hooks_on_a_dedicated_server", Expected.passed()),
-                        Map.entry("nexus_gametest:baseline", Expected.passed())
-                ),
-                List.of(
-                        "nexus:discovery_samples/explicit",
-                        "nexus:component_filter_speed_samples/times_farm_rules",
-                        "nexus:component_filter_speed_samples/times_storage_rules",
-                        "nexus:component_filter_speed_samples/times_modded_loot_rules",
-                        "nexus:component_filter_speed_samples/times_apotheosis_rules",
-                        "nexus:component_filter_speed_samples/times_item_resources"
+                        Map.entry("nexus:fluid_builder_samples/never_requests_the_client_hooks_on_a_dedicated_server", Expected.passed())
                 ),
                 List.of(
                         Measurement.of("nexus/discovery_samples/measured", 5),
@@ -397,6 +426,7 @@ public class RunReportTest {
                         "nexus/discovery_samples/window_overruns_ticks",
                         "nexus/discovery_samples/empty_window",
                         "nexus/tick_window_samples/succeeds_itself",
+                        "nexus/tick_window_samples/leaves_a_condition_behind",
                         "nexus/timing_samples/empty_series_keeps_its_name.empty"
                 )
         ),
@@ -410,6 +440,10 @@ public class RunReportTest {
                         Map.entry("nexus:client_samples/ticks_advance_server", Expected.passed()),
                         Map.entry("nexus:client_samples/until_out_of_frames", Expected.passed()),
                         Map.entry("nexus:client_samples/server_level_outside_world", Expected.passed()),
+                        Map.entry("nexus:client_samples/on_server_runs_the_task_on_the_server_thread", Expected.passed()),
+                        Map.entry("nexus:client_samples/on_server_rethrows_what_the_task_throws", Expected.passed()),
+                        Map.entry("nexus:client_samples/on_server_rethrows_what_a_nested_task_throws", Expected.passed()),
+                        Map.entry("nexus:client_samples/settle_refuses_a_pausing_screen", Expected.passed()),
                         Map.entry("nexus:client_samples/pose_moves_camera", Expected.passed()),
                         Map.entry("nexus:client_samples/settle_shows_server_block", Expected.passed()),
                         Map.entry("nexus:client_samples/settle_renders_server_block", Expected.passed()),
@@ -424,6 +458,8 @@ public class RunReportTest {
                         Map.entry("nexus:keyboard_samples/hold_sets_modifier", Expected.passed()),
                         Map.entry("nexus:keyboard_samples/type_into_text_field", Expected.passed()),
                         Map.entry("nexus:mouse_samples/click_opens_options", Expected.passed()),
+                        Map.entry("nexus:mouse_samples/clicks_in_a_row_are_single_clicks", Expected.passed()),
+                        Map.entry("nexus:mouse_samples/double_click_selects_the_word", Expected.passed()),
                         Map.entry("nexus:mouse_samples/scroll_selects_previous_slot", Expected.passed()),
                         Map.entry("nexus:capture_samples/size_of_render_target", Expected.passed()),
                         Map.entry("nexus:capture_samples/pixel_matches_write", Expected.passed()),
@@ -438,6 +474,9 @@ public class RunReportTest {
                         Map.entry("nexus:client_run_samples/profiled_window", Expected.passed()),
                         Map.entry("nexus:client_run_samples/optional_failure", Expected.skipped("This test always fails")),
                         Map.entry("nexus:client_run_samples/out_of_frames", Expected.skipped("ran out of frames")),
+                        Map.entry("nexus:client_run_samples/changes_the_window_the_gui_scale_and_the_debug_overlay", Expected.passed()),
+                        Map.entry("nexus:client_run_samples/keeps_the_window_of_the_run", Expected.passed()),
+                        Map.entry("nexus:client_run_samples/shows_no_tutorial_toast_in_a_world", Expected.passed()),
                         Map.entry("nexus:payload_samples/send_to_server_reaches_the_server_and_the_reply_the_client", Expected.passed()),
                         Map.entry("nexus:payload_samples/bidirectional_reaches_both_sides", Expected.passed()),
                         Map.entry("nexus:payload_samples/optional_payload_can_send_both_ways", Expected.passed()),
@@ -584,7 +623,6 @@ public class RunReportTest {
                         Map.entry("nexus:player_data_samples/replace_swaps_the_joined_player_for_one_loaded_from_the_tag", Expected.passed()),
                         Map.entry("nexus:saved_value_samples/client_sees_the_synced_value_on_join_and_on_change", Expected.passed())
                 ),
-                List.of(),
                 List.of(
                         Measurement.of("nexus/client_run_samples/window", 40),
                         Measurement.profiled("nexus/client_run_samples/profiled_window", 3),
@@ -596,7 +634,6 @@ public class RunReportTest {
         CLIENT_SHADERS(
                 "client-shaders",
                 Run.replaced(Run.CLIENT.cases, "nexus:glows_samples/block_glow_keeps_its_color_under_the_pack", Expected.skipped("the red pixels around the block")),
-                Run.CLIENT.explicit,
                 Run.CLIENT.measurements,
                 Run.CLIENT.unmeasured
         );
@@ -604,11 +641,8 @@ public class RunReportTest {
         // The name of the report directory and file of the run.
         private final String side;
 
-        // Every case the run should report, by its identifier.
+        // Every case the run should report, by its identifier, the explicit ones only under a selector.
         private final Map<String, Expected> cases;
-
-        // The explicit cases the run should not report, by their identifier.
-        private final List<String> explicit;
 
         // The measurement files the run should write, by their path without the extension.
         private final List<Measurement> measurements;
@@ -620,6 +654,14 @@ public class RunReportTest {
             Map<String, Expected> copy = new HashMap<>(cases);
             copy.put(id, expected);
             return Map.copyOf(copy);
+        }
+
+        private List<String> ids(boolean explicit) {
+            return this.cases.entrySet()
+                    .stream()
+                    .filter(entry -> entry.getValue().explicit() == explicit)
+                    .map(Map.Entry::getKey)
+                    .toList();
         }
 
         private Path directory() {
@@ -655,14 +697,18 @@ public class RunReportTest {
         }
     }
 
-    private record Expected(String outcome, String message) {
+    private record Expected(String outcome, String message, boolean explicit) {
 
         private static Expected passed() {
-            return new Expected(RunReportTest.PASSED, "");
+            return new Expected(RunReportTest.PASSED, "", false);
+        }
+
+        private static Expected passedWhenSelected() {
+            return new Expected(RunReportTest.PASSED, "", true);
         }
 
         private static Expected skipped(String message) {
-            return new Expected("skipped", message);
+            return new Expected("skipped", message, false);
         }
     }
 
@@ -674,6 +720,10 @@ public class RunReportTest {
 
         private static Measurement profiled(String path, int window) {
             return new Measurement(path, window, true);
+        }
+
+        private String id() {
+            return this.path.replaceFirst("/", ":");
         }
     }
 }
