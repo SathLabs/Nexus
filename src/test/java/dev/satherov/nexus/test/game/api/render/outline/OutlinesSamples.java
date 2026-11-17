@@ -25,6 +25,8 @@ import org.jspecify.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 
 ///
 /// Checks what an outline rule does to vanilla's outline and how often it is asked.
@@ -56,6 +58,8 @@ public class OutlinesSamples {
     private static final Vec3 DISC = new Vec3(0.3D, 0.5D, -0.05D);
     
     private static final Vec3 BALL = new Vec3(0.7D, 0.5D, -0.25D);
+    
+    private static final int RELOAD_FRAMES = 3000;
     
     @ClientTest
     public static void replacingRuleHidesVanillaOutline(Client client) {
@@ -131,6 +135,35 @@ public class OutlinesSamples {
         client.pose(feet, 0.0F, 0.0F);
         client.ticks(OutlinesSamples.STILL_FRAMES);
         Assertions.assertThat(asked.stream().map(TargetedBlock::pos).toList()).as("the positions asked for, in order").containsExactly(first, second, first);
+    }
+    
+    @ClientTest
+    public static void ruleAddedWhileAimingIsAsked(Client client) {
+        BlockPos pos = OutlinesSamples.aim(client, Blocks.IRON_BLOCK);
+        OutlinesSamples.outlines().add(target -> OutlinesSamples.mark(target, Blocks.IRON_BLOCK));
+        client.awaitStill(OutlinesSamples.STILL_FRAMES);
+        
+        OutlinesSamples.assertColor(client, client.capture(), pos, OutlinesSamples.MARK_FRONT, client.hasShaderPack() ? OutlinesSamples.BLUE : OutlinesSamples.RED);
+    }
+    
+    @ClientTest(maxFrames = OutlinesSamples.RELOAD_FRAMES)
+    public static void ruleIsAskedAgainAfterAResourceReload(Client client) {
+        AtomicInteger asked = new AtomicInteger();
+        OutlinesSamples.outlines().add(target -> {
+            if (target.state().is(Blocks.COAL_BLOCK)) {
+                asked.incrementAndGet();
+            }
+            
+            return null;
+        });
+        
+        OutlinesSamples.aim(client, Blocks.COAL_BLOCK);
+        int before = asked.get();
+        Assertions.assertThat(before).as("the times the rule was asked before the reload").isPositive();
+        
+        CompletableFuture<Void> reload = client.minecraft().reloadResourcePacks();
+        client.until("the resources to reload", reload::isDone);
+        client.until("the rule to be asked again after the reload", () -> asked.get() > before);
     }
     
     private static Outlines outlines() {
