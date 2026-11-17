@@ -579,6 +579,7 @@ public class RunReportTest {
                         Map.entry("nexus:hud_layer_samples/hidden_hud_skips_layer", Expected.passed()),
                         Map.entry("nexus:encoding_samples/holder_of_the_client_level_encodes_on_the_client_thread", Expected.passed()),
                         Map.entry("nexus:encoding_samples/owner_outside_a_world_is_the_built_in_registry", Expected.passed()),
+                        Map.entry("nexus:entry_builder_samples/runs_the_client_code_of_the_taken_builder_once", Expected.passed()),
                         Map.entry("nexus:encoding_samples/leaving_the_world_drops_the_registries_of_its_server", Expected.passed()),
                         Map.entry("nexus:activation_samples/double_tap_over_idle_ticks_fires", Expected.passed()),
                         Map.entry("nexus:activation_samples/held_for_does_not_fire_on_an_earlier_release", Expected.passed()),
