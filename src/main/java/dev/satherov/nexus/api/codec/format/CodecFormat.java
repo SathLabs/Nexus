@@ -32,6 +32,8 @@ public interface CodecFormat<V, A extends Access.Plain> {
     ///
     /// The NBT format, built on vanilla's [Tag].
     ///
+    /// If the tag of a value nests more than 512 compound and list tags, the value will fail to encode.
+    ///
     CodecFormat<Tag, Access.Plain> NBT = new NbtOperations<>(false, null);
     
     ///

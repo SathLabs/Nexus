@@ -8,8 +8,11 @@ import dev.satherov.nexus.api.codec.result.NexusCodecException;
 import dev.satherov.nexus.api.codec.struct.StructCodec;
 
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.DoubleTag;
 import net.minecraft.nbt.IntTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.LongTag;
+import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.FriendlyByteBuf;
@@ -17,7 +20,10 @@ import net.minecraft.resources.Identifier;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 import com.mojang.datafixers.util.Either;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.JsonOps;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 
@@ -116,6 +122,22 @@ public class CombinatorsTest {
         
         Assertions.assertThat(numbers.decode(CodecFormat.JSON, JsonParser.parseString("5"))).isEqualTo(Either.left(5));
         Assertions.assertThat(numbers.decode(CodecFormat.JSON, JsonParser.parseString("5000000000"))).isEqualTo(Either.right(5_000_000_000L));
+    }
+    
+    @Test
+    public void eitherReadsAnOutOfRangeLeftNumberWithTheRightCodecWhereDfuNarrowsIt() {
+        NexusCodec<Either<Integer, Long>, Access.Plain> longs = NexusCodec.either(NexusCodec.INT, NexusCodec.LONG);
+        NexusCodec<Either<Integer, Double>, Access.Plain> doubles = NexusCodec.either(NexusCodec.INT, NexusCodec.DOUBLE);
+        Codec<Either<Integer, Long>> longsDfu = Codec.either(Codec.INT, Codec.LONG);
+        Codec<Either<Integer, Double>> doublesDfu = Codec.either(Codec.INT, Codec.DOUBLE);
+        
+        Assertions.assertThat(longs.decode(CodecFormat.NBT, LongTag.valueOf(5_000_000_000L))).isEqualTo(Either.right(5_000_000_000L));
+        Assertions.assertThat(doubles.decode(CodecFormat.JSON, new JsonPrimitive(1.0E10D))).isEqualTo(Either.right(1.0E10D));
+        Assertions.assertThat(doubles.decode(CodecFormat.NBT, DoubleTag.valueOf(1.0E10D))).isEqualTo(Either.right(1.0E10D));
+        Assertions.assertThat(longsDfu.parse(JsonOps.INSTANCE, new JsonPrimitive(5_000_000_000L)).getOrThrow().left()).isPresent();
+        Assertions.assertThat(longsDfu.parse(NbtOps.INSTANCE, LongTag.valueOf(5_000_000_000L)).getOrThrow().left()).isPresent();
+        Assertions.assertThat(doublesDfu.parse(JsonOps.INSTANCE, new JsonPrimitive(1.0E10D)).getOrThrow().left()).isPresent();
+        Assertions.assertThat(doublesDfu.parse(NbtOps.INSTANCE, DoubleTag.valueOf(1.0E10D)).getOrThrow().left()).isPresent();
     }
     
     @Test
