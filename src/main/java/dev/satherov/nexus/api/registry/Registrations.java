@@ -16,6 +16,7 @@ import dev.satherov.nexus.api.registry.entity.LivingEntityBuilder;
 import dev.satherov.nexus.api.registry.entity.PlainEntityBuilder;
 import dev.satherov.nexus.api.registry.fluid.PlainFluidBuilder;
 import dev.satherov.nexus.api.registry.item.ItemBuilder;
+import dev.satherov.nexus.api.registry.item.ItemEntry;
 import dev.satherov.nexus.api.registry.menu.MenuBuilder;
 import dev.satherov.nexus.api.registry.particle.ParticleBuilder;
 import dev.satherov.nexus.api.registry.potion.PotionBuilder;
@@ -169,6 +170,20 @@ public final class Registrations {
     }
     
     ///
+    /// If the registry event of the given registry already ran on the event bus of the mod.
+    ///
+    /// Should only ever be called from [ItemEntry#getTabs()].
+    ///
+    /// @param registry The key of the registry.
+    ///
+    /// @return `true` if the registry event already ran.
+    ///
+    @ApiStatus.Internal
+    public boolean hasFired(ResourceKey<? extends Registry<?>> registry) {
+        return this.firedRegistries.contains(registry);
+    }
+    
+    ///
     /// The register of the given registry, created and subscribed to the event bus of the mod on the first call.
     ///
     private <REGISTRY> EntryRegister<REGISTRY> getRegister(ResourceKey<? extends Registry<REGISTRY>> registry) {
@@ -253,6 +268,8 @@ public final class Registrations {
     
     ///
     /// Starts an entity attribute of the given factory.
+    ///
+    /// The syncing and the sentiment the factory sets are kept unless [AttributeBuilder#synced()] or [AttributeBuilder#sentiment(Attribute.Sentiment)] is called.
     ///
     /// @param <ATTRIBUTE> The type of the attribute.
     /// @param name        The path of the identifier.
@@ -365,6 +382,8 @@ public final class Registrations {
     ///
     /// Starts a block entity type of the factory, valid for the blocks the builder is given.
     ///
+    /// A type without blocks needs [BlockEntityBuilder#noBlocks()], or registering it will throw an [IllegalStateException].
+    ///
     /// @param name    The path of the identifier.
     /// @param factory The factory of the block entity, called each time a block entity of the type is created.
     ///
@@ -402,6 +421,8 @@ public final class Registrations {
     ///
     /// Starts an entity type of the factory in the given category.
     ///
+    /// The builder gives the type no attributes, so a factory of living entities belongs in [#livingEntity(String, String, MobCategory, EntityType.EntityFactory)].
+    ///
     /// @param name     The path of the identifier.
     /// @param english  The English name.
     /// @param category The category of the entity type.
@@ -415,6 +436,8 @@ public final class Registrations {
     
     ///
     /// Starts an entity type of living entities of the factory in the given category.
+    ///
+    /// If [LivingEntityBuilder#attributes(Supplier)] is not called, registering the type will throw an [IllegalStateException].
     ///
     /// @param name     The path of the identifier.
     /// @param english  The English name.
@@ -472,6 +495,8 @@ public final class Registrations {
     /// Starts a menu type of the factory, titled with the given English name.
     ///
     /// If the server doesn't write any extra data when it opens the menu, the factory will receive `null` instead of it.
+    ///
+    /// If no screen is registered for the menu type, the factory will never be called.
     ///
     /// @param name    The path of the identifier.
     /// @param english The English title.

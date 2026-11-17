@@ -1,5 +1,6 @@
 package dev.satherov.nexus.api.registry.item;
 
+import dev.satherov.nexus.api.registry.Registrations;
 import dev.satherov.nexus.api.registry.RegistryEntry;
 import dev.satherov.nexus.api.registry.tab.TabBuilder;
 import dev.satherov.nexus.api.registry.tab.TabEntry;
@@ -40,6 +41,12 @@ public final class ItemEntry<ITEM extends Item> extends RegistryEntry<Item, ITEM
     /// The tabs the builder recorded, in call order, or `null` if the item shows in the mod's first tab.
     ///
     private final @Nullable Set<ResourceKey<CreativeModeTab>> tabs;
+    
+    ///
+    /// The tabs of the item if the builder didn't name any, or `null` until [#getTabs()] found the mod's first tab or
+    /// the registry event of the tabs ran without one.
+    ///
+    private @Nullable Set<ResourceKey<CreativeModeTab>> defaultTabs;
     
     ///
     /// Should only ever be called from [ItemBuilder#createEntry(ResourceKey)].
@@ -114,8 +121,20 @@ public final class ItemEntry<ITEM extends Item> extends RegistryEntry<Item, ITEM
             return this.tabs;
         }
         
-        List<RegistryEntry<CreativeModeTab, ? extends CreativeModeTab>> registered = this.getMod().getRegistrations().getAll(Registries.CREATIVE_MODE_TAB);
-        return registered.isEmpty() ? Set.of() : Set.of(registered.getFirst().getKey());
+        Set<ResourceKey<CreativeModeTab>> defaultTabs = this.defaultTabs;
+        if (defaultTabs != null) {
+            return defaultTabs;
+        }
+        
+        Registrations registrations = this.getMod().getRegistrations();
+        List<RegistryEntry<CreativeModeTab, ? extends CreativeModeTab>> registered = registrations.getAll(Registries.CREATIVE_MODE_TAB);
+        defaultTabs = registered.isEmpty() ? Set.of() : Set.of(registered.getFirst().getKey());
+        // The first tab of a mod stays first, and a mod without a tab can't get one once the registry event of the tabs ran.
+        if (!defaultTabs.isEmpty() || registrations.hasFired(Registries.CREATIVE_MODE_TAB)) {
+            this.defaultTabs = defaultTabs;
+        }
+        
+        return defaultTabs;
     }
     
     ///
