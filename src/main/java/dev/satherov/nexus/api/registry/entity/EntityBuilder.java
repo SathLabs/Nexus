@@ -6,6 +6,7 @@ import dev.satherov.nexus.api.registry.client.ClientOnly;
 import dev.satherov.nexus.api.registry.item.ItemBuilder;
 import dev.satherov.nexus.api.text.Translation;
 import dev.satherov.nexus.internal.registry.client.ClientDispatch;
+import dev.satherov.zelqro.mapping.ObjectMapping;
 
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.event.entity.RegisterSpawnPlacementsEvent;
@@ -189,6 +190,8 @@ public abstract class EntityBuilder
     ///
     /// Registers the renderer of the given factory for the entities of the type on the client.
     ///
+    /// The renderer may also be the renderer of a superclass of the entities.
+    ///
     /// @param renderer The factory of the renderer, called with the context of the renderer provider.
     ///
     /// @return The builder for chaining.
@@ -196,9 +199,12 @@ public abstract class EntityBuilder
     /// @throws IllegalStateException If [#register()] was already called or another builder took over this one.
     ///
     @CanIgnoreReturnValue
-    public <STATE extends EntityRenderState> SELF renderer(ClientOnly<Function<EntityRendererProvider.Context, EntityRenderer<ENTITY, STATE>>> renderer) {
+    public SELF renderer(ClientOnly<Function<EntityRendererProvider.Context, ? extends EntityRenderer<? super ENTITY, ?>>> renderer) {
         this.checkUnregistered();
-        this.renderer = (bus, entry) -> ClientDispatch.entityRenderer(bus, entry, renderer);
+        //noinspection unchecked A renderer of a superclass of the entities renders every entity of the type.
+        ClientOnly<Function<EntityRendererProvider.Context, EntityRenderer<ENTITY, EntityRenderState>>> exact =
+                (ClientOnly<Function<EntityRendererProvider.Context, EntityRenderer<ENTITY, EntityRenderState>>>) (ClientOnly<?>) renderer;
+        this.renderer = (bus, entry) -> ClientDispatch.entityRenderer(bus, entry, exact);
         return this.self();
     }
     
@@ -230,10 +236,10 @@ public abstract class EntityBuilder
                 this.getName() + "_spawn_egg",
                 this.english + " Spawn Egg",
                 builder,
+                properties -> properties.requiredFeatures(type.value().requiredFeatures()),
                 properties -> factory.apply(properties.component(DataComponents.ENTITY_DATA, TypedEntityData.of(type.value(), defaultData)))
         );
         
-        egg.properties(properties -> properties.requiredFeatures(type.value().requiredFeatures()));
         this.egg = egg;
         return egg;
     }
@@ -317,5 +323,15 @@ public abstract class EntityBuilder
         }
         
         return entry;
+    }
+    
+    ///
+    /// The keys of the spawn egg and its sub-objects if [#egg(Function)] was called.
+    ///
+    /// @return The keys of the spawn egg and its sub-objects, or an empty list if the type has no spawn egg.
+    ///
+    @Override
+    protected List<ResourceKey<?>> getSubObjectKeys() {
+        return ObjectMapping.mapNonNullOrElse(this.egg, EntryBuilder::getAllKeys, List.of());
     }
 }

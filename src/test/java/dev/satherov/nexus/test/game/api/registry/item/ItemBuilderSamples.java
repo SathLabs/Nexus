@@ -7,14 +7,15 @@ import dev.satherov.nexus.api.registry.tab.TabEntry;
 import dev.satherov.nexus.api.text.Translation;
 import dev.satherov.nexus.gametest.api.server.ServerTest;
 
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLConstructModEvent;
 
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -25,11 +26,19 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 ///
 /// Checks the items that item builders register, their stacks, their translations, and the tabs they show in.
 ///
 public class ItemBuilderSamples {
+    
+    private static final AtomicInteger SHARED_CALLS = new AtomicInteger();
+    private static final Supplier<Item.Properties> SHARED = () -> {
+        ItemBuilderSamples.SHARED_CALLS.incrementAndGet();
+        return new Item.Properties().rarity(Rarity.UNCOMMON);
+    };
     
     private static @Nullable TabEntry tab;
     private static @Nullable ItemEntry<Item> tabbed;
@@ -40,6 +49,9 @@ public class ItemBuilderSamples {
     private static @Nullable ItemEntry<Item> edited;
     private static @Nullable ItemEntry<Item> replaced;
     private static @Nullable ItemEntry<Item> described;
+    private static @Nullable ItemEntry<Item> sharedDurable;
+    private static @Nullable ItemEntry<Item> sharedPlain;
+    private static @Nullable ItemEntry<Item> operator;
     
     @ServerTest
     public static void createsStacksOfTheItem(GameTestHelper helper) {
@@ -91,6 +103,17 @@ public class ItemBuilderSamples {
     }
     
     @ServerTest
+    public static void keepsTheEditsOfSharedPropertiesToTheirOwnItem(GameTestHelper helper) {
+        ItemStack durable = Objects.requireNonNull(ItemBuilderSamples.sharedDurable).stack();
+        ItemStack plain = Objects.requireNonNull(ItemBuilderSamples.sharedPlain).stack();
+        helper.assertValueEqual(ItemBuilderSamples.SHARED_CALLS.get(), 2, "calls of the shared supplier, one for each item");
+        helper.assertValueEqual(durable.get(DataComponents.MAX_DAMAGE), 250, "maximum damage of the edited item");
+        helper.assertFalse(plain.has(DataComponents.MAX_DAMAGE), "The other item got the maximum damage of the edited item");
+        helper.assertValueEqual(plain.get(DataComponents.RARITY), Rarity.UNCOMMON, "rarity of the other item");
+        helper.succeed();
+    }
+    
+    @ServerTest
     public static void anEditOfTheDescriptionWinsOverTheTranslation(GameTestHelper helper) {
         ItemEntry<Item> described = Objects.requireNonNull(ItemBuilderSamples.described);
         helper.assertValueEqual(described.asItem().getDescriptionId(), "item.nexus.edited_description", "description id");
@@ -119,6 +142,17 @@ public class ItemBuilderSamples {
     }
     
     @ServerTest
+    public static void showsAnItemInTheOperatorTabOnlyWithPermissions(GameTestHelper helper) {
+        CreativeModeTab tab = BuiltInRegistries.CREATIVE_MODE_TAB.getValueOrThrow(CreativeModeTabs.OP_BLOCKS);
+        ItemStack stack = Objects.requireNonNull(ItemBuilderSamples.operator).stack();
+        CreativeModeTabs.tryRebuildTabContents(helper.getLevel().enabledFeatures(), false, helper.getLevel().registryAccess());
+        helper.assertFalse(tab.contains(stack), "The operator tab shows the item without permissions");
+        ItemBuilderSamples.buildTabs(helper);
+        helper.assertTrue(tab.contains(stack), "The operator tab doesn't show the item with permissions");
+        helper.succeed();
+    }
+    
+    @ServerTest
     public static void keepsAnItemWithoutTabsOutOfEveryTab(GameTestHelper helper) {
         ItemBuilderSamples.buildTabs(helper);
         ItemEntry<Item> hidden = Objects.requireNonNull(ItemBuilderSamples.hidden);
@@ -130,12 +164,11 @@ public class ItemBuilderSamples {
     
     @ServerTest
     public static void recordsAnItemWithoutAGivenTabInTheFirstTabOfTheMod(GameTestHelper helper) {
-        Registrations registrations = Nexus.getMod().getRegistrations();
-        helper.assertValueEqual(
-                Objects.requireNonNull(ItemBuilderSamples.defaulted).getTabs(),
-                Set.of(registrations.getAll(Registries.CREATIVE_MODE_TAB).getFirst().getKey()),
-                "tabs"
-        );
+        ItemBuilderSamples.buildTabs(helper);
+        TabEntry tab = Objects.requireNonNull(ItemBuilderSamples.tab);
+        ItemEntry<Item> defaulted = Objects.requireNonNull(ItemBuilderSamples.defaulted);
+        helper.assertValueEqual(defaulted.getTabs(), Set.of(tab.getKey()), "tabs");
+        helper.assertTrue(tab.value().contains(defaulted.stack()), "The first tab of the mod doesn't show the item");
         helper.succeed();
     }
     
@@ -146,9 +179,10 @@ public class ItemBuilderSamples {
     @EventBusSubscriber(modid = Nexus.MOD_ID)
     public static final class Registered {
         
-        @SubscribeEvent
+        @SubscribeEvent(priority = EventPriority.HIGHEST)
         public static void onConstruct(FMLConstructModEvent event) {
             Registrations registrations = Nexus.getMod().getRegistrations();
+            // Registered before every other tab at the highest priority, so it's the mod's first tab and the tab of every item without one.
             TabEntry tab = registrations.tab("item_builder_samples_tab", "Item Builder Samples").register();
             ItemBuilderSamples.tab = tab;
             ItemBuilderSamples.tabbed = registrations.item("item_builder_samples_tabbed", "Tabbed Sample").tab(tab).register();
@@ -166,13 +200,23 @@ public class ItemBuilderSamples {
                     .register();
             ItemBuilderSamples.replaced = registrations.item("item_builder_samples_replaced", "Replaced Sample")
                     .properties(properties -> properties.stacksTo(16))
-                    .properties(new Item.Properties().rarity(Rarity.RARE))
+                    .properties(() -> new Item.Properties().rarity(Rarity.RARE))
                     .noTab()
                     .register();
             ItemBuilderSamples.described = registrations.item("item_builder_samples_described", "Described Sample")
                     .properties(properties -> properties.overrideDescription("item.nexus.edited_description"))
                     .noTab()
                     .register();
+            ItemBuilderSamples.sharedDurable = registrations.item("item_builder_samples_shared_durable", "Durable Shared Sample")
+                    .properties(ItemBuilderSamples.SHARED)
+                    .properties(properties -> properties.durability(250))
+                    .noTab()
+                    .register();
+            ItemBuilderSamples.sharedPlain = registrations.item("item_builder_samples_shared_plain", "Plain Shared Sample")
+                    .properties(ItemBuilderSamples.SHARED)
+                    .noTab()
+                    .register();
+            ItemBuilderSamples.operator = registrations.item("item_builder_samples_operator", "Operator Sample").tab(CreativeModeTabs.OP_BLOCKS).register();
         }
     }
 }

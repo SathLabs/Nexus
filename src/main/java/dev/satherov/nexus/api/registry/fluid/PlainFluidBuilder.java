@@ -1,5 +1,6 @@
 package dev.satherov.nexus.api.registry.fluid;
 
+import dev.satherov.nexus.api.mod.NexusMod;
 import dev.satherov.nexus.api.registry.EntryBuilder;
 import dev.satherov.nexus.api.registry.Registrations;
 import dev.satherov.nexus.api.registry.RegistryEntry;
@@ -37,6 +38,7 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
+import java.util.stream.Stream;
 
 ///
 /// A builder of one source fluid with its type and its flowing fluid.
@@ -311,7 +313,7 @@ public final class PlainFluidBuilder
         );
         
         this.block = block;
-        return block.properties(BlockBehaviour.Properties.ofFullCopy(Blocks.WATER));
+        return block.properties(() -> BlockBehaviour.Properties.ofFullCopy(Blocks.WATER));
     }
     
     ///
@@ -345,6 +347,8 @@ public final class PlainFluidBuilder
     ///
     /// Creates the entry for the given key, registering the type, the flowing fluid, and the block and the bucket if set.
     ///
+    /// Declares the translations of the block and the bucket before anything is registered.
+    ///
     /// Adds the model and the client extensions as client hooks if they were given.
     ///
     /// @param key The key of the source.
@@ -354,10 +358,16 @@ public final class PlainFluidBuilder
     @Override
     protected PlainFluidEntry<TYPE, SOURCE, FLOWING> createEntry(ResourceKey<Fluid> key) {
         Registrations registrations = this.getRegistrations();
+        PlainBlockBuilder<? extends LiquidBlock, ? extends FluidBuilder<TYPE, SOURCE, FLOWING, ?, ?, PARENT>> block = this.block;
+        if (block != null) {
+            // The type and the flowing fluid are registered before the block and the bucket, so a taken translation key of those has to throw first.
+            EntryBuilder.declareAllTranslations(block);
+            EntryBuilder.declareAllTranslations(block.end().bucket());
+        }
+        
         Translation translation = this.define("fluid_type", this.english);
         RegistryEntry<FluidType, TYPE> type = registrations.register(NeoForgeRegistries.Keys.FLUID_TYPES, this.getName(), () -> this.createType(translation)).register();
-        RegistryEntry<Fluid, FLOWING> flowing = registrations.register(Registries.FLUID, "flowing_" + this.getName(), () -> this.flowingFactory.apply(this.linked.get())).register();
-        PlainBlockBuilder<? extends LiquidBlock, ? extends FluidBuilder<TYPE, SOURCE, FLOWING, ?, ?, PARENT>> block = this.block;
+        RegistryEntry<Fluid, FLOWING> flowing = registrations.register(Registries.FLUID, this.getFlowingName(), () -> this.flowingFactory.apply(this.linked.get())).register();
         PlainFluidEntry<TYPE, SOURCE, FLOWING> entry = block == null ?
                 new PlainFluidEntry<>(key, this, translation, type, flowing) :
                 new FluidEntry<>(key, block.end(), translation, type, flowing, EntryBuilder.registerSubObject(block), EntryBuilder.registerSubObject(block.end().bucket()));
@@ -374,6 +384,32 @@ public final class PlainFluidBuilder
         }
         
         return entry;
+    }
+    
+    ///
+    /// The keys of the type and the flowing fluid, and the keys of the block and the bucket if [#block(BiFunction)] was called.
+    ///
+    /// @return The keys of the sub-objects.
+    ///
+    @Override
+    protected List<ResourceKey<?>> getSubObjectKeys() {
+        NexusMod mod = this.getRegistrations().getMod();
+        List<ResourceKey<?>> fluids = List.of(mod.key(NeoForgeRegistries.Keys.FLUID_TYPES, this.getName()), mod.key(Registries.FLUID, this.getFlowingName()));
+        PlainBlockBuilder<? extends LiquidBlock, ? extends FluidBuilder<TYPE, SOURCE, FLOWING, ?, ?, PARENT>> block = this.block;
+        if (block == null) {
+            return fluids;
+        }
+        
+        return Stream.of(fluids, EntryBuilder.getAllKeys(block), EntryBuilder.getAllKeys(block.end().bucket()))
+                .flatMap(List::stream)
+                .toList();
+    }
+    
+    ///
+    /// The name of the flowing fluid, `flowing_<name>`.
+    ///
+    private String getFlowingName() {
+        return "flowing_" + this.getName();
     }
     
     ///

@@ -8,6 +8,7 @@ import net.minecraft.world.level.block.Block;
 
 import org.jetbrains.annotations.ApiStatus;
 
+import java.util.List;
 import java.util.function.BiFunction;
 
 ///
@@ -76,5 +77,23 @@ public final class BlockBuilder
     @Override
     protected BlockEntry<BLOCK, ITEM> createEntry(ResourceKey<Block> key) {
         return (BlockEntry<BLOCK, ITEM>) this.block.createEntry(key);
+    }
+    
+    ///
+    /// The keys of the item and its sub-objects, from the builder of the block.
+    ///
+    /// @return The keys of the item and its sub-objects.
+    ///
+    @Override
+    protected List<ResourceKey<?>> getSubObjectKeys() {
+        return this.block.getSubObjectKeys();
+    }
+    
+    ///
+    /// Declares the translations of the block and the item, from the builder of the block.
+    ///
+    @Override
+    protected void declareTranslations() {
+        this.block.declareTranslations();
     }
 }

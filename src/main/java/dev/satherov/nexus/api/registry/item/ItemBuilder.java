@@ -8,6 +8,7 @@ import dev.satherov.nexus.api.text.Translation;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.CreativeModeTab;
+import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
 
 import com.google.common.base.Suppliers;
@@ -52,6 +53,11 @@ public final class ItemBuilder<ITEM extends Item, PARENT>
     private final Function<Item.Properties, ITEM> factory;
     
     ///
+    /// The defaults of the properties, applied after the id and the description and before the edits.
+    ///
+    private final UnaryOperator<Item.Properties> defaults;
+    
+    ///
     /// The edits of the properties, in call order.
     ///
     private final List<UnaryOperator<Item.Properties>> edits = new ArrayList<>();
@@ -62,7 +68,7 @@ public final class ItemBuilder<ITEM extends Item, PARENT>
     private Supplier<Translation> translation;
     
     ///
-    /// The properties the factory receives, before the id, the description, and the edits are applied.
+    /// The properties the factory receives, before the id, the description, the defaults, and the edits are applied.
     ///
     private Supplier<Item.Properties> properties = Item.Properties::new;
     
@@ -70,6 +76,36 @@ public final class ItemBuilder<ITEM extends Item, PARENT>
     /// The tabs the item shows in, in call order, or `null` if it shows in the mod's first tab.
     ///
     private @Nullable Set<ResourceKey<CreativeModeTab>> tabs;
+    
+    ///
+    /// Starts the item under `item.<modid>.<name>`, with the given defaults of its properties.
+    /// - `<modid>` is the id of the mod of the given registrations.
+    /// - `<name>` is the given name.
+    ///
+    /// The factory receives the properties with the id set.
+    ///
+    /// The defaults can only be overridden by edits of [#properties(UnaryOperator)].
+    ///
+    /// @param registrations The registrations to register through.
+    /// @param name          The path of the identifier.
+    /// @param english       The English name.
+    /// @param parent        What [#end()] returns.
+    /// @param defaults      The defaults of the properties, called once inside the registry event before the edits.
+    /// @param factory       The factory of the item, called once inside the registry event.
+    ///
+    public ItemBuilder(
+            Registrations registrations,
+            String name,
+            String english,
+            PARENT parent,
+            UnaryOperator<Item.Properties> defaults,
+            Function<Item.Properties, ITEM> factory
+    ) {
+        super(registrations, Registries.ITEM, name, parent);
+        this.factory = factory;
+        this.defaults = defaults;
+        this.translation = this.declare(english);
+    }
     
     ///
     /// Starts the item under `item.<modid>.<name>`.
@@ -85,9 +121,7 @@ public final class ItemBuilder<ITEM extends Item, PARENT>
     /// @param factory       The factory of the item, called once inside the registry event.
     ///
     public ItemBuilder(Registrations registrations, String name, String english, PARENT parent, Function<Item.Properties, ITEM> factory) {
-        super(registrations, Registries.ITEM, name, parent);
-        this.factory = factory;
-        this.translation = this.declare(english);
+        this(registrations, name, english, parent, UnaryOperator.identity(), factory);
     }
     
     ///
@@ -96,16 +130,27 @@ public final class ItemBuilder<ITEM extends Item, PARENT>
     ///
     /// The factory receives the properties with the id set.
     ///
+    /// The defaults can only be overridden by edits of [#properties(UnaryOperator)].
+    ///
     /// @param registrations The registrations to register through.
     /// @param name          The path of the identifier.
-    /// @param derived       The translation of the object the item belongs to.
+    /// @param derived       The supplier of the translation of the object the item belongs to, first called when the item is registered.
     /// @param parent        What [#end()] returns.
+    /// @param defaults      The defaults of the properties, called once inside the registry event before the edits.
     /// @param factory       The factory of the item, called once inside the registry event.
     ///
-    public ItemBuilder(Registrations registrations, String name, Translation derived, PARENT parent, Function<Item.Properties, ITEM> factory) {
+    public ItemBuilder(
+            Registrations registrations,
+            String name,
+            Supplier<Translation> derived,
+            PARENT parent,
+            UnaryOperator<Item.Properties> defaults,
+            Function<Item.Properties, ITEM> factory
+    ) {
         super(registrations, Registries.ITEM, name, parent);
         this.factory = factory;
-        this.translation = () -> derived;
+        this.defaults = defaults;
+        this.translation = derived;
     }
     
     ///
@@ -113,18 +158,19 @@ public final class ItemBuilder<ITEM extends Item, PARENT>
     ///
     /// Replaces previous calls, including the edits of [#properties(UnaryOperator)].
     ///
-    /// The id and the description of the translation will be set on the given properties before any edits run.
+    /// The id, the description of the translation, and the defaults will be set on the new properties before any edits run.
+    /// The properties the supplier returns will be edited, so they should not be shared with another builder.
     ///
-    /// @param properties The properties.
+    /// @param properties The supplier of the properties, called once inside the registry event.
     ///
     /// @return The builder for chaining.
     ///
     /// @throws IllegalStateException If [#register()] was already called.
     ///
     @CanIgnoreReturnValue
-    public ItemBuilder<ITEM, PARENT> properties(Item.Properties properties) {
+    public ItemBuilder<ITEM, PARENT> properties(Supplier<Item.Properties> properties) {
         this.checkUnregistered();
-        this.properties = () -> properties;
+        this.properties = properties;
         this.edits.clear();
         return this;
     }
@@ -169,6 +215,8 @@ public final class ItemBuilder<ITEM extends Item, PARENT>
     /// Shows the item in the given vanilla or foreign tabs instead of the mod's first one.
     ///
     /// Stacks with previous calls, in the order they were written.
+    ///
+    /// The item will only show in [CreativeModeTabs#OP_BLOCKS] while the creative tabs show operator items.
     ///
     /// @param tabs The keys of the tabs.
     ///
@@ -235,8 +283,8 @@ public final class ItemBuilder<ITEM extends Item, PARENT>
     }
     
     ///
-    /// Creates the item with the factory, from the properties with the id and the description of the translation set
-    /// and then the edits applied.
+    /// Creates the item with the factory, from the properties with the id, the description of the translation, and the
+    /// defaults set and then the edits applied.
     ///
     /// @return The created item.
     ///
@@ -245,6 +293,7 @@ public final class ItemBuilder<ITEM extends Item, PARENT>
         Item.Properties properties = this.properties.get()
                 .setId(this.getKey())
                 .overrideDescription(this.translation.get().getKey());
+        properties = this.defaults.apply(properties);
         for (UnaryOperator<Item.Properties> edit : this.edits) {
             properties = edit.apply(properties);
         }
@@ -263,5 +312,13 @@ public final class ItemBuilder<ITEM extends Item, PARENT>
     @Override
     protected ItemEntry<ITEM> createEntry(ResourceKey<Item> key) {
         return new ItemEntry<>(key, this, this.translation.get(), this.tabs);
+    }
+    
+    ///
+    /// Declares the translation of the item, which is the translation of the object the item belongs to unless [#named(String)] was called.
+    ///
+    @Override
+    protected void declareTranslations() {
+        this.translation.get();
     }
 }

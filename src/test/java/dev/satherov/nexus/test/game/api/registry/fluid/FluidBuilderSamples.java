@@ -2,10 +2,12 @@ package dev.satherov.nexus.test.game.api.registry.fluid;
 
 import dev.satherov.nexus.Nexus;
 import dev.satherov.nexus.api.registry.Registrations;
+import dev.satherov.nexus.api.registry.RegistryEntry;
 import dev.satherov.nexus.api.registry.block.BlockEntry;
 import dev.satherov.nexus.api.registry.fluid.FluidEntry;
 import dev.satherov.nexus.api.registry.fluid.PlainFluidBuilder;
 import dev.satherov.nexus.api.registry.fluid.PlainFluidEntry;
+import dev.satherov.nexus.api.registry.item.ItemEntry;
 import dev.satherov.nexus.api.text.Translation;
 import dev.satherov.nexus.gametest.api.server.ServerTest;
 
@@ -50,6 +52,9 @@ public class FluidBuilderSamples {
     private static @Nullable PlainFluidEntry<FluidType, BaseFlowingFluid.Source, BaseFlowingFluid.Flowing> plain;
     private static @Nullable FluidEntry<FluidType, SampleSource, SampleFlowing, LiquidBlock, SampleBucket> full;
     private static @Nullable FluidEntry<FluidType, BaseFlowingFluid.Source, BaseFlowingFluid.Flowing, LiquidBlock, BucketItem> withItem;
+    private static @Nullable FluidEntry<FluidType, BaseFlowingFluid.Source, BaseFlowingFluid.Flowing, LiquidBlock, BucketItem> replacedBucket;
+    private static @Nullable Throwable takenBucketRefusal;
+    private static @Nullable Throwable takenTranslationRefusal;
     private static @Nullable PlainFluidBuilder<FluidType, BaseFlowingFluid.Source, BaseFlowingFluid.Flowing, Registrations> takenOver;
     private static boolean clientRequested;
     
@@ -172,6 +177,43 @@ public class FluidBuilderSamples {
         helper.assertValueEqual(bucket.content, full.value(), "fluid of the bucket");
         helper.assertValueEqual(full.getBucket().stack().getMaxStackSize(), 1, "maximum stack size of the bucket");
         helper.assertValueEqual(remainder.item().value(), Items.BUCKET, "crafting remainder of the bucket");
+        helper.succeed();
+    }
+    
+    @ServerTest
+    public static void keepsTheBucketDefaultsOnABucketWhosePropertiesWereReplaced(GameTestHelper helper) {
+        ItemEntry<BucketItem> bucket = Objects.requireNonNull(FluidBuilderSamples.replacedBucket).getBucket();
+        ItemStackTemplate remainder = Objects.requireNonNull(bucket.value().getCraftingRemainder());
+        helper.assertValueEqual(bucket.stack().getMaxStackSize(), 1, "maximum stack size of the bucket");
+        helper.assertValueEqual(remainder.item().value(), Items.BUCKET, "crafting remainder of the bucket");
+        helper.succeed();
+    }
+    
+    @ServerTest
+    public static void refusesAFluidWhoseBucketIsTakenBeforeRegisteringAnything(GameTestHelper helper) {
+        Throwable refusal = FluidBuilderSamples.takenBucketRefusal;
+        List<String> keys = Nexus.getMod().getTranslations().getAll().stream().map(Translation::getKey).toList();
+        helper.assertTrue(refusal instanceof IllegalStateException, "The fluid with a taken bucket was registered");
+        helper.assertValueEqual(Objects.requireNonNull(refusal).getMessage(), "'nexus:fluid_builder_samples_taken_bucket' is already registered", "message");
+        helper.assertTrue(
+                Nexus.getMod().getRegistrations().getAll().stream().map(RegistryEntry::getName).noneMatch(name -> name.endsWith("fluid_builder_samples_taken")),
+                "A sub-object of the fluid with a taken bucket was registered"
+        );
+        helper.assertFalse(keys.contains("fluid_type.nexus.fluid_builder_samples_taken"), "The fluid with a taken bucket declared its translation");
+        helper.succeed();
+    }
+    
+    @ServerTest
+    public static void refusesAFluidWhoseBlockTranslationIsTakenBeforeRegisteringAnything(GameTestHelper helper) {
+        Throwable refusal = FluidBuilderSamples.takenTranslationRefusal;
+        List<String> keys = Nexus.getMod().getTranslations().getAll().stream().map(Translation::getKey).toList();
+        helper.assertTrue(refusal instanceof IllegalStateException, "The fluid with a taken block translation was registered");
+        helper.assertValueEqual(Objects.requireNonNull(refusal).getMessage(), "Key 'block.nexus.fluid_builder_samples.translation_taken' is already declared", "message");
+        helper.assertTrue(
+                Nexus.getMod().getRegistrations().getAll().stream().map(RegistryEntry::getName).noneMatch(name -> name.endsWith("fluid_builder_samples.translation_taken")),
+                "A sub-object of the fluid with a taken block translation was registered"
+        );
+        helper.assertFalse(keys.contains("fluid_type.nexus.fluid_builder_samples.translation_taken"), "The fluid with a taken block translation declared its translation");
         helper.succeed();
     }
     
@@ -316,6 +358,29 @@ public class FluidBuilderSamples {
                     .end()
                     .register();
             FluidBuilderSamples.takenOver = builder;
+            
+            FluidBuilderSamples.replacedBucket = registrations.fluid("fluid_builder_samples_replaced_bucket", "Sample Fluid With Replaced Bucket")
+                    .block()
+                    .end()
+                    .bucket()
+                    .properties(Item.Properties::new)
+                    .end()
+                    .register();
+            
+            registrations.item("fluid_builder_samples_taken_bucket", "Taken Sample Bucket").noTab().register();
+            FluidBuilderSamples.takenBucketRefusal = Assertions.catchThrowable(() -> registrations.fluid("fluid_builder_samples_taken", "Taken Sample Fluid")
+                    .block()
+                    .end()
+                    .register()
+            );
+            
+            // Another identifier, but the same translation key once the `/` becomes a `.`.
+            registrations.block("fluid_builder_samples/translation_taken", "Sample Block With A Taken Translation").register();
+            FluidBuilderSamples.takenTranslationRefusal = Assertions.catchThrowable(() -> registrations.fluid("fluid_builder_samples.translation_taken", "Sample Fluid With A Taken Translation")
+                    .block()
+                    .end()
+                    .register()
+            );
         }
     }
 }

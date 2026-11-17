@@ -16,6 +16,7 @@ import net.minecraft.world.level.material.Fluid;
 
 import org.jetbrains.annotations.ApiStatus;
 
+import java.util.List;
 import java.util.function.BiFunction;
 
 ///
@@ -119,15 +120,14 @@ public final class FluidBuilder
     ///
     private ItemBuilder<BUCKET, FluidBuilder<TYPE, SOURCE, FLOWING, BLOCK, BUCKET, PARENT>> openBucket(BiFunction<SOURCE, Item.Properties, BUCKET> factory) {
         DeferredHolder<Fluid, SOURCE> source = DeferredHolder.create(this.getKey());
-        ItemBuilder<BUCKET, FluidBuilder<TYPE, SOURCE, FLOWING, BLOCK, BUCKET, PARENT>> bucket = new ItemBuilder<>(
+        return new ItemBuilder<>(
                 this.getRegistrations(),
                 this.getName() + "_bucket",
                 this.english,
                 this,
+                properties -> properties.stacksTo(1).craftRemainder(Items.BUCKET),
                 properties -> factory.apply(source.value(), properties)
         );
-        
-        return bucket.properties(properties -> properties.stacksTo(1).craftRemainder(Items.BUCKET));
     }
     
     ///
@@ -150,5 +150,15 @@ public final class FluidBuilder
     @Override
     protected FluidEntry<TYPE, SOURCE, FLOWING, BLOCK, BUCKET> createEntry(ResourceKey<Fluid> key) {
         return (FluidEntry<TYPE, SOURCE, FLOWING, BLOCK, BUCKET>) this.fluid.createEntry(key);
+    }
+    
+    ///
+    /// The keys of the type, the flowing fluid, the block, and the bucket, from the builder of the fluid.
+    ///
+    /// @return The keys of the sub-objects.
+    ///
+    @Override
+    protected List<ResourceKey<?>> getSubObjectKeys() {
+        return this.fluid.getSubObjectKeys();
     }
 }
