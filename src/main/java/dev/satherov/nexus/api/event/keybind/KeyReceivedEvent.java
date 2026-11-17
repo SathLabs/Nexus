@@ -16,6 +16,8 @@ import org.jetbrains.annotations.ApiStatus;
 ///
 /// Cancelling the event skips the server action and leaves the held state of the key as it is.
 ///
+/// If the player already disconnected, the event will not be posted and the server action will not run.
+///
 public final class KeyReceivedEvent extends Event implements ICancellableEvent {
 
     ///

@@ -230,12 +230,14 @@ public final class Keybinds {
     /// @param readers      The readers of the carried values on the client, one per codec.
     /// @param serverAction The action run on the server when a firing arrives, or `null` if none is set.
     /// @param syncHeld     If the key sends its going down and up to the server.
+    /// @param version      The version neoforge negotiates for the payload of the key.
     ///
     /// @return The registered key.
     ///
     /// @throws IllegalStateException - If the mod already registered a key of that name.
     /// - If the key mappings were already registered.
     /// - If the payload handlers event already ran.
+    /// - If the key is in a category of the mod's namespace that the mod did not declare.
     /// - If the key sends to the server on the same payload as another key of the mod.
     ///
     @ApiStatus.Internal
@@ -247,7 +249,8 @@ public final class Keybinds {
             List<NexusCodec<?, ?>> codecs,
             List<ClientOnly<? extends Supplier<?>>> readers,
             @Nullable BiConsumer<ServerPlayer, List<Object>> serverAction,
-            boolean syncHeld
+            boolean syncHeld,
+            String version
     ) {
         if (this.locked) {
             throw new IllegalStateException("Key '" + name + "' of mod '" + this.mod.getModId() + "' is registered after the key mappings were registered or the payload handlers event ran");
@@ -258,8 +261,12 @@ public final class Keybinds {
             throw new IllegalStateException("Key '" + mappingName + "' of mod '" + this.mod.getModId() + "' is already registered");
         }
         
+        if (definition != null && this.isUndeclared(definition.category())) {
+            throw new IllegalStateException("Key '" + mappingName + "' of mod '" + this.mod.getModId() + "' is in the category '" + definition.category() + "', which the mod did not declare");
+        }
+        
         String path = ObjectMapping.mapNonNullOrElseGet(definition, own -> "keybind/" + own.name(), () -> "keybind/existing/" + Keybinds.toPayloadName(name));
-        ServerboundPayload<KeySignal> payload = BooleanMapping.mapNonNullIfTrue(serverAction != null || syncHeld, () -> this.declarePayload(mappingName, path, codecs, serverAction));
+        ServerboundPayload<KeySignal> payload = BooleanMapping.mapNonNullIfTrue(serverAction != null || syncHeld, () -> this.declarePayload(mappingName, path, codecs, serverAction, version));
         if (definition != null) {
             this.mod.getTranslations().defineKey(mappingName, definition.english());
             if (definition.category().equals(this.defaultCategory) && !this.categories.contains(this.defaultCategory)) {
@@ -273,11 +280,19 @@ public final class Keybinds {
     }
     
     ///
+    /// If the given category is in the mod's namespace and is neither the default category nor one the mod declared.
+    ///
+    private boolean isUndeclared(Identifier category) {
+        return category.getNamespace().equals(this.mod.getModId()) && !category.equals(this.defaultCategory) && !this.categories.contains(category);
+    }
+    
+    ///
     /// Declares the optional payload of the key of the given mapping name, which runs the server action over the decoded values on a firing and marks the key as down or up for the sender.
     ///
     /// A firing posts a [KeyReceivedEvent] first and skips the server action if the event is cancelled.
+    /// If the player already disconnected, the signal will be dropped.
     ///
-    private ServerboundPayload<KeySignal> declarePayload(String mappingName, String path, List<NexusCodec<?, ?>> codecs, @Nullable BiConsumer<ServerPlayer, List<Object>> serverAction) {
+    private ServerboundPayload<KeySignal> declarePayload(String mappingName, String path, List<NexusCodec<?, ?>> codecs, @Nullable BiConsumer<ServerPlayer, List<Object>> serverAction, String version) {
         Identifier id = this.mod.id(path);
         for (Keybind existing : this.keybindsByName.values()) {
             ServerboundPayload<KeySignal> payload = existing.getPayload();
@@ -289,19 +304,25 @@ public final class Keybinds {
         BiConsumer<ServerPlayer, List<Object>> action = Objects.requireNonNullElse(serverAction, (_, _) -> { });
         return this.mod.getNetwork()
                 .play(path, KeySignal.codec(codecs.stream().<StreamCodec<? super RegistryFriendlyByteBuf, ?>>map(NexusCodec::asStream).toList()))
+                .version(version)
                 .optional()
                 .toServer((signal, context) -> {
+                    // NeoForge still runs a payload that was queued before its player left, after the player was saved and logged out.
+                    ServerPlayer player = context.getPlayer();
+                    if (player.hasDisconnected()) {
+                        return;
+                    }
+                    
                     switch (signal) {
                         case KeySignal.Fired(List<Object> values) -> {
                             // The key is put into the map right after its payload is declared, so it is there once a firing arrives.
                             Keybind keybind = Objects.requireNonNull(this.keybindsByName.get(mappingName));
-                            ServerPlayer player = context.getPlayer();
                             if (!NeoForge.EVENT_BUS.post(new KeyReceivedEvent(keybind, player)).isCanceled()) {
                                 action.accept(player, values);
                             }
                         }
-                        case KeySignal.Down _ -> this.heldKeys.press(context.getPlayer(), mappingName);
-                        case KeySignal.Up _ -> this.heldKeys.release(context.getPlayer(), mappingName);
+                        case KeySignal.Down _ -> this.heldKeys.press(player, mappingName);
+                        case KeySignal.Up _ -> this.heldKeys.release(player, mappingName);
                     }
                 });
     }

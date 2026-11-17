@@ -36,7 +36,7 @@ public final class HeldKeys {
     }
     
     ///
-    /// Marks the key of the given mapping name as down for the given player from the current server tick on.
+    /// Marks the key of the given mapping name as down for the given player from the next server tick on.
     ///
     /// Does nothing if the key is already down.
     ///
@@ -44,7 +44,8 @@ public final class HeldKeys {
     /// @param name   The mapping name of the key.
     ///
     public void press(ServerPlayer player, String name) {
-        this.downTicksByPlayer.computeIfAbsent(player.getUUID(), _ -> new HashMap<>()).putIfAbsent(name, player.level().getServer().getTickCount());
+        // Payloads are handled before the tick count goes up, so the first tick that game code sees the key down on is the next one.
+        this.downTicksByPlayer.computeIfAbsent(player.getUUID(), _ -> new HashMap<>()).putIfAbsent(name, player.level().getServer().getTickCount() + 1);
     }
     
     ///
@@ -61,7 +62,7 @@ public final class HeldKeys {
     }
     
     ///
-    /// The number of server ticks since the given player's key went down, `1` on the tick it went down and `0` while it is up.
+    /// The number of server ticks since the given player's key went down, `1` while its press is handled and on the first tick after it, and `0` while it is up.
     ///
     /// @param player The player whose key is read.
     /// @param name   The mapping name of the key.
@@ -70,7 +71,7 @@ public final class HeldKeys {
     ///
     public int getHeldTicks(ServerPlayer player, String name) {
         Integer downTick = this.downTicksByPlayer.getOrDefault(player.getUUID(), Map.of()).get(name);
-        return ObjectMapping.mapToIntOrElse(downTick, tick -> player.level().getServer().getTickCount() - tick + 1, 0);
+        return ObjectMapping.mapToIntOrElse(downTick, tick -> Math.max(1, player.level().getServer().getTickCount() - tick + 1), 0);
     }
     
     ///

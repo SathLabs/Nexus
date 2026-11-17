@@ -66,6 +66,13 @@ public abstract sealed class BindingBuilder<SELF extends BindingBuilder<SELF>> p
     private boolean syncHeld;
     
     ///
+    /// The version neoforge negotiates for the payload of the key.
+    ///
+    /// Defaults to `1`.
+    ///
+    private String version = "1";
+    
+    ///
     /// Starts the key of the given name in the given keybinds.
     ///
     /// @param keybinds The keybinds the key is registered in.
@@ -117,7 +124,7 @@ public abstract sealed class BindingBuilder<SELF extends BindingBuilder<SELF>> p
     ///
     /// Runs the given action on the server thread each time the key fires and the firing reaches the server.
     ///
-    /// Nexus checks nothing about the player.
+    /// Nexus only checks that the player is still connected.
     ///
     /// @param action The server action, called with the player whose key fired.
     ///
@@ -135,8 +142,9 @@ public abstract sealed class BindingBuilder<SELF extends BindingBuilder<SELF>> p
     ///
     /// Starts the values that the key carries to the server, read on the client each time the key fires.
     ///
-    /// The reader runs on the client thread after the client action.
+    /// The reader runs on the client thread after the client action, and only while the client is connected to a server that has the key.
     /// If it returns `null`, nothing is sent to the server for that firing.
+    /// If it returns a mutable value such as an item stack, then the value must be a copy or a later change to it may reach the server.
     ///
     /// The carried values are set on the builder together with the server action of the last stage,
     /// and a chain without a server action sets neither.
@@ -194,6 +202,30 @@ public abstract sealed class BindingBuilder<SELF extends BindingBuilder<SELF>> p
     }
     
     ///
+    /// Sets the version of the payload the key sends to the server on.
+    ///
+    /// If the carried values change between two releases of the mod, then the version must change too or a firing will disconnect the player.
+    /// If the client and the server both have the key with different versions, neoforge will refuse the player at join, even though the payload is optional.
+    ///
+    /// Defaults to `1`.
+    ///
+    /// @param version The version neoforge negotiates for the payload of the key.
+    ///
+    /// @return The builder for chaining.
+    ///
+    /// @throws IllegalArgumentException If the version is blank.
+    ///
+    @CanIgnoreReturnValue
+    public SELF version(String version) {
+        if (version.isBlank()) {
+            throw new IllegalArgumentException("Key '" + this.name + "' of mod '" + this.keybinds.getMod().getModId() + "' has a blank version");
+        }
+        
+        this.version = version;
+        return this.self();
+    }
+    
+    ///
     /// Registers the key.
     ///
     /// A key the mod declares itself gets the translation key `key.<modid>.<name>`.
@@ -204,10 +236,11 @@ public abstract sealed class BindingBuilder<SELF extends BindingBuilder<SELF>> p
     /// @throws IllegalStateException - If the mod already registered a key of that name.
     /// - If the key mappings were already registered.
     /// - If the payload handlers event already ran.
+    /// - If the key is in a category of the mod's namespace that the mod did not declare.
     /// - If the key sends to the server on the same payload as another key of the mod.
     ///
     public Keybind register() {
-        return this.keybinds.register(this.name, this.createDefinition(), this.activation, this.clientAction, this.codecs, this.readers, this.serverAction, this.syncHeld);
+        return this.keybinds.register(this.name, this.createDefinition(), this.activation, this.clientAction, this.codecs, this.readers, this.serverAction, this.syncHeld, this.version);
     }
     
     ///
