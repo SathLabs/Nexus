@@ -760,7 +760,10 @@ public class RunReportTest {
                         Map.entry("nexus:player_data_samples/edit_runs_on_the_joined_player", Expected.passed()),
                         Map.entry("nexus:player_data_samples/inspect_leaves_the_joined_player_alone", Expected.passed()),
                         Map.entry("nexus:player_data_samples/replace_swaps_the_joined_player_for_one_loaded_from_the_tag", Expected.passed()),
-                        Map.entry("nexus:saved_value_samples/client_sees_the_synced_value_on_join_and_on_change", Expected.passed())
+                        Map.entry("nexus:saved_value_samples/client_sees_the_synced_value_on_join_and_on_change", Expected.passed()),
+                        Map.entry("nexus:saved_value_samples/client_sees_the_level_value_of_every_level_it_enters", Expected.passed()),
+                        Map.entry("nexus:saved_value_samples/client_sees_a_level_value_set_when_the_player_joined", Expected.passed()),
+                        Map.entry("nexus:saved_value_samples/client_sees_a_server_value_set_during_respawn", Expected.passed())
                 ),
                 List.of(
                         Measurement.of("nexus/client_run_samples/window", 40),
