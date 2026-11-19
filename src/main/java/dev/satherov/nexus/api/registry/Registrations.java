@@ -401,6 +401,8 @@ public final class Registrations {
     ///
     /// @return The builder of the data component type.
     ///
+    /// @throws IllegalArgumentException If the codec cannot encode in JSON and NBT.
+    ///
     public <VALUE> DataComponentBuilder<VALUE, Registrations> component(String name, NexusCodec<VALUE, ?> codec) {
         return new DataComponentBuilder<>(this, name, this, codec);
     }

@@ -1,7 +1,10 @@
 package dev.satherov.nexus.api.registry.component;
 
+import dev.satherov.nexus.api.codec.NexusCodec;
+import dev.satherov.nexus.api.codec.result.NexusCodecException;
 import dev.satherov.nexus.api.component.ComponentPath;
 import dev.satherov.nexus.api.registry.RegistryEntry;
+import dev.satherov.nexus.internal.codec.path.Encoding;
 
 import net.neoforged.neoforge.attachment.IAttachmentHolder;
 import net.neoforged.neoforge.common.MutableDataComponentHolder;
@@ -27,14 +30,21 @@ import java.util.function.UnaryOperator;
 public final class DataComponentEntry<VALUE> extends RegistryEntry<DataComponentType<?>, DataComponentType<VALUE>> {
     
     ///
+    /// The codec of the values of the component.
+    ///
+    private final NexusCodec<VALUE, ?> codec;
+    
+    ///
     /// Should only ever be called from [DataComponentBuilder#createEntry(ResourceKey)].
     ///
     /// @param key     The key of the data component type.
     /// @param builder The builder that registers the data component type.
+    /// @param codec   The codec of the values of the component.
     ///
     @ApiStatus.Internal
-    public DataComponentEntry(ResourceKey<DataComponentType<?>> key, DataComponentBuilder<VALUE, ?> builder) {
+    public DataComponentEntry(ResourceKey<DataComponentType<?>> key, DataComponentBuilder<VALUE, ?> builder, NexusCodec<VALUE, ?> codec) {
         super(key, builder);
+        this.codec = codec;
     }
     
     ///
@@ -68,8 +78,11 @@ public final class DataComponentEntry<VALUE> extends RegistryEntry<DataComponent
     ///
     /// @return The value it replaced, or `null` if there was none.
     ///
+    /// @throws IllegalArgumentException If the codec of this component could not encode the given value.
+    ///
     @CanIgnoreReturnValue
     public @Nullable VALUE set(MutableDataComponentHolder holder, @Nullable VALUE value) {
+        this.requireEncodable(value);
         return holder.set(this.value(), value);
     }
     
@@ -81,6 +94,8 @@ public final class DataComponentEntry<VALUE> extends RegistryEntry<DataComponent
     ///
     /// @return The previous value of the component, or `null` if the value did not change or the component was absent.
     ///
+    /// @throws IllegalArgumentException If the codec of this component could not encode the updated value.
+    ///
     public @Nullable VALUE update(MutableDataComponentHolder holder, UnaryOperator<@Nullable VALUE> operator) {
         VALUE old = holder.get(this.value());
         VALUE updated = operator.apply(old);
@@ -88,6 +103,7 @@ public final class DataComponentEntry<VALUE> extends RegistryEntry<DataComponent
             return null;
         }
         
+        this.requireEncodable(updated);
         return holder.set(this.value(), updated);
     }
     
@@ -99,6 +115,8 @@ public final class DataComponentEntry<VALUE> extends RegistryEntry<DataComponent
     ///
     /// @return The previous value of the component, or `null` if the value did not change or the component was absent.
     ///
+    /// @throws IllegalArgumentException If the codec of this component could not encode the updated value.
+    ///
     public @Nullable VALUE update(MutableDataComponentHolder holder, Supplier<@Nullable VALUE> supplier) {
         VALUE old = holder.get(this.value());
         VALUE updated = supplier.get();
@@ -106,7 +124,25 @@ public final class DataComponentEntry<VALUE> extends RegistryEntry<DataComponent
             return null;
         }
         
+        this.requireEncodable(updated);
         return holder.set(this.value(), updated);
+    }
+    
+    ///
+    /// Checks that the codec of this component can encode the given value in NBT, with the registries of the running server or of the client's play connection.
+    ///
+    /// Does nothing for `null`, which removes the component, or if neither the server nor the play connection exists.
+    ///
+    private void requireEncodable(@Nullable VALUE value) {
+        if (value == null) {
+            return;
+        }
+        
+        try {
+            Encoding.requireEncodable(this.codec, value);
+        } catch (NexusCodecException failure) {
+            throw new IllegalArgumentException("Could not set the component '" + this.getId() + "' to the value, " + failure.getMessage(), failure);
+        }
     }
     
     ///

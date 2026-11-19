@@ -3,6 +3,7 @@ package dev.satherov.nexus.api.registry.component;
 import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.registry.EntryBuilder;
 import dev.satherov.nexus.api.registry.Registrations;
+import dev.satherov.nexus.internal.codec.vanilla.VanillaAdapters;
 
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.registries.Registries;
@@ -30,6 +31,11 @@ public final class DataComponentBuilder<VALUE, PARENT>
 {
     
     ///
+    /// The codec of the values of the component.
+    ///
+    private final NexusCodec<VALUE, ?> codec;
+    
+    ///
     /// The vanilla builder of the type.
     ///
     private final DataComponentType.Builder<VALUE> builder;
@@ -44,12 +50,13 @@ public final class DataComponentBuilder<VALUE, PARENT>
     /// @param parent        What [#end()] returns.
     /// @param codec         The codec of the values of the component.
     ///
+    /// @throws IllegalArgumentException If the codec cannot encode in JSON and NBT.
+    ///
     public DataComponentBuilder(Registrations registrations, String name, PARENT parent, NexusCodec<VALUE, ?> codec) {
         super(registrations, Registries.DATA_COMPONENT_TYPE, name, parent);
+        this.codec = codec;
         
-        this.builder = DataComponentType.<VALUE>builder()
-                .persistent(codec.asDfu())
-                .networkSynchronized(codec.asStream());
+        this.builder = VanillaAdapters.dataComponentBuilder(codec);
     }
     
     ///
@@ -101,6 +108,6 @@ public final class DataComponentBuilder<VALUE, PARENT>
     ///
     @Override
     protected DataComponentEntry<VALUE> createEntry(ResourceKey<DataComponentType<?>> key) {
-        return new DataComponentEntry<>(key, this);
+        return new DataComponentEntry<>(key, this, this.codec);
     }
 }
