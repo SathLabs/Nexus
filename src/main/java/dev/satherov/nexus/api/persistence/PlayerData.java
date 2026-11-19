@@ -150,19 +150,27 @@ public final class PlayerData {
     /// The copy will be built in the saved dimension of the player, or in the overworld if that level is gone.
     /// Moving the copy will not move the player.
     ///
+    /// A dead player can only be edited after [PlayerEvent.PlayerRespawnEvent] has fired for it.
+    /// A player counts as offline until its login has finished,
+    /// and its next save will overwrite an edit from a [PlayerEvent.LoadFromFile] listener of that login.
+    ///
     /// If the action throws, the file will be left as it was and the exception will be rethrown.
     ///
     /// @param server The server the player belongs to.
     /// @param player The UUID of the player.
     /// @param action The action to run, called with the online player or the detached copy.
     ///
-    /// @return `true` if the action ran, or `false` if the player is offline and has no file.
+    /// @return `true` if the action ran, or `false` if the player is dead or is offline and has no file.
     ///
     /// @throws UncheckedIOException If the file could not be written.
     ///
     public boolean edit(MinecraftServer server, UUID player, Consumer<ServerPlayer> action) {
         ServerPlayer live = server.getPlayerList().getPlayer(player);
         if (live != null) {
+            if (live.isDeadOrDying()) {
+                return false;
+            }
+            
             action.accept(live);
             return true;
         }
@@ -179,6 +187,10 @@ public final class PlayerData {
         }
         
         try (DetachedPlayer copy = DetachedPlayer.from(server, PlayerData.nameAndId(server, player), tag.get())) {
+            if (copy.isDeadOrDying()) {
+                return false;
+            }
+            
             PlayerData.COPIES_BY_PLAYER.put(player, copy);
             try {
                 action.accept(copy);
@@ -236,6 +248,8 @@ public final class PlayerData {
     ///
     /// Reads the player tag of the given player from its file or creates a snapshot of the player if it is online.
     ///
+    /// If an edit of the offline player is running, the tag will be the one that edit would save at this point.
+    ///
     /// @param server The server the player belongs to.
     /// @param player The UUID of the player.
     ///
@@ -248,6 +262,13 @@ public final class PlayerData {
             return Optional.of(this.snapshot(live));
         }
         
+        DetachedPlayer open = PlayerData.COPIES_BY_PLAYER.get(player);
+        if (open != null) {
+            CompoundTag tag = this.snapshot(open);
+            open.putCarriedKeys(tag);
+            return Optional.of(tag);
+        }
+        
         return players.getPlayerIo().load(PlayerData.nameAndId(server, player)).map(NbtUtils::addCurrentDataVersion);
     }
     
@@ -256,28 +277,40 @@ public final class PlayerData {
     ///
     /// If the player is offline, the file of the player will be swapped for the tag.
     /// [PlayerEvent.LoadFromFile] and [PlayerEvent.SaveToFile] will fire for a detached copy loaded from the tag.
+    /// A player counts as offline until its login has finished,
+    /// and the login will keep the position and the dimension that it has already read.
     ///
     /// If the player is online, it will be removed without being saved,
     /// and a new player will be loaded from the tag with the connection and the entity id of the old one.
     /// The client will be moved to the dimension and the position of the tag.
+    /// The new player will take the place of the old one in [PlayerList#getPlayers()],
+    /// so that list may be iterated while this runs.
+    /// Should never be called while iterating [ServerLevel#players()].
     ///
     /// The vehicle of the old player will stay in the world.
     /// If the tag holds that same vehicle, the vehicle of the tag will take its place.
     /// The cursor and the menus of the old player will not toss their items into the world.
     ///
-    /// If loading the new player throws, the old player will be left as it was and the exception will be rethrown.
-    ///
-    /// [PlayerEvent.LoadFromFile] will fire for the new player, then [PlayerEvent.PlayerLoggedOutEvent] for the old one,
+    /// [PlayerEvent.PlayerLoggedOutEvent] will fire for the old player, then [PlayerEvent.LoadFromFile] for the new one,
     /// and then [PlayerEvent.PlayerLoggedInEvent] for the new one.
     /// [PlayerEvent.Clone] and [PlayerEvent.PlayerRespawnEvent] will not fire.
+    ///
+    /// If loading the new player throws, the old player will be left as it was and the exception will be rethrown.
+    /// If a listener of [PlayerEvent.PlayerLoggedOutEvent] or [PlayerEvent.LoadFromFile] throws,
+    /// the old player will stay and [PlayerEvent.PlayerLoggedInEvent] will fire for it before the exception is rethrown.
     ///
     /// @param server The server the player belongs to.
     /// @param player The UUID of the player.
     /// @param tag    The player tag to load.
     ///
-    /// @throws UncheckedIOException If the file could not be written.
+    /// @throws UncheckedIOException  If the file could not be written.
+    /// @throws IllegalStateException If an edit of the player is running.
     ///
     public void replace(MinecraftServer server, UUID player, CompoundTag tag) {
+        if (PlayerData.COPIES_BY_PLAYER.containsKey(player)) {
+            throw new IllegalStateException("Could not replace the player data of '" + player + "' while an edit of it is running");
+        }
+        
         CompoundTag upgraded = PlayerData.upgrade(server, tag);
         ServerPlayer live = server.getPlayerList().getPlayer(player);
         if (live != null) {
@@ -294,7 +327,8 @@ public final class PlayerData {
     /// Swaps the given online player for a new player loaded from the given player tag on the same connection.
     ///
     /// The old player will be removed as on a logout but without being saved, and the client will be sent the packets of a respawn.
-    /// If loading the new player throws, the old player will be left as it was.
+    /// If loading the new player or a listener of [PlayerEvent.PlayerLoggedOutEvent] or [PlayerEvent.LoadFromFile] throws,
+    /// the old player will be left in place.
     ///
     /// @param server The server the player belongs to.
     /// @param old    The online player to remove.
@@ -309,10 +343,20 @@ public final class PlayerData {
             player.setId(old.getId());
             try {
                 player.load(input);
+            } finally {
+                // The constructor of the new player took over the advancements of the old one,
+                // so we hand them back until the old one has logged out.
+                old.getAdvancements().setPlayer(old);
+            }
+            
+            try {
+                EventHooks.firePlayerLoggedOut(old);
+                player.getAdvancements().setPlayer(player);
                 EventHooks.firePlayerLoadingEvent(player, players, player.getStringUUID());
             } catch (RuntimeException failure) {
-                // The constructor of the new player took over the advancements of the old one, so we hand them back.
+                // Nothing of the old player has been torn down yet, so it logs back in and stays.
                 old.getAdvancements().setPlayer(old);
+                EventHooks.firePlayerLoggedIn(old);
                 throw failure;
             }
             
@@ -323,7 +367,6 @@ public final class PlayerData {
                 old.stopSleepInBed(true, false);
             }
             
-            EventHooks.firePlayerLoggedOut(old);
             if (old.isPassenger()) {
                 Entity vehicle = old.getRootVehicle();
                 Optional<UUID> restored = input.childOrEmpty(DetachedPlayer.ROOT_VEHICLE_TAG)
@@ -352,8 +395,6 @@ public final class PlayerData {
                 PlayerData.removing = null;
             }
             
-            players.players.remove(old);
-            
             ServerGamePacketListenerImpl connection = old.connection;
             player.connection = connection;
             connection.player = player;
@@ -377,7 +418,7 @@ public final class PlayerData {
             connection.send(new ClientboundSetHeldSlotPacket(player.getInventory().getSelectedSlot()));
             
             level.addRespawnedPlayer(player);
-            players.players.add(player);
+            players.players.set(players.players.indexOf(old), player);
             players.playersByUUID.put(old.getUUID(), player);
             player.initInventoryMenu();
             player.setHealth(player.getHealth());

@@ -49,6 +49,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.player.ProfilePublicKey;
@@ -77,6 +78,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -116,6 +118,9 @@ public class PlayerDataSamples {
     private static final int LIVE_COUNT = 3;
     private static final int REPLACED_COUNT = 9;
     private static final Set<UUID> FAILING_SAVES = ConcurrentHashMap.newKeySet();
+    private static final Set<UUID> FAILING_LOADS = ConcurrentHashMap.newKeySet();
+    private static final Set<UUID> HELD_STATES = ConcurrentHashMap.newKeySet();
+    private static final List<Fired> FIRED = new CopyOnWriteArrayList<>();
     private static final List<AdvancementEvent.AdvancementProgressEvent> PROGRESSED = new CopyOnWriteArrayList<>();
 
     private static @Nullable AttachmentEntry<Counter> counter;
@@ -463,6 +468,59 @@ public class PlayerDataSamples {
         helper.succeed();
     }
 
+    @ServerTest
+    public static void editOfAPlayerSavedDeadDoesNotRun(GameTestHelper helper) throws IOException {
+        PlayerData data = PlayerDataSamples.playerData();
+        MinecraftServer server = helper.getLevel().getServer();
+        UUID uuid = UUID.randomUUID();
+        CompoundTag dead = PlayerDataSamples.playerTag(1);
+        dead.putFloat(LivingEntity.TAG_HEALTH, 0.0F);
+        Path file = PlayerDataSamples.write(server, uuid, dead);
+        byte[] written = Files.readAllBytes(file);
+        AtomicBoolean ran = new AtomicBoolean();
+        helper.assertFalse(data.edit(server, uuid, _ -> ran.set(true)), "The edit of a player saved dead returned true");
+        helper.assertFalse(ran.get(), "The action ran for a player saved dead");
+        helper.assertTrue(Arrays.equals(Files.readAllBytes(file), written), "The edit changed the file of a player saved dead");
+        helper.succeed();
+    }
+
+    @ServerTest
+    public static void readInsideAnEditSeesTheOpenCopy(GameTestHelper helper) throws IOException {
+        AttachmentEntry<Counter> counter = PlayerDataSamples.counter();
+        PlayerData data = PlayerDataSamples.playerData();
+        MinecraftServer server = helper.getLevel().getServer();
+        UUID uuid = UUID.randomUUID();
+        CompoundTag written = PlayerDataSamples.playerTag(1);
+        PlayerDataSamples.write(server, uuid, written);
+        AtomicReference<@Nullable CompoundTag> seen = new AtomicReference<>();
+        data.edit(server, uuid, player -> {
+            counter.set(player, new Counter(5));
+            player.snapTo(player.position().add(16.0D, 0.0D, 16.0D));
+            seen.set(data.read(server, uuid).orElseThrow());
+        });
+
+        CompoundTag tag = Objects.requireNonNull(seen.get());
+        helper.assertValueEqual(tag.getCompoundOrEmpty(AttachmentHolder.ATTACHMENTS_NBT_KEY).get(counter.getId().toString()), PlayerDataSamples.counterTag(5), "attachment in the tag read inside the edit");
+        for (String key : List.of(ServerPlayer.ENDER_PEARLS_TAG, PlayerDataSamples.ROOT_VEHICLE_TAG, ServerPlayer.TAG_DIMENSION, PlayerDataSamples.POSITION_TAG)) {
+            helper.assertValueEqual(tag.get(key), written.get(key), key + " in the tag read inside the edit");
+        }
+
+        helper.succeed();
+    }
+
+    @ServerTest
+    public static void replaceInsideAnEditOfThatPlayerThrows(GameTestHelper helper) throws IOException {
+        PlayerData data = PlayerDataSamples.playerData();
+        MinecraftServer server = helper.getLevel().getServer();
+        UUID uuid = UUID.randomUUID();
+        Path file = PlayerDataSamples.write(server, uuid, PlayerDataSamples.playerTag(1));
+        byte[] written = Files.readAllBytes(file);
+        Throwable thrown = Assertions.catchThrowable(() -> data.edit(server, uuid, _ -> data.replace(server, uuid, PlayerDataSamples.playerTag(4))));
+        helper.assertTrue(thrown instanceof IllegalStateException, "The replace inside an edit of the same player did not throw");
+        helper.assertTrue(Arrays.equals(Files.readAllBytes(file), written), "The replace inside an edit of the same player changed the file");
+        helper.succeed();
+    }
+
     @ClientTest
     public static void editRunsOnTheJoinedPlayer(Client client) {
         client.joinWorld();
@@ -784,7 +842,108 @@ public class PlayerDataSamples {
         client.leaveWorld();
     }
 
+    @ClientTest
+    public static void replaceKeepsTheStateOfAUuidKeyedLoadListener(Client client) {
+        client.joinWorld();
+        PlayerData data = PlayerDataSamples.playerData();
+        MinecraftServer server = client.serverLevel().getServer();
+        ServerPlayer live = client.serverLevel().players().getFirst();
+        PlayerDataSamples.runOnServer(client, () -> {
+            CompoundTag tag = data.snapshot(live);
+            PlayerDataSamples.FIRED.clear();
+            data.replace(server, live.getUUID(), tag);
+        });
+
+        Assertions.assertThat(PlayerDataSamples.HELD_STATES).contains(live.getUUID());
+        Assertions.assertThat(PlayerDataSamples.FIRED).containsExactly(
+                new Fired(live.getUUID(), PlayerEvent.PlayerLoggedOutEvent.class),
+                new Fired(live.getUUID(), PlayerEvent.LoadFromFile.class),
+                new Fired(live.getUUID(), PlayerEvent.PlayerLoggedInEvent.class)
+        );
+        client.leaveWorld();
+    }
+
+    @ClientTest
+    public static void replaceWithAThrowingLoadListenerLeavesThePlayer(Client client) {
+        client.joinWorld();
+        PlayerData data = PlayerDataSamples.playerData();
+        MinecraftServer server = client.serverLevel().getServer();
+        ServerPlayer live = client.serverLevel().players().getFirst();
+        AdvancementHolder advancement = PlayerDataSamples.advancement(server);
+        String criterion = PlayerDataSamples.criterion(advancement);
+        PlayerDataSamples.runOnServer(client, () -> {
+            CompoundTag tag = data.snapshot(live);
+            PlayerDataSamples.FIRED.clear();
+            PlayerDataSamples.LOGGED_IN.clear();
+            PlayerDataSamples.FAILING_LOADS.add(live.getUUID());
+            try {
+                Assertions.assertThatThrownBy(() -> data.replace(server, live.getUUID(), tag)).isInstanceOf(RuntimeException.class);
+            } finally {
+                PlayerDataSamples.FAILING_LOADS.remove(live.getUUID());
+            }
+
+            Assertions.assertThat(server.getPlayerList().getPlayer(live.getUUID())).isSameAs(live);
+            Assertions.assertThat(live.connection.player).isSameAs(live);
+            Assertions.assertThat(live.isRemoved()).isFalse();
+            Assertions.assertThat(live.level().getEntity(live.getUUID())).isSameAs(live);
+            Assertions.assertThat(PlayerDataSamples.LOGGED_IN).containsExactly(live);
+
+            PlayerDataSamples.PROGRESSED.clear();
+            Assertions.assertThat(live.getAdvancements().award(advancement, criterion)).isTrue();
+            live.getAdvancements().revoke(advancement, criterion);
+            Assertions.assertThat(PlayerDataSamples.progressed(advancement, live.getUUID())).containsExactly(live);
+        });
+
+        Assertions.assertThat(PlayerDataSamples.FIRED).containsExactly(
+                new Fired(live.getUUID(), PlayerEvent.PlayerLoggedOutEvent.class),
+                new Fired(live.getUUID(), PlayerEvent.LoadFromFile.class),
+                new Fired(live.getUUID(), PlayerEvent.PlayerLoggedInEvent.class)
+        );
+        client.leaveWorld();
+    }
+
+    @ClientTest
+    public static void editOfADeadPlayerDoesNotRun(Client client) {
+        client.joinWorld();
+        PlayerData data = PlayerDataSamples.playerData();
+        MinecraftServer server = client.serverLevel().getServer();
+        ServerPlayer live = client.serverLevel().players().getFirst();
+        client.until("the server to count the client as loaded", live.connection::hasClientLoaded);
+        PlayerDataSamples.runOnServer(client, () -> live.kill(live.level()));
+        client.until("the client to show the death screen", () -> client.screen() instanceof DeathScreen);
+
+        AtomicBoolean ran = new AtomicBoolean();
+        boolean edited = PlayerDataSamples.onServer(client, () -> data.edit(server, live.getUUID(), _ -> ran.set(true)));
+        Assertions.assertThat(edited).isFalse();
+        Assertions.assertThat(ran.get()).isFalse();
+
+        Objects.requireNonNull(client.minecraft().player).respawn();
+        client.until("the server to respawn the player", () -> server.getPlayerList().getPlayer(live.getUUID()) != live);
+        boolean editedAfterRespawn = PlayerDataSamples.onServer(client, () -> data.edit(server, live.getUUID(), player -> player.getInventory().setItem(0, new ItemStack(Items.DIAMOND))));
+        ServerPlayer respawned = Objects.requireNonNull(server.getPlayerList().getPlayer(live.getUUID()));
+        Assertions.assertThat(editedAfterRespawn).isTrue();
+        Assertions.assertThat(respawned.getInventory().getItem(0).is(Items.DIAMOND)).isTrue();
+        client.leaveWorld();
+    }
+
+    @ClientTest
+    public static void replaceKeepsAnOpenIteratorOfThePlayersValid(Client client) {
+        client.joinWorld();
+        PlayerData data = PlayerDataSamples.playerData();
+        MinecraftServer server = client.serverLevel().getServer();
+        ServerPlayer live = client.serverLevel().players().getFirst();
+        PlayerDataSamples.runOnServer(client, () -> {
+            Iterator<ServerPlayer> players = server.getPlayerList().getPlayers().iterator();
+            data.replace(server, live.getUUID(), data.snapshot(live));
+            Assertions.assertThat(players.next()).isSameAs(server.getPlayerList().getPlayer(live.getUUID())).isNotSameAs(live);
+            Assertions.assertThat(players.hasNext()).isFalse();
+        });
+        client.leaveWorld();
+    }
+
     private record Counter(int count) { }
+
+    private record Fired(UUID player, Class<?> event) { }
 
     @EventBusSubscriber(modid = Nexus.MOD_ID)
     public static final class Registered {
@@ -799,7 +958,13 @@ public class PlayerDataSamples {
 
         @SubscribeEvent
         public static void onLoadFromFile(PlayerEvent.LoadFromFile event) {
-            PlayerDataSamples.LOADED.add(event.getEntity().getUUID());
+            UUID player = event.getEntity().getUUID();
+            PlayerDataSamples.LOADED.add(player);
+            PlayerDataSamples.HELD_STATES.add(player);
+            PlayerDataSamples.FIRED.add(new Fired(player, PlayerEvent.LoadFromFile.class));
+            if (PlayerDataSamples.FAILING_LOADS.contains(player)) {
+                throw new IllegalStateException("Thrown by the load listener of '" + player + "'");
+            }
         }
 
         @SubscribeEvent
@@ -814,11 +979,15 @@ public class PlayerDataSamples {
         @SubscribeEvent
         public static void onLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
             PlayerDataSamples.LOGGED_IN.add(event.getEntity());
+            PlayerDataSamples.FIRED.add(new Fired(event.getEntity().getUUID(), PlayerEvent.PlayerLoggedInEvent.class));
         }
 
         @SubscribeEvent
         public static void onLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+            UUID player = event.getEntity().getUUID();
             PlayerDataSamples.LOGGED_OUT.add(event.getEntity());
+            PlayerDataSamples.HELD_STATES.remove(player);
+            PlayerDataSamples.FIRED.add(new Fired(player, PlayerEvent.PlayerLoggedOutEvent.class));
         }
 
         @SubscribeEvent

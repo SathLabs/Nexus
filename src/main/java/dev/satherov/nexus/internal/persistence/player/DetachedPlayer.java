@@ -135,6 +135,20 @@ public final class DetachedPlayer extends ServerPlayer implements AutoCloseable 
     }
     
     ///
+    /// Copies the ender pearls, the root vehicle, the dimension, and the position of the loaded player tag into the given tag.
+    ///
+    /// @param saved The player tag to copy them into.
+    ///
+    public void putCarriedKeys(CompoundTag saved) {
+        for (String key : DetachedPlayer.CARRIED_KEYS) {
+            Tag carried = this.tag.get(key);
+            if (carried != null) {
+                saved.put(key, carried.copy());
+            }
+        }
+    }
+    
+    ///
     /// Writes the given player tag into the file of this player and fires [PlayerEvent.SaveToFile] for it.
     ///
     /// The ender pearls, the root vehicle, and the dimension of the loaded player tag will be put into the given tag first.
@@ -147,13 +161,7 @@ public final class DetachedPlayer extends ServerPlayer implements AutoCloseable 
     /// @throws UncheckedIOException If the file could not be written.
     ///
     public void save(CompoundTag saved) {
-        for (String key : DetachedPlayer.CARRIED_KEYS) {
-            Tag carried = this.tag.get(key);
-            if (carried != null) {
-                saved.put(key, carried);
-            }
-        }
-        
+        this.putCarriedKeys(saved);
         String id = this.getGameProfile().id().toString();
         File folder = this.level().getServer().getPlayerList().getPlayerIo().getPlayerDir();
         Path directory = folder.toPath();
