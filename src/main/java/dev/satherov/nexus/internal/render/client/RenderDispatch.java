@@ -379,7 +379,7 @@ public class RenderDispatch {
     private static void drawScenes(RenderLevelStageEvent.AfterTranslucentBlocks event) {
         Minecraft minecraft = Minecraft.getInstance();
         MultiBufferSource.BufferSource buffers = minecraft.renderBuffers().bufferSource();
-        Scenes.INSTANCE.draw(event.getPoseStack(), minecraft.getDeltaTracker().getGameTimeDeltaPartialTick(false), buffers);
+        Scenes.INSTANCE.draw(event.getPoseStack(), minecraft.getDeltaTracker(), buffers);
         buffers.endBatch();
     }
     

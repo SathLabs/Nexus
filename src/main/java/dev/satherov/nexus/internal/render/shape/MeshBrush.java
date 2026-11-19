@@ -91,7 +91,7 @@ public final class MeshBrush implements Brush {
     }
     
     ///
-    /// Records the line in the line render type of the current depth mode, at the current line width.
+    /// Records the line in the line render type of the current depth mode and its color, at the current line width.
     ///
     /// @param from The start of the line.
     /// @param to   The end of the line.
@@ -100,13 +100,13 @@ public final class MeshBrush implements Brush {
     @Override
     public void line(Vec3 from, Vec3 to, int argb) {
         Vec3 normal = to.subtract(from).normalize();
-        List<Primitives.Vertex> vertices = this.vertices(ShapePipelines.lines(this.paint.depth()));
+        List<Primitives.Vertex> vertices = this.vertices(ShapePipelines.lines(this.paint.depth(), argb));
         vertices.add(new Primitives.Vertex(from, argb, null, 0.0F, 0.0F, normal, this.paint.lineWidth()));
         vertices.add(new Primitives.Vertex(to, argb, null, 0.0F, 0.0F, normal, this.paint.lineWidth()));
     }
     
     ///
-    /// Records the triangle as a quad that repeats the third corner, in the fill render type of the current depth mode.
+    /// Records the triangle as a quad that repeats the third corner, in the fill render type of the current depth mode and its color.
     ///
     /// @param a    The first corner.
     /// @param b    The second corner.
@@ -119,7 +119,7 @@ public final class MeshBrush implements Brush {
     }
     
     ///
-    /// Records the quad in the fill render type of the current depth mode.
+    /// Records the quad in the fill render type of the current depth mode and its color.
     ///
     /// @param quad The quad to fill.
     /// @param argb The ARGB color of the quad.
@@ -131,7 +131,7 @@ public final class MeshBrush implements Brush {
     }
     
     ///
-    /// Records the quad between the given corners in the fill render type of the current depth mode.
+    /// Records the quad between the given corners in the fill render type of the current depth mode and the given color.
     ///
     /// @param argb   The ARGB color of the quad.
     /// @param first  The first corner.
@@ -140,7 +140,7 @@ public final class MeshBrush implements Brush {
     /// @param fourth The fourth corner.
     ///
     private void fill(int argb, Vec3 first, Vec3 second, Vec3 third, Vec3 fourth) {
-        List<Primitives.Vertex> vertices = this.vertices(ShapePipelines.fill(this.paint.depth()));
+        List<Primitives.Vertex> vertices = this.vertices(ShapePipelines.fill(this.paint.depth(), argb));
         vertices.add(new Primitives.Vertex(first, argb, null, 0.0F, 0.0F, Vec3.ZERO, 0.0F));
         vertices.add(new Primitives.Vertex(second, argb, null, 0.0F, 0.0F, Vec3.ZERO, 0.0F));
         vertices.add(new Primitives.Vertex(third, argb, null, 0.0F, 0.0F, Vec3.ZERO, 0.0F));
@@ -148,7 +148,7 @@ public final class MeshBrush implements Brush {
     }
     
     ///
-    /// Records the quad in the sprite render type of the sprite's atlas and the current depth mode.
+    /// Records the quad in the sprite render type of the sprite's atlas, the current depth mode, and the tint.
     ///
     /// The texture coordinates of the sprite are looked up each time the vertices are written.
     ///
@@ -159,7 +159,7 @@ public final class MeshBrush implements Brush {
     @Override
     public void quad(Quad quad, Sprite sprite, int argb) {
         Vec3 cornerU = quad.origin().add(quad.edgeU());
-        List<Primitives.Vertex> vertices = this.vertices(ShapePipelines.sprite(sprite.atlas(), this.paint.depth()));
+        List<Primitives.Vertex> vertices = this.vertices(ShapePipelines.sprite(sprite.atlas(), this.paint.depth(), argb));
         vertices.add(new Primitives.Vertex(quad.origin(), argb, sprite, 0.0F, 0.0F, Vec3.ZERO, 0.0F));
         vertices.add(new Primitives.Vertex(cornerU, argb, sprite, 1.0F, 0.0F, Vec3.ZERO, 0.0F));
         vertices.add(new Primitives.Vertex(cornerU.add(quad.edgeV()), argb, sprite, 1.0F, 1.0F, Vec3.ZERO, 0.0F));
@@ -167,7 +167,7 @@ public final class MeshBrush implements Brush {
     }
     
     ///
-    /// Records a filled circle in the shape render type of the current depth mode.
+    /// Records a filled circle in the shape render type of the current depth mode and its color.
     ///
     /// @param center The center of the circle.
     /// @param normal The normal of the plane the circle lies in.
@@ -182,7 +182,7 @@ public final class MeshBrush implements Brush {
     }
     
     ///
-    /// Records a circle outline at the current line width in the shape render type of the current depth mode.
+    /// Records a circle outline at the current line width in the shape render type of the current depth mode and its color.
     ///
     /// @param center The center of the circle.
     /// @param normal The normal of the plane the circle lies in.
@@ -197,7 +197,7 @@ public final class MeshBrush implements Brush {
     }
     
     ///
-    /// Records a filled sphere in the shape render type of the current depth mode.
+    /// Records a filled sphere in the shape render type of the current depth mode and its color.
     ///
     /// @param center The center of the sphere.
     /// @param radius The radius of the sphere.
@@ -209,9 +209,9 @@ public final class MeshBrush implements Brush {
     }
     
     ///
-    /// Records the four corners of the quad of a disc, ring, or sphere in the shape render type of the current depth mode.
+    /// Records the four corners of the quad of a disc, ring, or sphere in the shape render type of the current depth mode and the given color.
     ///
-    /// A ring takes the current line width as its width and goes into [#ringsByType].
+    /// A ring takes the current line width as its width, goes into [#ringsByType], and does not write the depth.
     ///
     /// @param kind   The kind of the shape.
     /// @param center The center of the shape.
@@ -220,8 +220,8 @@ public final class MeshBrush implements Brush {
     /// @param argb   The ARGB color of the shape.
     ///
     private void round(Primitives.ShapeInputs.Kind kind, Vec3 center, Vec3 axis, double radius, int argb) {
-        RenderType type = ShapePipelines.shape(this.paint.depth());
         boolean ring = kind == Primitives.ShapeInputs.Kind.RING;
+        RenderType type = ring ? ShapePipelines.ring(this.paint.depth()) : ShapePipelines.shape(this.paint.depth(), argb);
         List<Primitives.Vertex> vertices = ring ? this.ringsByType.computeIfAbsent(type, _ -> new ArrayList<>()) : this.vertices(type);
         float width = ring ? this.paint.lineWidth() : 0.0F;
         for (Vec2 corner : MeshBrush.CORNERS) {

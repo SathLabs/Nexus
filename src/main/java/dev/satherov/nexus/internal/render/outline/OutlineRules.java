@@ -30,12 +30,10 @@ import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexFormat;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
 
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -60,11 +58,6 @@ public final class OutlineRules implements CustomBlockOutlineRenderer {
     /// The key of the reload listener that drops the kept primitives.
     ///
     private static final Identifier KEY = Identifier.fromNamespaceAndPath(Nexus.MOD_ID, "outline_rules");
-    
-    ///
-    /// The order the render types are drawn in, lines last.
-    ///
-    private static final Comparator<RenderType> DRAW_ORDER = Comparator.comparing(type -> type.mode() == VertexFormat.Mode.LINES);
     
     ///
     /// Every replacing rule.
@@ -116,8 +109,6 @@ public final class OutlineRules implements CustomBlockOutlineRenderer {
     
     ///
     /// Registers the reload listener that drops the kept primitives to run after the atlases are stitched.
-    ///
-    /// The kept primitives hold the texture coordinates of their sprites in the atlases.
     ///
     /// @param event The registration event of the client reload listeners.
     ///
@@ -216,16 +207,15 @@ public final class OutlineRules implements CustomBlockOutlineRenderer {
     }
     
     ///
-    /// Writes the kept primitives into one buffer per render type, relative to the given origin, and then draws every buffer, lines last.
+    /// Writes the kept primitives into one buffer per render type, relative to the given origin, and then draws every buffer in the order of [ShapePipelines#getAllRenderTypes()].
     ///
     /// If the program of a render type could not be compiled, its buffer will be dropped.
     ///
     /// @param origin The position of the camera, in the coordinates of the outlines.
     ///
     private void draw(Vec3 origin) {
-        List<RenderType> types = ShapePipelines.getAllRenderTypes().stream().sorted(OutlineRules.DRAW_ORDER).toList();
         Map<RenderType, BufferBuilder> builders = new LinkedHashMap<>();
-        for (RenderType type : types) {
+        for (RenderType type : ShapePipelines.getAllRenderTypes()) {
             builders.put(type, new BufferBuilder(this.memory(type), type.mode(), type.format()));
         }
         

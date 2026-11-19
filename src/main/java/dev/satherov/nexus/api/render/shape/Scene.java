@@ -4,6 +4,7 @@ import dev.satherov.nexus.api.mod.NexusMod;
 import dev.satherov.nexus.api.render.Render;
 import dev.satherov.nexus.internal.render.shape.SceneMesh;
 
+import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.world.phys.Vec3;
@@ -27,6 +28,10 @@ import java.util.Set;
 /// Every method but [#tick()] also throws one while the client is in no level.
 ///
 /// Every drawing is removed once the level of the client unloads.
+///
+/// Every scene is drawn whole, after the scenes created before it.
+/// The shapes of a later scene will be drawn over the translucent shapes of an earlier scene in front of them,
+/// and its [Paint.Depth#HIDDEN] shapes over the opaque shapes of an earlier scene in front of them.
 ///
 /// Can be accessed through [Render#getScene()].
 ///
@@ -228,12 +233,12 @@ public final class Scene {
     ///
     /// Should only ever be called by Nexus itself.
     ///
-    /// @param pose        The pose stack of the frame, whose origin is the camera.
-    /// @param partialTick The partial tick of the frame.
-    /// @param buffers     The buffer source the labels are drawn into.
+    /// @param pose         The pose stack of the frame, whose origin is the camera.
+    /// @param deltaTracker The delta tracker of the frame.
+    /// @param buffers      The buffer source the labels are drawn into.
     ///
     @ApiStatus.Internal
-    public void draw(PoseStack pose, float partialTick, MultiBufferSource.BufferSource buffers) {
+    public void draw(PoseStack pose, DeltaTracker deltaTracker, MultiBufferSource.BufferSource buffers) {
         this.checkUsable();
         Vec3 camera = Minecraft.getInstance().gameRenderer.getMainCamera().position();
         if (this.changed || this.mesh.isFarFrom(camera)) {
@@ -241,9 +246,9 @@ public final class Scene {
             this.changed = false;
         }
         
-        this.mesh.draw(pose, partialTick);
+        this.mesh.draw(pose, deltaTracker);
         for (Drawing drawing : this.drawings) {
-            drawing.drawLabels(pose, camera, partialTick, buffers);
+            drawing.drawLabels(pose, camera, deltaTracker, buffers);
         }
     }
     

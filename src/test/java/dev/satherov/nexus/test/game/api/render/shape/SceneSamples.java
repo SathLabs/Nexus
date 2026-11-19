@@ -17,9 +17,11 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLConstructModEvent;
 
+import net.minecraft.client.OptionInstance;
 import net.minecraft.client.gui.components.debug.DebugScreenEntryList;
 import net.minecraft.client.gui.components.debug.DebugScreenEntryStatus;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
@@ -30,8 +32,10 @@ import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.client.resources.metadata.animation.FrameSize;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.SectionPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import net.minecraft.server.ServerTickRateManager;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.ARGB;
 import net.minecraft.world.entity.Entity;
@@ -62,6 +66,8 @@ public class SceneSamples {
     private static final int RED = 0xFFFF0000;
     
     private static final int BLUE = 0xFF0000FF;
+    
+    private static final int TRANSLUCENT_BLUE = 0x800000FF;
     
     private static final int GREEN = 0xFF00FF00;
     
@@ -111,7 +117,17 @@ public class SceneSamples {
     
     private static final double LABEL_DISTANCE = 2.0D;
     
+    private static final double PAST_FOG = 16.0D;
+    
     private static final int CHANNEL_TOLERANCE = 8;
+    
+    private static final double FOLLOW_DISTANCE = 3.0D;
+    
+    private static final double FOLLOW_SIZE = 0.4D;
+    
+    private static final double FROZEN_PUSH = 0.5D;
+    
+    private static final double FROZEN_TRAVEL = 1.0D;
     
     private static @Nullable Vec3 debugCenter;
     
@@ -144,27 +160,51 @@ public class SceneSamples {
     }
     
     @ClientTest
-    public static void fillStandsInWater(Client client) {
-        Vec3 eye = SceneSamples.enter(client, SceneSamples.WATER_PITCH);
-        ServerLevel level = client.serverLevel();
-        BlockPos floor = BlockPos.containing(eye).below(3);
-        for (int x = -3; x <= 3; x++) {
-            for (int z = 1; z <= 9; z++) {
-                boolean rim = x == -3 || x == 3 || z == 1 || z == 9;
-                BlockState inside = rim ? Blocks.STONE.defaultBlockState() : Blocks.WATER.defaultBlockState();
-                level.setBlockAndUpdate(floor.offset(x, 0, z), Blocks.STONE.defaultBlockState());
-                level.setBlockAndUpdate(floor.offset(x, 1, z), inside);
-            }
-        }
-        
-        client.settle();
-        AABB box = new AABB(eye.x - 0.5D, floor.getY() + 1.0D, eye.z + 4.0D, eye.x + 0.5D, eye.y - 0.62D, eye.z + 5.0D);
-        SceneSamples.scene().draw(Shape.box(box), Paint.fill(SceneSamples.RED));
+    public static void hiddenCopyOfOpaqueBoxShowsOnlyBehindWall(Client client) {
+        Vec3 eye = SceneSamples.enter(client, 0.0F);
+        SceneSamples.wall(client, eye);
+        Vec3 behind = eye.add(0.0D, 0.0D, 7.0D);
+        int stone = SceneSamples.color(client, client.capture(), behind);
+        LocalPlayer player = Objects.requireNonNull(client.minecraft().player);
+        Scene scene = SceneSamples.scene();
+        scene.draw(Shape.box(SceneSamples.slab(eye)), Paint.fill(SceneSamples.RED));
+        scene.draw(Shape.box(SceneSamples.slab(eye).move(player.position().reverse())), Paint.fill(SceneSamples.TRANSLUCENT_BLUE).withDepth(Paint.Depth.HIDDEN)).follow(player);
+        client.tick();
+    
+        Capture capture = client.capture();
+        SceneSamples.assertColor(client, capture, eye.add(2.0D, 0.0D, 7.0D), SceneSamples.shaded(client, SceneSamples.RED));
+        // The view behind the wall passes through the near and the far face of the copy, so the stone is tinted twice.
+        int blue = SceneSamples.shaded(client, SceneSamples.TRANSLUCENT_BLUE);
+        SceneSamples.assertNear(client, capture, behind, ARGB.alphaBlend(ARGB.alphaBlend(stone, blue), blue));
+    }
+    
+    @ClientTest
+    public static void opaqueFillHidesTheFillDrawnBehindIt(Client client) {
+        Vec3 eye = SceneSamples.enter(client, 0.0F);
+        Vec3 front = eye.add(0.0D, 0.0D, 5.0D);
+        Scene scene = SceneSamples.scene();
+        scene.draw(Shape.box(AABB.ofSize(front, 1.0D, 1.0D, 1.0D)), Paint.fill(SceneSamples.RED));
+        scene.draw(Shape.box(AABB.ofSize(eye.add(0.0D, 0.0D, 8.0D), 4.0D, 4.0D, 1.0D)), Paint.fill(SceneSamples.BLUE));
         client.tick();
         
-        Capture capture = client.capture();
-        SceneSamples.assertColor(client, capture, eye.add(0.0D, -1.12D, 4.0D), SceneSamples.shaded(client, SceneSamples.RED));
-        Assertions.assertThat(SceneSamples.color(client, capture, eye.add(0.0D, -2.2D, 4.0D))).as("the box below the water surface").isNotEqualTo(SceneSamples.shaded(client, SceneSamples.RED));
+        SceneSamples.assertColor(client, client.capture(), front, SceneSamples.shaded(client, SceneSamples.RED));
+    }
+    
+    @ClientTest
+    public static void fillStandsInWater(Client client) {
+        SceneSamples.assertFillStandsInWater(client);
+    }
+    
+    @ClientTest
+    public static void fillStandsInWaterUnderImprovedTransparency(Client client) {
+        OptionInstance<Boolean> transparency = client.minecraft().options.improvedTransparency();
+        boolean before = transparency.get();
+        transparency.set(true);
+        try {
+            SceneSamples.assertFillStandsInWater(client);
+        } finally {
+            transparency.set(before);
+        }
     }
     
     @ClientTest
@@ -235,6 +275,29 @@ public class SceneSamples {
         Assertions.assertThat(drawing.isActive()).as("the drawing of the moved armor stand").isTrue();
         Assertions.assertThat(SceneSamples.color(client, capture, start.add(0.0D, 0.5D, 0.0D))).as("the start of the armor stand").isNotEqualTo(SceneSamples.shaded(client, SceneSamples.RED));
         SceneSamples.assertColor(client, capture, moved.add(0.0D, 0.5D, 0.0D), SceneSamples.shaded(client, SceneSamples.RED));
+    }
+    
+    @ClientTest
+    public static void followedPlayerKeepsDrawingInPlaceWhileTicksAreFrozen(Client client) {
+        Vec3 eye = SceneSamples.enter(client, 0.0F);
+        SceneSamples.freezeTicks(client, true);
+        try {
+            ClientLevel clientLevel = Objects.requireNonNull(client.minecraft().level);
+            client.until("the ticks of the client to freeze", () -> !clientLevel.tickRateManager().runsNormally());
+            LocalPlayer player = Objects.requireNonNull(client.minecraft().player);
+            Vec3 offset = new Vec3(0.0D, player.getEyeHeight(), SceneSamples.FOLLOW_DISTANCE);
+            SceneSamples.scene().draw(Shape.box(AABB.ofSize(offset, SceneSamples.FOLLOW_SIZE, SceneSamples.FOLLOW_SIZE, SceneSamples.FOLLOW_SIZE)), Paint.fill(SceneSamples.RED)).follow(player);
+            client.until("the player to move in the last frozen tick", () -> {
+                boolean moved = player.getX() - eye.x > SceneSamples.FROZEN_TRAVEL && player.getX() - player.xo > SceneSamples.FOLLOW_SIZE;
+                player.setDeltaMovement(new Vec3(SceneSamples.FROZEN_PUSH, 0.0D, 0.0D));
+                return moved;
+            });
+            
+            Vec3 camera = client.minecraft().gameRenderer.getMainCamera().position();
+            SceneSamples.assertColor(client, client.capture(), camera.add(0.0D, 0.0D, SceneSamples.FOLLOW_DISTANCE), SceneSamples.shaded(client, SceneSamples.RED));
+        } finally {
+            SceneSamples.freezeTicks(client, false);
+        }
     }
     
     @ClientTest
@@ -417,6 +480,20 @@ public class SceneSamples {
     }
     
     @ClientTest
+    public static void strokeKeepsItsColorAfterTheCameraMovesPastTheFog(Client client) {
+        Vec3 eye = SceneSamples.enter(client, 0.0F);
+        double distance = client.minecraft().options.getEffectiveRenderDistance() * SectionPos.SECTION_SIZE + SceneSamples.PAST_FOG;
+        Vec3 near = eye.add(0.0D, 0.0D, distance);
+        AABB box = new AABB(near.x - 3.0D, near.y, near.z + 7.0D, near.x + 3.0D, near.y + 1.0D, near.z + 7.5D);
+        SceneSamples.scene().draw(Shape.box(box), Paint.stroke(SceneSamples.RED).withLineWidth(SceneSamples.RING_WIDTH));
+        client.tick();
+        
+        client.pose(client.serverLevel().getRespawnData().pos().getBottomCenter().add(0.0D, SceneSamples.HEIGHT, distance), 0.0F, 0.0F);
+        client.tick();
+        SceneSamples.assertNear(client, client.capture(), near.add(2.0D, 0.0D, 7.0D), SceneSamples.shaded(client, SceneSamples.RED));
+    }
+    
+    @ClientTest
     public static void boxStaysInPlaceAfterTravellingFar(Client client) {
         Vec3 eye = SceneSamples.enter(client, 0.0F);
         Vec3 far = eye.add(SceneSamples.FAR, 0.0D, 0.0D);
@@ -518,6 +595,36 @@ public class SceneSamples {
         client.pose(client.serverLevel().getRespawnData().pos().getBottomCenter().add(0.0D, SceneSamples.HEIGHT, 0.0D), 0.0F, pitch);
         client.awaitStill(SceneSamples.STILL_FRAMES);
         return client.minecraft().gameRenderer.getMainCamera().position();
+    }
+    
+    private static void assertFillStandsInWater(Client client) {
+        Vec3 eye = SceneSamples.enter(client, SceneSamples.WATER_PITCH);
+        ServerLevel level = client.serverLevel();
+        BlockPos floor = BlockPos.containing(eye).below(3);
+        for (int x = -3; x <= 3; x++) {
+            for (int z = 1; z <= 9; z++) {
+                boolean rim = x == -3 || x == 3 || z == 1 || z == 9;
+                BlockState inside = rim ? Blocks.STONE.defaultBlockState() : Blocks.WATER.defaultBlockState();
+                level.setBlockAndUpdate(floor.offset(x, 0, z), Blocks.STONE.defaultBlockState());
+                level.setBlockAndUpdate(floor.offset(x, 1, z), inside);
+            }
+        }
+        
+        client.settle();
+        AABB box = new AABB(eye.x - 0.5D, floor.getY() + 1.0D, eye.z + 4.0D, eye.x + 0.5D, eye.y - 0.62D, eye.z + 5.0D);
+        SceneSamples.scene().draw(Shape.box(box), Paint.fill(SceneSamples.RED));
+        client.tick();
+        
+        Capture capture = client.capture();
+        SceneSamples.assertColor(client, capture, eye.add(0.0D, -1.12D, 4.0D), SceneSamples.shaded(client, SceneSamples.RED));
+        Assertions.assertThat(SceneSamples.color(client, capture, eye.add(0.0D, -2.2D, 4.0D))).as("the box below the water surface").isNotEqualTo(SceneSamples.shaded(client, SceneSamples.RED));
+    }
+    
+    private static void freezeTicks(Client client, boolean frozen) {
+        ServerTickRateManager ticks = client.serverLevel().getServer().tickRateManager();
+        CompletableFuture<Void> done = client.serverLevel().getServer().submit(() -> ticks.setFrozen(frozen));
+        client.until("the server to set the tick rate", done::isDone);
+        done.join();
     }
     
     private static void wall(Client client, Vec3 eye) {
