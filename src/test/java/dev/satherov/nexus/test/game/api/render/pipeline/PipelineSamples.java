@@ -273,9 +273,10 @@ public class PipelineSamples {
             int actual = client.capture().pixel(pixel.x, pixel.y);
             Assertions.assertThat(actual).as("the color at '%d, %d' over the background '%08X'", pixel.x, pixel.y, background).isNotEqualTo(background);
             // The pack's program replaces the hooks, so the yellow tint would have emptied the blue channel if it ran.
-            Assertions.assertThat(ARGB.blue(actual))
-                    .as("the blue channel of the color '%08X' at '%d, %d'", actual, pixel.x, pixel.y)
-                    .isGreaterThan(ARGB.red(actual) / 2);
+            // The final pass of the sample pack swaps red and blue, so that channel is captured as red.
+            Assertions.assertThat(ARGB.red(actual))
+                    .as("the red channel of the color '%08X' at '%d, %d'", actual, pixel.x, pixel.y)
+                    .isGreaterThan(ARGB.blue(actual) / 2);
         } finally {
             SampleQuads.hide();
         }
