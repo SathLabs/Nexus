@@ -16,6 +16,7 @@ import net.neoforged.neoforge.event.level.LevelEvent;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelAccessor;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
@@ -83,6 +84,28 @@ public class ClientSession {
     ///
     public static boolean isHeld(Level level) {
         return ClientTicks.isCurrentLevel(level) || ClientSession.loaded == level;
+    }
+    
+    ///
+    /// If the given level is the one that the running packet handler built to switch to.
+    ///
+    /// @param level The level.
+    ///
+    /// @return `true` if the client switches to the level.
+    ///
+    public static boolean isSwitchingTo(LevelAccessor level) {
+        return ClientSession.loaded == level;
+    }
+    
+    ///
+    /// If the running packet handler already built a level to switch to, other than the given level.
+    ///
+    /// @param level The level.
+    ///
+    /// @return `true` if the client switches from the level to another one.
+    ///
+    public static boolean isSwitchingFrom(LevelAccessor level) {
+        return ClientSession.recorded && ClientSession.loaded != level;
     }
     
     ///
