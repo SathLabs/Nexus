@@ -382,6 +382,14 @@ public final class Format<VALUE> {
                 throw CodecErrors.prefixKey(failure, Format.DATA);
             }
         }
+
+        ///
+        /// Checks the codec of the value.
+        ///
+        @Override
+        public boolean hasKeyedForm() {
+            return Format.this.codec.hasKeyedForm();
+        }
     }
 
     ///
@@ -432,6 +440,14 @@ public final class Format<VALUE> {
             
             Format.this.requireCurrent(Format.this.readVersion(operations, version));
             return Format.this.codec.read(operations, data);
+        }
+
+        ///
+        /// Checks the codec of the value.
+        ///
+        @Override
+        public boolean hasKeyedForm() {
+            return Format.this.codec.hasKeyedForm();
         }
     }
 }

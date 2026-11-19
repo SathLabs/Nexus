@@ -12,6 +12,7 @@ import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.network.codec.ByteBufCodecs;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
@@ -23,7 +24,7 @@ import java.util.Objects;
 import java.util.function.UnaryOperator;
 
 ///
-/// Checks that a format upgrades old tags step by step, refuses steps that leave a gap, nests through its codec, refuses unknown keys when strict, and stores only a struct flat beside its version.
+/// Checks that a format upgrades old tags step by step, refuses steps that leave a gap, nests through its codec, refuses unknown keys when strict, stores only a struct flat beside its version, and builds no data component over a codec without a JSON and NBT form.
 ///
 public class FormatTest {
     
@@ -229,6 +230,20 @@ public class FormatTest {
         Assertions.assertThat(flat.decode(FormatTest.JSON, current)).isEqualTo(FormatTest.STEVE);
         Assertions.assertThatThrownBy(() -> flat.decode(FormatTest.JSON, old)).isInstanceOf(NexusCodecException.class);
         Assertions.assertThatThrownBy(() -> flat.decode(FormatTest.JSON, unversioned)).isInstanceOf(NexusCodecException.class);
+    }
+
+    @Test
+    public void asDataComponentTypeRefusesAFormatOfAStreamOnlyCodec() {
+        NexusCodec<Integer, Access.Plain> stream = NexusCodec.ofStream(ByteBufCodecs.VAR_INT);
+        StructCodec<Grave, Access.Plain> grave = NexusCodec.struct("grave", NexusCodec.STRING.field("owner", Grave::owner), stream.field("count", Grave::count), Grave::new);
+        Format<Grave> format = Format.of(grave);
+
+        Assertions.assertThatThrownBy(() -> format.codec().asDataComponentType())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("JSON and NBT");
+        Assertions.assertThatThrownBy(() -> format.flatCodec().asDataComponentType())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("JSON and NBT");
     }
 
     private static CompoundTag grave(String ownerKey, String countKey) {
