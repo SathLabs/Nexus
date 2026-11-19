@@ -110,6 +110,7 @@ nexus {
                 mods libs.iris
                 mods libs.sodium
                 systemProperties.put('nexus.gametest.shaderpack', 'sample')
+                systemProperties.put('nexus.test.stencil', 'true')
             }
         }
     }

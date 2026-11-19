@@ -1,7 +1,7 @@
 package dev.satherov.nexus.internal.render.shape;
 
 import dev.satherov.nexus.api.render.shape.Drawing;
-import dev.satherov.nexus.internal.render.client.RenderDispatch;
+import dev.satherov.nexus.internal.render.client.PackOverlay;
 import dev.satherov.nexus.internal.render.client.ShapePipelines;
 import dev.satherov.nexus.internal.render.shader.Programs;
 import dev.satherov.nexus.internal.render.shader.VanillaBlock;
@@ -27,7 +27,6 @@ import com.mojang.blaze3d.vertex.VertexFormat;
 import org.jetbrains.annotations.ApiStatus;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fStack;
-import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.jspecify.annotations.Nullable;
@@ -43,7 +42,6 @@ import java.util.Objects;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.function.Consumer;
-import java.util.function.Predicate;
 
 ///
 /// The GPU buffers of one scene, one group per followed drawing plus one for the drawings that follow no entity.
@@ -128,44 +126,28 @@ public final class SceneMesh implements AutoCloseable {
     }
     
     ///
-    /// Draws the buffers of every render type, except the own-shaded ones while a shader pack is in use.
+    /// Draws every buffer, each group at its interpolated origin, through one render pass per render target that the render types draw into.
+    ///
+    /// The shape render types draw into the [PackOverlay], which is the main target unless a shader pack is in use.
+    /// Looking up the overlay seeds it, so the targets are looked up before any pass opens.
+    /// A buffer whose program could not be compiled is skipped.
     ///
     /// @param pose        The pose stack of the frame, whose origin is the camera.
     /// @param partialTick The partial tick of the frame.
     ///
     public void draw(PoseStack pose, float partialTick) {
-        this.draw(pose.last().pose(), partialTick, type -> !RenderDispatch.isDrawnAfterLevel(type.pipeline()));
-    }
-
-    ///
-    /// Draws the buffers of the own-shaded render types while a shader pack is in use.
-    ///
-    /// @param modelView   The model-view matrix of the frame.
-    /// @param partialTick The partial tick of the frame.
-    ///
-    public void drawAfterLevel(Matrix4fc modelView, float partialTick) {
-        this.draw(modelView, partialTick, type -> RenderDispatch.isDrawnAfterLevel(type.pipeline()));
-    }
-
-    ///
-    /// Draws every buffer that passes the given filter through a render pass on the main target, each group at its interpolated origin.
-    ///
-    /// A buffer whose program could not be compiled is skipped.
-    ///
-    /// @param view        The model-view matrix of the frame.
-    /// @param partialTick The partial tick of the frame.
-    /// @param filter      The render types to draw, called with the render type of each buffer.
-    ///
-    private void draw(Matrix4fc view, float partialTick, Predicate<RenderType> filter) {
-        List<List<Buffer>> drawn = new ArrayList<>();
+        Map<RenderTarget, List<List<Buffer>>> drawnByTarget = new LinkedHashMap<>();
         Map<VertexFormat.Mode, Integer> indexCounts = new EnumMap<>(VertexFormat.Mode.class);
-        for (Group group : this.groups) {
-            List<Buffer> buffers = group.buffers()
-                    .stream()
-                    .filter(buffer -> filter.test(buffer.type()) && !Programs.isBroken(buffer.type().pipeline()))
-                    .toList();
-            buffers.forEach(buffer -> indexCounts.merge(buffer.type().mode(), buffer.indexCount(), Math::max));
-            drawn.add(buffers);
+        for (int i = 0; i < this.groups.size(); i++) {
+            for (Buffer buffer : this.groups.get(i).buffers()) {
+                if (Programs.isBroken(buffer.type().pipeline())) {
+                    continue;
+                }
+                
+                List<List<Buffer>> drawn = drawnByTarget.computeIfAbsent(buffer.type().outputTarget().getRenderTarget(), _ -> this.emptyGroups());
+                drawn.get(i).add(buffer);
+                indexCounts.merge(buffer.type().mode(), buffer.indexCount(), Math::max);
+            }
         }
         
         if (indexCounts.isEmpty()) {
@@ -180,7 +162,7 @@ public final class SceneMesh implements AutoCloseable {
         Matrix4fStack modelView = RenderSystem.getModelViewStack();
         modelView.pushMatrix();
         SceneMesh.LAYERING.accept(modelView);
-        modelView.mul(view);
+        modelView.mul(pose.last().pose());
         List<GpuBufferSlice> transforms = new ArrayList<>();
         for (Group group : this.groups) {
             Vec3 offset = group.at(partialTick).subtract(camera);
@@ -190,13 +172,37 @@ public final class SceneMesh implements AutoCloseable {
         
         modelView.popMatrix();
         
-        RenderTarget target = minecraft.getMainRenderTarget();
+        drawnByTarget.forEach((target, drawn) -> SceneMesh.drawOnto(target, transforms, drawn));
+    }
+    
+    ///
+    /// One empty list of buffers per group.
+    ///
+    /// @return The lists, in the order of the groups.
+    ///
+    private List<List<Buffer>> emptyGroups() {
+        List<List<Buffer>> groups = new ArrayList<>();
+        for (int i = 0; i < this.groups.size(); i++) {
+            groups.add(new ArrayList<>());
+        }
+        
+        return groups;
+    }
+    
+    ///
+    /// Draws the given buffers through one render pass on the given target.
+    ///
+    /// @param target     The render target to draw onto.
+    /// @param transforms The transforms of the groups, in the order of the groups.
+    /// @param drawn      The buffers of each group, in the order of the groups.
+    ///
+    private static void drawOnto(RenderTarget target, List<GpuBufferSlice> transforms, List<List<Buffer>> drawn) {
         //noinspection DataFlowIssue Yes, target#getColorTextureView might be null, but only after the buffer has already been destroyed, so it doesn't matter.
         try (RenderPass pass = RenderSystem.getDevice()
                 .createCommandEncoder()
                 .createRenderPass(() -> "Nexus scene", target.getColorTextureView(), OptionalInt.empty(), target.getDepthTextureView(), OptionalDouble.empty())) {
             RenderSystem.bindDefaultUniforms(pass);
-            for (int i = 0; i < this.groups.size(); i++) {
+            for (int i = 0; i < drawn.size(); i++) {
                 pass.setUniform(VanillaBlock.DYNAMIC_TRANSFORMS.getGlslName(), transforms.get(i));
                 for (Buffer buffer : drawn.get(i)) {
                     RenderSystem.AutoStorageIndexBuffer indices = RenderSystem.getSequentialBuffer(buffer.type().mode());

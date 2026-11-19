@@ -1,6 +1,7 @@
 package dev.satherov.nexus.internal.render.client;
 
 import lombok.experimental.UtilityClass;
+import lombok.extern.slf4j.Slf4j;
 
 import dev.satherov.nexus.Nexus;
 import dev.satherov.nexus.api.mod.NexusMod;
@@ -29,9 +30,11 @@ import net.neoforged.neoforge.client.event.FrameGraphSetupEvent;
 import net.neoforged.neoforge.client.event.RegisterDebugEntriesEvent;
 import net.neoforged.neoforge.client.event.RegisterGuiLayersEvent;
 import net.neoforged.neoforge.client.event.RegisterRenderPipelinesEvent;
+import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.event.SubmitCustomGeometryEvent;
 import net.neoforged.neoforge.client.gui.GuiLayer;
+import net.neoforged.neoforge.client.pipeline.RegisterPipelineModifiersEvent;
 import net.neoforged.neoforge.client.renderstate.RegisterRenderStateModifiersEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.level.LevelEvent;
@@ -46,6 +49,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
 
 import com.google.common.reflect.TypeToken;
+import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.platform.Window;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -54,6 +58,7 @@ import org.jetbrains.annotations.ApiStatus;
 import org.joml.Vector2f;
 import org.jspecify.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -64,7 +69,7 @@ import java.util.function.BiConsumer;
 
 ///
 /// The client event listeners of the render feature.
-/// - Registers the pipelines of the library and the mods, the HUD layers, the debug renderers, and the glow modifier of the entities.
+/// - Registers the pipelines of the library and the mods, the modifier of the pack overlay, the HUD layers, the debug renderers, and the glow modifier of the entities.
 /// - Runs the scenes, the draw hooks, the glows, and the outline rules at their stage of the frame.
 /// - Ticks the debug renderers after each client tick.
 /// - Starts the scenes and the glows on login and ends them when the level of the client unloads.
@@ -73,6 +78,7 @@ import java.util.function.BiConsumer;
 ///
 /// Should only ever be loaded on the client.
 ///
+@Slf4j
 @UtilityClass
 @ApiStatus.Internal
 public class RenderDispatch {
@@ -123,6 +129,7 @@ public class RenderDispatch {
         // The shape pipelines are created here because RenderDispatch#program refuses them once the registration event ran.
         ShapePipelines.init();
         nexusBus.addListener(RegisterRenderPipelinesEvent.class, RenderDispatch::registerPipelines);
+        nexusBus.addListener(RegisterPipelineModifiersEvent.class, event -> event.register(PackOverlay.MODIFIER, RenderDispatch::overlaid));
         nexusBus.addListener(AddClientReloadListenersEvent.class, Programs::register);
         nexusBus.addListener(RegisterGuiLayersEvent.class, RenderDispatch::registerHudLayers);
         nexusBus.addListener(RegisterDebugEntriesEvent.class, event -> DebugRenderers.INSTANCE.registerEntries(event::register));
@@ -131,14 +138,21 @@ public class RenderDispatch {
                 event -> event.registerEntityModifier(new TypeToken<EntityRenderer<Entity, EntityRenderState>>() { }, RenderDispatch::glow)
         );
         NeoForge.EVENT_BUS.addListener(FrameGraphSetupEvent.class, RenderDispatch::enableGlows);
+        NeoForge.EVENT_BUS.addListener(FrameGraphSetupEvent.class, _ -> PackOverlay.arm());
         NeoForge.EVENT_BUS.addListener(
                 SubmitCustomGeometryEvent.class,
                 event -> GlowOutlines.INSTANCE.submitBlocks(event.getPoseStack(), event.getSubmitNodeCollector(), event.getLevelRenderState().cameraRenderState.pos)
         );
         NeoForge.EVENT_BUS.addListener(ExtractBlockOutlineRenderStateEvent.class, RenderDispatch::extractOutline);
+        // By these stages more of the level was drawn, so the overlay has to copy the depth again before anyone draws into it.
+        NeoForge.EVENT_BUS.addListener(EventPriority.HIGHEST, RenderLevelStageEvent.AfterTranslucentFeatures.class, _ -> PackOverlay.invalidateDepth());
+        NeoForge.EVENT_BUS.addListener(EventPriority.HIGHEST, RenderLevelStageEvent.AfterTranslucentBlocks.class, _ -> PackOverlay.invalidateDepth());
         NeoForge.EVENT_BUS.addListener(RenderLevelStageEvent.AfterTranslucentFeatures.class, event -> RenderDispatch.DRAW_HOOKS.drawInLevel(event.getPoseStack()));
         NeoForge.EVENT_BUS.addListener(RenderLevelStageEvent.AfterTranslucentBlocks.class, RenderDispatch::drawScenes);
-        NeoForge.EVENT_BUS.addListener(RenderLevelStageEvent.AfterLevel.class, RenderDispatch::drawAfterLevel);
+        // The composite isn't depth tested, so it has to run before anyone else draws after the level, or it would cover what they drew.
+        NeoForge.EVENT_BUS.addListener(EventPriority.HIGHEST, RenderLevelStageEvent.AfterLevel.class, _ -> PackOverlay.composite());
+        // A level drawn without the event after it leaves the overlay armed, and NeoForge throws at the end of a frame that leaves its modifier pushed.
+        NeoForge.EVENT_BUS.addListener(EventPriority.HIGHEST, RenderFrameEvent.Post.class, _ -> PackOverlay.disarm());
         NeoForge.EVENT_BUS.addListener(ClientTickEvent.Post.class, _ -> DebugRenderers.INSTANCE.tick());
         // The client session only opens the client scope at normal priority, so we have to start after it.
         NeoForge.EVENT_BUS.addListener(EventPriority.LOW, ClientPlayerNetworkEvent.LoggingIn.class, RenderDispatch::start);
@@ -150,15 +164,20 @@ public class RenderDispatch {
     ///
     /// If iris is present, every pipeline will also be assigned its shading.
     ///
+    /// The blends of the own-shaded pipelines are logged as [#logOwnBlends()] describes.
+    ///
     /// @param event The registration event.
     ///
     private static void registerPipelines(RegisterRenderPipelinesEvent event) {
         ShapePipelines.register(event::registerPipeline);
+        event.registerPipeline(PackOverlay.getCompositePipeline());
         for (Pipeline pipeline : RenderDispatch.WAITING_PIPELINES) {
             RenderPipeline renderPipeline = pipeline.getPipeline().get().get();
             event.registerPipeline(renderPipeline);
             RenderDispatch.PIPELINES.put(renderPipeline, pipeline);
         }
+        
+        RenderDispatch.logOwnBlends();
         
         // This also assigns the pipelines built from program files, since the parallel mod constructors that build them shouldn't call into Iris.
         if (ModList.get().isLoaded("iris")) {
@@ -167,6 +186,56 @@ public class RenderDispatch {
         
         RenderDispatch.WAITING_PIPELINES.clear();
         RenderDispatch.pipelinesRegistered = true;
+    }
+    
+    ///
+    /// Logs each own-shaded pipeline that blends over the frame differently under a pack, since [PackOverlay#blendsAlike(ColorTargetState)] doesn't hold for it.
+    ///
+    /// Then logs once which own-shaded pipelines [PackOverlay#MODIFIER] swaps for a copy under a pack,
+    /// since the copy is drawn into the entity outline target as well.
+    ///
+    private static void logOwnBlends() {
+        List<Identifier> swapped = new ArrayList<>();
+        for (Map.Entry<RenderPipeline, Pipeline> entry : RenderDispatch.PIPELINES.entrySet()) {
+            if (entry.getValue().getShading() != Shading.OWN) {
+                continue;
+            }
+            
+            ColorTargetState state = entry.getKey().getColorTargetState();
+            if (!PackOverlay.blendsAlike(state)) {
+                RenderDispatch.log.warn("The own-shaded pipeline '{}' will blend over the frame differently under a shader pack, since the pack overlay can't reproduce its color target state '{}'", entry.getKey().getLocation(), state);
+            }
+            
+            if (!PackOverlay.colorTargetFor(state).equals(state)) {
+                swapped.add(entry.getKey().getLocation());
+            }
+        }
+        
+        if (!swapped.isEmpty()) {
+            RenderDispatch.log.info("Under a shader pack, the own-shaded pipelines {} draw with the alpha factors and the alpha write of the pack overlay, into the entity outline target too", swapped);
+        }
+    }
+    
+    ///
+    /// Swaps a registered own-shaded pipeline for a copy with the color target state of [PackOverlay#colorTargetFor(ColorTargetState)].
+    ///
+    /// Should only ever be called through [PackOverlay#MODIFIER].
+    ///
+    /// @param pipeline The pipeline a render pass is set to.
+    /// @param name     The location of the copy.
+    ///
+    /// @return The copy, or the given pipeline if it isn't a registered own-shaded one or the color target state wouldn't change.
+    ///
+    private static RenderPipeline overlaid(RenderPipeline pipeline, Identifier name) {
+        Pipeline registered = RenderDispatch.PIPELINES.get(pipeline);
+        ColorTargetState state = pipeline.getColorTargetState();
+        ColorTargetState overlaid = PackOverlay.colorTargetFor(state);
+        if (registered == null || registered.getShading() != Shading.OWN || overlaid.equals(state)) {
+            return pipeline;
+        }
+        
+        // The copy keeps the shaders and the defines, so for a program file it compiles from the shader modules that Programs compiled.
+        return pipeline.toBuilder().withLocation(name).withColorTargetState(overlaid).build();
     }
     
     ///
@@ -257,17 +326,6 @@ public class RenderDispatch {
     }
     
     ///
-    /// Draws the held back batches of the draw hooks, the own-shaded buffers of every scene, and then the held back meshes of the outline rules.
-    ///
-    /// @param event The render stage event after the level.
-    ///
-    private static void drawAfterLevel(RenderLevelStageEvent.AfterLevel event) {
-        RenderDispatch.DRAW_HOOKS.drawAfterLevel(event.getModelViewMatrix());
-        Scenes.INSTANCE.drawAfterLevel(event.getModelViewMatrix(), Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(false));
-        OutlineRules.INSTANCE.drawAfterLevel(event.getModelViewMatrix());
-    }
-    
-    ///
     /// Starts the scenes and the glows on login.
     ///
     /// @param event The login event.
@@ -278,7 +336,7 @@ public class RenderDispatch {
     }
     
     ///
-    /// Ends the scenes, the glows, and the outline rules when a client level unloads.
+    /// Ends the scenes, the glows, and the outline rules and frees the pack overlay when a client level unloads.
     ///
     /// @param event The unload event of the level.
     ///
@@ -287,6 +345,7 @@ public class RenderDispatch {
             Scenes.INSTANCE.end();
             GlowOutlines.INSTANCE.end();
             OutlineRules.INSTANCE.end();
+            PackOverlay.release();
         }
     }
     
@@ -327,18 +386,6 @@ public class RenderDispatch {
         }
         
         RenderDispatch.PIPELINES.put(pipeline.getPipeline().get().get(), pipeline);
-    }
-    
-    ///
-    /// If the geometry of the given render pipeline is drawn after the level, which is the case for [Shading#OWN] while a shader pack is in use.
-    ///
-    /// @param renderPipeline The render pipeline.
-    ///
-    /// @return `true` if the geometry is drawn after the level.
-    ///
-    public static boolean isDrawnAfterLevel(RenderPipeline renderPipeline) {
-        Pipeline pipeline = RenderDispatch.PIPELINES.get(renderPipeline);
-        return pipeline != null && pipeline.getShading() == Shading.OWN && ModList.get().isLoaded("iris") && IrisBridge.isShaderPackInUse();
     }
     
     ///

@@ -13,6 +13,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLConstructModEvent;
 import net.neoforged.fml.loading.FMLEnvironment;
 
+import net.minecraft.util.ARGB;
 import net.minecraft.world.phys.Vec3;
 
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -143,7 +144,11 @@ public class PipelineSamples {
     
     @ClientTest
     public static void entityProgramRunsEveryHook(Client client) {
-        PipelineSamples.assertProgramShowsTint(client, PipelineSamples.entity, PipelineSamples.YELLOW, PipelineSamples.FOG_TOLERANCE);
+        if (client.hasShaderPack()) {
+            PipelineSamples.assertPackDrawsUntinted(client, PipelineSamples.entity);
+        } else {
+            PipelineSamples.assertProgramShowsTint(client, PipelineSamples.entity, PipelineSamples.YELLOW, PipelineSamples.FOG_TOLERANCE);
+        }
     }
     
     @ClientTest
@@ -250,6 +255,28 @@ public class PipelineSamples {
                         .as("the channel at bit '%d' of the color '%08X' at '%d, %d'", shift, actual, pixel.x, pixel.y)
                         .isCloseTo(argb >>> shift & 0xFF, Assertions.within(tolerance));
             }
+        } finally {
+            SampleQuads.hide();
+        }
+    }
+    
+    private static void assertPackDrawsUntinted(Client client, @Nullable Pipeline program) {
+        Vec3 center = PipelineSamples.enter(client);
+        Vector2i pixel = PipelineSamples.pixelOf(client, center);
+        int background = client.capture().pixel(pixel.x, pixel.y);
+        SampleQuads.setTint(PipelineSamples.YELLOW);
+        SampleQuads.showProgram(Objects.requireNonNull(program, "the program pipeline"), center);
+        try {
+            client.tick();
+            
+            Assertions.assertThat(SampleQuads.failure()).as("the failure of drawing the program").isNull();
+            int actual = client.capture().pixel(pixel.x, pixel.y);
+            Assertions.assertThat(actual).as("the color at '%d, %d' over the background '%08X'", pixel.x, pixel.y, background).isNotEqualTo(background);
+            // The pack's program replaces the hooks, so the yellow tint would have emptied the blue channel if it ran.
+            // The final pass of the sample pack swaps red and blue, so that channel is captured as red.
+            Assertions.assertThat(ARGB.red(actual))
+                    .as("the red channel of the color '%08X' at '%d, %d'", actual, pixel.x, pixel.y)
+                    .isGreaterThan(ARGB.blue(actual) / 2);
         } finally {
             SampleQuads.hide();
         }

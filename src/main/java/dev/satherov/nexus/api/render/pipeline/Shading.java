@@ -82,9 +82,22 @@ public enum Shading {
     ///
     /// The pipeline's own shaders, under a pack too.
     ///
-    /// If a pack is active, geometry from `Render#draw` will be drawn after the level, over the finished frame and depth tested against it.
+    /// If a pack is active, the geometry is drawn into a target of Nexus that is depth tested against the level drawn so far
+    /// and blended over the finished frame after the level.
     /// The lighting and fog of the pack will not apply to it.
-    /// Geometry a mod draws elsewhere will lose its color under a pack.
+    /// Geometry from `Render#draw` ends in that target by itself.
+    /// A render type a mod draws elsewhere has to draw into `Pipeline#getTarget()`, or it will lose its color under a pack.
+    ///
+    /// Under a pack, the pipeline draws with the alpha factors and the alpha write that the target of Nexus needs,
+    /// and the geometry blends over the frame as it does without a pack if the pipeline has one of these blends:
+    /// - A destination color factor of one.
+    /// - A destination color factor of one minus the source alpha, with every color channel written.
+    /// - No blend function, with every color channel written and every fragment at an alpha of one.
+    ///
+    /// The source color factor of the first two mustn't read the target, as the destination factors and the saturated source alpha do.
+    /// A pipeline with any other blend is logged when the pipelines are registered.
+    /// Without a pack, the pipeline draws with its own blend.
+    /// Under a pack, it also draws with the alpha factors and the alpha write of the target of Nexus into the entity outline target.
     ///
     OWN
 }

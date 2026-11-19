@@ -4,6 +4,10 @@ import lombok.Getter;
 
 import dev.satherov.nexus.api.registry.client.ClientOnly;
 import dev.satherov.nexus.api.render.Render;
+import dev.satherov.nexus.internal.render.client.PackOverlay;
+
+import net.minecraft.client.renderer.rendertype.OutputTarget;
+import net.minecraft.client.renderer.rendertype.RenderSetup;
 
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
@@ -51,6 +55,22 @@ public final class Pipeline {
     public Pipeline(ClientOnly<Supplier<RenderPipeline>> pipeline, Shading shading) {
         this.pipeline = pipeline;
         this.shading = shading;
+    }
+    
+    ///
+    /// The output target that a render type of the mod over this pipeline should draw into, to pass to [RenderSetup.RenderSetupBuilder#setOutputTarget(OutputTarget)].
+    ///
+    /// For [Shading#OWN], this is a target of Nexus that keeps the geometry under a shader pack wherever in the level it is drawn,
+    /// and is the main target otherwise.
+    /// For any other shading, it is the main target, since the pack draws the geometry itself.
+    ///
+    /// If a shader pack is in use, the render target of the output target has to be resolved outside of an open render pass,
+    /// or resolving it may throw an [IllegalStateException].
+    ///
+    /// @return The output target.
+    ///
+    public ClientOnly<Supplier<OutputTarget>> getTarget() {
+        return () -> PackOverlay.targetFor(this.shading);
     }
     
     ///
