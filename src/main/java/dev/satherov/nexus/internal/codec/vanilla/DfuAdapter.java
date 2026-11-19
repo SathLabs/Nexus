@@ -4,6 +4,9 @@ import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.codec.result.NexusCodecException;
 import dev.satherov.nexus.internal.codec.Traversal;
 
+import net.minecraft.util.HashOps;
+
+import com.google.common.hash.HashCode;
 import com.mojang.datafixers.util.Pair;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
@@ -16,6 +19,7 @@ import org.jspecify.annotations.Nullable;
 /// A DFU codec that encodes and decodes with a codec, created by [NexusCodec#asDfu()].
 ///
 /// Fails with the message of a [NexusCodecException] and without a partial result.
+/// Over [HashOps], a value that could not be encoded is hashed as the string `nexus:unencodable` instead.
 ///
 /// @param codec The codec to encode and decode with.
 /// @param <T>   The type of value the codec encodes and decodes.
@@ -43,6 +47,10 @@ public record DfuAdapter<T>(Traversal<T, ?> codec) implements Codec<T> {
         try {
             return ops.mergeToPrimitive(prefix, VanillaAdapters.toOps(ops, VanillaAdapters.encodeFor(this.codec, ops, input)));
         } catch (NexusCodecException failure) {
+            if (ops.empty() instanceof HashCode) {
+                return ops.mergeToPrimitive(prefix, VanillaAdapters.unencodable(ops, this.codec, failure));
+            }
+            
             return DataResult.error(failure::getMessage);
         }
     }

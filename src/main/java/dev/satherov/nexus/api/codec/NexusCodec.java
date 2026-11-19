@@ -31,6 +31,7 @@ import net.minecraft.resources.RegistryFixedCodec;
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.ExtraCodecs;
+import net.minecraft.util.HashOps;
 import net.minecraft.util.StringRepresentable;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
@@ -975,9 +976,10 @@ public interface NexusCodec<T, A extends Access.Plain> {
     /// Creates the codec of a holder of the given registry.
     /// Similar to vanilla's [RegistryFixedCodec].
     ///
-    /// In JSON and NBT, it writes the identifier of a reference holder and fails on a direct holder.
-    /// On the network, it writes the id of the holder's value as a VarInt, the same as [ByteBufCodecs#holderRegistry(ResourceKey)].
+    /// In JSON and NBT, it writes the identifier of a reference holder.
+    /// On the network, it writes the id of a reference holder's value as a VarInt, the same as [ByteBufCodecs#holderRegistry(ResourceKey)].
     ///
+    /// Fails on a direct holder in every format, even though vanilla's stream codec writes it as the id of its value.
     /// Fails if an identifier or an id is not in the registry, and the failure quotes it and the registry.
     /// Fails if the format's registries don't have the registry, if the holder belongs to other registries, or on the network if the registry is a built-in one that isn't synced.
     ///
@@ -1022,6 +1024,7 @@ public interface NexusCodec<T, A extends Access.Plain> {
     /// On the network, it writes the same as [ByteBufCodecs#holderSet(ResourceKey)].
     /// A custom set is only written as one if the buffer is for a connection to NeoForge, and as its holders otherwise.
     ///
+    /// Fails on a direct holder in the set in every format, even though vanilla's stream codec writes it as the id of its value.
     /// Fails if an identifier, an id, or a tag is not in the registry, and the failure quotes it and the registry.
     /// In JSON and NBT, a failure of a list holds the errors of every holder that failed, each at its index.
     ///
@@ -1078,6 +1081,7 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// Fails to encode and decode in JSON and NBT.
     /// If the stream codec throws, it will fail with the message of that exception.
+    /// Cannot back a data component, on its own or inside another codec.
     ///
     /// @param codec The stream codec.
     ///
@@ -1094,6 +1098,7 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// Fails to encode and decode in JSON and NBT.
     /// If the stream codec throws, it will fail with the message of that exception.
+    /// Cannot back a data component, on its own or inside another codec.
     ///
     /// @param codec  The stream codec, which may need a [RegistryFriendlyByteBuf].
     /// @param access The access of the codec, which is always `Access.Registries.class`.
@@ -1424,6 +1429,7 @@ public interface NexusCodec<T, A extends Access.Plain> {
     /// If this codec needs registries, it will take them from the [RegistryOps], and fail over any other ops.
     /// Fails over ops that compress maps, such as [JsonOps#COMPRESSED].
     /// A failure is an error with the message of the [NexusCodecException], without a partial result.
+    /// Over [HashOps], a value that could not be encoded is hashed as the string `nexus:unencodable` instead, since vanilla throws on a component it can't hash.
     ///
     /// @return The DFU codec.
     ///
@@ -1443,7 +1449,11 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// Creates a data component type that is saved with the DFU codec of this codec and synced with its stream codec.
     ///
+    /// The stream codec of the type fails to decode a value that this codec could not encode in JSON.
+    ///
     /// @return The data component type.
+    ///
+    /// @throws IllegalArgumentException If this codec cannot encode in JSON and NBT, such as a codec of [#ofStream(StreamCodec)] or a codec that holds one.
     ///
     /// @see #asDfu()
     /// @see #asStream()

@@ -3,6 +3,7 @@ package dev.satherov.nexus.internal.codec.vanilla;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.UtilityClass;
+import lombok.extern.slf4j.Slf4j;
 
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.NexusCodec;
@@ -38,6 +39,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.ExtraCodecs;
+import net.minecraft.util.HashOps;
 import net.minecraft.util.StringRepresentable;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeSerializer;
@@ -45,6 +47,7 @@ import net.minecraft.world.item.crafting.RecipeSerializer;
 import com.google.common.collect.Comparators;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSortedMap;
+import com.google.common.hash.HashCode;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
@@ -77,6 +80,7 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -84,6 +88,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
@@ -91,6 +96,7 @@ import java.util.stream.Stream;
 ///
 /// Utility for the DFU and stream codec views of codecs, and for the codecs over DFU and stream codecs.
 ///
+@Slf4j
 @UtilityClass
 @ApiStatus.Internal
 public class VanillaAdapters {
@@ -99,6 +105,16 @@ public class VanillaAdapters {
     /// The error message a view fails with if the ops compress maps.
     ///
     private static final String COMPRESSED = "could not use ops that compress maps";
+    
+    ///
+    /// The string that a value is hashed as over [HashOps] if it could not be encoded, which is also the key of that hash in the map of a struct.
+    ///
+    private static final String UNENCODABLE = "nexus:unencodable";
+    
+    ///
+    /// The codecs whose failure to hash a value was logged, which are not logged again.
+    ///
+    private static final Set<Traversal<?, ?>> UNHASHABLE = Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
     
     ///
     /// The registries of a view over ops without registries, which fail on every lookup.
@@ -253,6 +269,26 @@ public class VanillaAdapters {
         }
         
         return viewed.encode(new JsonOperations<Access.Registries>(false, registries), value);
+    }
+    
+    ///
+    /// Creates the hash of a value that the given codec could not encode, which is the hash of the string `nexus:unencodable`.
+    ///
+    /// Vanilla throws on a component it can't hash, so a stack holding one would crash the side that hashes it.
+    /// The first failure of each codec is logged.
+    ///
+    /// @param ops     The hash ops, or registry ops over them.
+    /// @param codec   The codec that could not encode the value.
+    /// @param failure The failure to encode the value.
+    ///
+    /// @return The hash.
+    ///
+    public static <V> V unencodable(DynamicOps<V> ops, Traversal<?, ?> codec, NexusCodecException failure) {
+        if (VanillaAdapters.UNHASHABLE.add(codec)) {
+            VanillaAdapters.log.warn("Could not hash a value, it was hashed as '{}' instead: {}", VanillaAdapters.UNENCODABLE, failure.getMessage());
+        }
+        
+        return ops.createString(VanillaAdapters.UNENCODABLE);
     }
     
     ///
@@ -418,11 +454,64 @@ public class VanillaAdapters {
     ///
     /// @return The data component type, saved with the DFU view and synced with the stream view of the codec.
     ///
+    /// @throws IllegalArgumentException If the codec cannot encode in JSON and NBT.
+    ///
     public static <T> DataComponentType<T> asDataComponentType(NexusCodec<T, ?> codec) {
+        return VanillaAdapters.dataComponentBuilder(codec).build();
+    }
+    
+    ///
+    /// Creates the builder of a data component type that is saved with the DFU view of the given codec and synced with its stream view.
+    ///
+    /// The stream view fails to decode a value that the codec could not encode in JSON with the registries of the buffer.
+    ///
+    /// @param codec The codec of the component.
+    ///
+    /// @return The builder of the data component type.
+    ///
+    /// @throws IllegalArgumentException If the codec cannot encode in JSON and NBT.
+    ///
+    public static <T> DataComponentType.Builder<T> dataComponentBuilder(NexusCodec<T, ?> codec) {
+        if (!((Traversal<T, ?>) codec).hasKeyedForm()) {
+            throw new IllegalArgumentException("Could not build a data component over a codec that cannot encode to JSON and NBT");
+        }
+        
         return DataComponentType.<T>builder()
                 .persistent(codec.asDfu())
-                .networkSynchronized(codec.asStream())
-                .build();
+                .networkSynchronized(VanillaAdapters.validatedStream(codec));
+    }
+    
+    ///
+    /// Creates the stream view of the given codec, which fails to decode a value that the codec could not encode in JSON with the registries of the buffer.
+    ///
+    private static <T> StreamCodec<RegistryFriendlyByteBuf, T> validatedStream(NexusCodec<T, ?> codec) {
+        NexusCodec<T, ? super Access.Registries> viewed = VanillaAdapters.onAnyFormat(codec);
+        StreamCodec<RegistryFriendlyByteBuf, T> stream = codec.asStream();
+        return new StreamCodec<>() {
+            
+            ///
+            /// Decodes a value with the stream view and then encodes it in JSON, and throws a [DecoderException] with the message of a failure to encode it.
+            ///
+            @Override
+            public T decode(RegistryFriendlyByteBuf buffer) {
+                T value = stream.decode(buffer);
+                try {
+                    viewed.encode(CodecFormat.JSON.withRegistries(buffer.registryAccess()), value);
+                } catch (NexusCodecException failure) {
+                    throw new DecoderException(failure.getMessage(), failure);
+                }
+                
+                return value;
+            }
+            
+            ///
+            /// Encodes the value with the stream view.
+            ///
+            @Override
+            public void encode(RegistryFriendlyByteBuf buffer, T value) {
+                stream.encode(buffer, value);
+            }
+        };
     }
     
     ///
@@ -544,6 +633,14 @@ public class VanillaAdapters {
             
             //noinspection DataFlowIssue A codec that needs registries only ever runs on formats with registries.
             return VanillaAdapters.registryOps(operations.dynamicOps(), operations.lookup());
+        }
+        
+        ///
+        /// If this codec has a DFU codec.
+        ///
+        @Override
+        public boolean hasKeyedForm() {
+            return this.codec != null;
         }
         
         ///
@@ -715,6 +812,10 @@ public class VanillaAdapters {
             try {
                 object = VanillaAdapters.encodeFor(this.struct, ops, input);
             } catch (NexusCodecException failure) {
+                if (ops.empty() instanceof HashCode) {
+                    return prefix.add(VanillaAdapters.UNENCODABLE, VanillaAdapters.unencodable(ops, this.struct, failure));
+                }
+                
                 return prefix.withErrorsFrom(DataResult.error(failure::getMessage));
             }
             

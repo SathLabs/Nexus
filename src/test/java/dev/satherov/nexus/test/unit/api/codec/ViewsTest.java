@@ -21,11 +21,14 @@ import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.util.ExtraCodecs;
 import net.minecraft.util.HashOps;
+import net.minecraft.util.NullOps;
+import net.minecraft.util.Unit;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -366,6 +369,94 @@ public class ViewsTest {
         Assertions.assertThat(type.codecOrThrow().parse(JsonOps.INSTANCE, JsonParser.parseString(ViewsTest.DIRT_JSON)).getOrThrow()).isEqualTo(ViewsTest.DIRT);
         Assertions.assertThat(ByteBufUtil.getBytes(written)).isEqualTo(ViewsTest.bytes(ViewsTest.DIRT_BYTES));
         Assertions.assertThat(type.streamCodec().decode(read)).isEqualTo(ViewsTest.DIRT);
+    }
+    
+    @Test
+    public void asDataComponentTypeRefusesAStreamOnlyCodec() {
+        NexusCodec<Integer, Access.Plain> stream = NexusCodec.ofStream(ByteBufCodecs.VAR_INT);
+        StructCodec<ParityCases.Circle, Access.Plain> circle = NexusCodec.struct("circle", stream.field("radius", ParityCases.Circle::radius), ParityCases.Circle::new);
+        StructCodec<ParityCases.Listing, Access.Plain> listing = NexusCodec.struct(
+                "listing",
+                NexusCodec.STRING.field("item", ParityCases.Listing::item),
+                NexusCodec.INT.optionalField("count", 1, ParityCases.Listing::count),
+                NexusCodec.ofStream(ByteBufCodecs.STRING_UTF8).optionalField("label", ParityCases.Listing::label),
+                ParityCases.Listing::new
+        );
+        StructCodec<ParityCases.Shape, Access.Plain> shape = NexusCodec.dispatch(
+                "type",
+                ParityCases::typeOf,
+                Map.of(ParityCases.CIRCLE, circle, ParityCases.SQUARE, ViewsTest.SQUARE)
+        );
+        NexusCodec<ParityCases.Node, Access.Plain> tree = NexusCodec.recursive(
+                "node",
+                self -> NexusCodec.struct("node", stream.field("value", ParityCases.Node::value), self.list().field("children", ParityCases.Node::children), ParityCases.Node::new)
+        );
+        List<NexusCodec<?, ?>> codecs = List.of(stream, stream.list(), stream.xmap(ParityCases.Circle::new, ParityCases.Circle::radius), NexusCodec.either(NexusCodec.INT, stream), listing, shape, tree);
+        
+        for (NexusCodec<?, ?> codec : codecs) {
+            Assertions.assertThatThrownBy(codec::asDataComponentType)
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("JSON and NBT");
+        }
+    }
+    
+    @Test
+    public void asDataComponentTypeAcceptsACodecThatRefersToItself() {
+        NexusCodec<ParityCases.Node, Access.Plain> tree = NexusCodec.recursive(
+                "node",
+                self -> NexusCodec.struct("node", NexusCodec.INT.field("value", ParityCases.Node::value), self.list().field("children", ParityCases.Node::children), ParityCases.Node::new)
+        );
+        ParityCases.Node node = new ParityCases.Node(1, List.of(new ParityCases.Node(2, List.of())));
+        
+        Assertions.assertThat(tree.asDataComponentType().codecOrThrow().encodeStart(JsonOps.INSTANCE, node).getOrThrow())
+                .hasToString("{\"value\":1,\"children\":[{\"value\":2,\"children\":[]}]}");
+    }
+    
+    @Test
+    public void hashesAValueTheCodecCannotEncodeOnlyOverHashOps() {
+        RegistryOps<HashCode> hash = ViewsTest.REGISTRIES.createSerializationContext(HashOps.CRC32C_INSTANCE);
+        RegistryOps<Unit> none = ViewsTest.REGISTRIES.createSerializationContext(NullOps.INSTANCE);
+        NexusCodec<Integer, Access.Plain> natural = NexusCodec.INT.validate(value -> value < 0 ? "negative" : null);
+        StructCodec<ParityCases.Circle, Access.Plain> circle = NexusCodec.struct("circle", natural.field("radius", ParityCases.Circle::radius), ParityCases.Circle::new);
+        TypedDataComponent<List<Integer>> crowded = new TypedDataComponent<>(NexusCodec.INT.list(1).asDataComponentType(), List.of(1, 2));
+        TypedDataComponent<Integer> negative = new TypedDataComponent<>(natural.asDataComponentType(), -1);
+        TypedDataComponent<ParityCases.Circle> inverted = new TypedDataComponent<>(circle.asDataComponentType(), new ParityCases.Circle(-1));
+        
+        for (TypedDataComponent<?> component : List.of(crowded, negative, inverted)) {
+            Assertions.assertThat(component.encodeValue(hash).isSuccess()).isTrue();
+            Assertions.assertThat(component.encodeValue(none).isError()).isTrue();
+            Assertions.assertThat(component.encodeValue(NbtOps.INSTANCE).isError()).isTrue();
+            Assertions.assertThat(component.encodeValue(JsonOps.INSTANCE).isError()).isTrue();
+        }
+    }
+    
+    @Test
+    public void dataComponentTypeSyncsOnlyAHolderItCanHash() {
+        DataComponentType<Holder<Item>> type = NexusCodec.holder(Registries.ITEM).asDataComponentType();
+        RegistryOps<HashCode> hash = ViewsTest.REGISTRIES.createSerializationContext(HashOps.CRC32C_INSTANCE);
+        RegistryOps<JsonElement> json = RegistryOps.create(JsonOps.INSTANCE, ViewsTest.REGISTRIES);
+        Holder<Item> direct = Holder.direct(Items.STONE);
+        RegistryFriendlyByteBuf written = ViewsTest.writable();
+        type.streamCodec().encode(written, ViewsTest.FIRST_ITEM);
+        Holder<Item> received = type.streamCodec().decode(written);
+        
+        Assertions.assertThat(new TypedDataComponent<>(type, received).encodeValue(hash).getOrThrow())
+                .isEqualTo(new TypedDataComponent<>(type, ViewsTest.FIRST_ITEM).encodeValue(hash).getOrThrow());
+        Assertions.assertThat(type.codecOrThrow().encodeStart(json, direct).isError()).isTrue();
+        Assertions.assertThatThrownBy(() -> type.streamCodec().encode(ViewsTest.writable(), direct))
+                .isInstanceOf(EncoderException.class)
+                .hasMessageContaining("direct holder");
+    }
+    
+    @Test
+    public void dataComponentTypeRefusesToReceiveAValueItsDfuCodecRefuses() {
+        DataComponentType<Integer> type = NexusCodec.ofVanilla(ExtraCodecs.NON_NEGATIVE_INT, ByteBufCodecs.VAR_INT).asDataComponentType();
+        RegistryFriendlyByteBuf written = ViewsTest.writable();
+        type.streamCodec().encode(written, -1);
+        
+        Assertions.assertThatThrownBy(() -> type.streamCodec().decode(written))
+                .isInstanceOf(DecoderException.class)
+                .hasMessageContaining("non-negative");
     }
     
     @Test
