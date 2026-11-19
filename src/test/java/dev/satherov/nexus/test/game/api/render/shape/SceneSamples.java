@@ -35,8 +35,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
-import net.minecraft.server.ServerTickRateManager;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.ARGB;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.decoration.ArmorStand;
@@ -56,6 +54,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 
 ///
@@ -253,13 +252,17 @@ public class SceneSamples {
         Vec3 eye = SceneSamples.enter(client, 0.0F);
         Vec3 start = eye.add(0.0D, -0.5D, 5.0D);
         Vec3 moved = eye.add(3.0D, -0.5D, 5.0D);
-        ServerLevel level = client.serverLevel();
-        ArmorStand stand = new ArmorStand(level, start.x, start.y, start.z);
-        stand.setInvisible(true);
-        stand.setNoGravity(true);
-        level.addFreshEntity(stand);
+        AtomicReference<ArmorStand> spawned = new AtomicReference<>();
+        client.onServer(level -> {
+            ArmorStand created = new ArmorStand(level, start.x, start.y, start.z);
+            created.setInvisible(true);
+            created.setNoGravity(true);
+            level.addFreshEntity(created);
+            spawned.set(created);
+        });
         client.settle();
         
+        ArmorStand stand = spawned.get();
         ClientLevel clientLevel = Objects.requireNonNull(client.minecraft().level);
         Entity entity = Objects.requireNonNull(clientLevel.getEntity(stand.getId()), "the armor stand on the client");
         client.until("the armor stand to stand at its start", () -> SceneSamples.isAt(entity, start));
@@ -267,7 +270,7 @@ public class SceneSamples {
         client.tick();
         SceneSamples.assertColor(client, client.capture(), start.add(0.0D, 0.5D, 0.0D), SceneSamples.shaded(client, SceneSamples.RED));
         
-        stand.teleportTo(moved.x, moved.y, moved.z);
+        client.onServer(_ -> stand.teleportTo(moved.x, moved.y, moved.z));
         client.until("the armor stand to arrive", () -> SceneSamples.isAt(entity, moved));
         client.tick();
         
@@ -599,16 +602,17 @@ public class SceneSamples {
     
     private static void assertFillStandsInWater(Client client) {
         Vec3 eye = SceneSamples.enter(client, SceneSamples.WATER_PITCH);
-        ServerLevel level = client.serverLevel();
         BlockPos floor = BlockPos.containing(eye).below(3);
-        for (int x = -3; x <= 3; x++) {
-            for (int z = 1; z <= 9; z++) {
-                boolean rim = x == -3 || x == 3 || z == 1 || z == 9;
-                BlockState inside = rim ? Blocks.STONE.defaultBlockState() : Blocks.WATER.defaultBlockState();
-                level.setBlockAndUpdate(floor.offset(x, 0, z), Blocks.STONE.defaultBlockState());
-                level.setBlockAndUpdate(floor.offset(x, 1, z), inside);
+        client.onServer(level -> {
+            for (int x = -3; x <= 3; x++) {
+                for (int z = 1; z <= 9; z++) {
+                    boolean rim = x == -3 || x == 3 || z == 1 || z == 9;
+                    BlockState inside = rim ? Blocks.STONE.defaultBlockState() : Blocks.WATER.defaultBlockState();
+                    level.setBlockAndUpdate(floor.offset(x, 0, z), Blocks.STONE.defaultBlockState());
+                    level.setBlockAndUpdate(floor.offset(x, 1, z), inside);
+                }
             }
-        }
+        });
         
         client.settle();
         AABB box = new AABB(eye.x - 0.5D, floor.getY() + 1.0D, eye.z + 4.0D, eye.x + 0.5D, eye.y - 0.62D, eye.z + 5.0D);
@@ -621,14 +625,11 @@ public class SceneSamples {
     }
     
     private static void freezeTicks(Client client, boolean frozen) {
-        ServerTickRateManager ticks = client.serverLevel().getServer().tickRateManager();
-        CompletableFuture<Void> done = client.serverLevel().getServer().submit(() -> ticks.setFrozen(frozen));
-        client.until("the server to set the tick rate", done::isDone);
-        done.join();
+        client.onServer(level -> level.getServer().tickRateManager().setFrozen(frozen));
     }
     
     private static void wall(Client client, Vec3 eye) {
-        client.serverLevel().setBlockAndUpdate(BlockPos.containing(eye.add(0.0D, 0.0D, 3.0D)), Blocks.STONE.defaultBlockState());
+        client.onServer(level -> level.setBlockAndUpdate(BlockPos.containing(eye.add(0.0D, 0.0D, 3.0D)), Blocks.STONE.defaultBlockState()));
         client.settle();
         client.awaitStill(SceneSamples.STILL_FRAMES);
     }

@@ -14,7 +14,6 @@ import net.neoforged.neoforge.common.NeoForge;
 
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.ARGB;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
@@ -33,6 +32,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 ///
@@ -78,18 +78,21 @@ public class GlowsSamples {
     public static void entityGlowsInColor(Client client) {
         Vec3 eye = GlowsSamples.enter(client);
         Vec3 feet = eye.add(0.0D, -1.5D, 4.0D);
-        ServerLevel level = client.serverLevel();
-        Pig pig = new Pig(EntityType.PIG, level);
-        pig.snapTo(feet, GlowsSamples.FACING_CAMERA, 0.0F);
-        pig.setYHeadRot(GlowsSamples.FACING_CAMERA);
-        pig.setYBodyRot(GlowsSamples.FACING_CAMERA);
-        pig.setNoAi(true);
-        pig.setNoGravity(true);
-        level.addFreshEntity(pig);
+        AtomicInteger id = new AtomicInteger();
+        client.onServer(level -> {
+            Pig pig = new Pig(EntityType.PIG, level);
+            pig.snapTo(feet, GlowsSamples.FACING_CAMERA, 0.0F);
+            pig.setYHeadRot(GlowsSamples.FACING_CAMERA);
+            pig.setYBodyRot(GlowsSamples.FACING_CAMERA);
+            pig.setNoAi(true);
+            pig.setNoGravity(true);
+            level.addFreshEntity(pig);
+            id.set(pig.getId());
+        });
         client.settle();
         
         ClientLevel clientLevel = Objects.requireNonNull(client.minecraft().level);
-        Entity entity = Objects.requireNonNull(clientLevel.getEntity(pig.getId()), "the pig on the client");
+        Entity entity = Objects.requireNonNull(clientLevel.getEntity(id.get()), "the pig on the client");
         client.until("the pig to stand at its spawn", () -> GlowsSamples.isAt(entity, feet));
         client.awaitStill(GlowsSamples.STILL_FRAMES);
         Assertions.assertThat(GlowsSamples.redPixels(client, client.capture(), entity.getBoundingBox())).as("the red pixels before the glow").isZero();
@@ -126,7 +129,7 @@ public class GlowsSamples {
         
         capture.assertGolden("block_glow_stops_when_broken");
         
-        client.serverLevel().setBlockAndUpdate(pos, Blocks.AIR.defaultBlockState());
+        client.onServer(level -> level.setBlockAndUpdate(pos, Blocks.AIR.defaultBlockState()));
         client.settle();
         client.awaitStill(GlowsSamples.STILL_FRAMES);
         
@@ -169,7 +172,7 @@ public class GlowsSamples {
         Assertions.assertThat(GlowsSamples.redPixels(client, closed, lid)).as("the red pixels where the open lid stands").isZero();
         
         ChestBlockEntity chest = (ChestBlockEntity) Objects.requireNonNull(Objects.requireNonNull(client.minecraft().level).getBlockEntity(pos), "the chest on the client");
-        client.serverLevel().blockEvent(pos, Blocks.CHEST, GlowsSamples.CHEST_OPENERS_EVENT, 1);
+        client.onServer(level -> level.blockEvent(pos, Blocks.CHEST, GlowsSamples.CHEST_OPENERS_EVENT, 1));
         client.settle();
         client.until("the chest lid to open", () -> chest.getOpenNess(0.0F) >= 1.0F);
         client.awaitStill(GlowsSamples.STILL_FRAMES);
@@ -232,8 +235,10 @@ public class GlowsSamples {
                 .map(BlockPos::immutable)
                 .orElseThrow(() -> new AssertionError("no position near the camera moves a dandelion far enough to the side"));
         
-        client.serverLevel().setBlockAndUpdate(pos.below(), Blocks.GRASS_BLOCK.defaultBlockState());
-        client.serverLevel().setBlockAndUpdate(pos, dandelion);
+        client.onServer(serverLevel -> {
+            serverLevel.setBlockAndUpdate(pos.below(), Blocks.GRASS_BLOCK.defaultBlockState());
+            serverLevel.setBlockAndUpdate(pos, dandelion);
+        });
         client.settle();
         client.awaitStill(GlowsSamples.STILL_FRAMES);
         Capture unlit = client.capture();
@@ -352,7 +357,7 @@ public class GlowsSamples {
     
     private static BlockPos place(Client client, Vec3 eye, Block block) {
         BlockPos pos = BlockPos.containing(eye.add(0.0D, -1.0D, 4.0D));
-        client.serverLevel().setBlockAndUpdate(pos, block.defaultBlockState());
+        client.onServer(level -> level.setBlockAndUpdate(pos, block.defaultBlockState()));
         client.settle();
         client.awaitStill(GlowsSamples.STILL_FRAMES);
         return pos;

@@ -120,7 +120,7 @@ public class HudLayerSamples {
         int y = (int) screen.y;
         int sky = HudLayerSamples.guiPixel(client, client.capture(), x, y);
         
-        client.serverLevel().setBlockAndUpdate(pos, Blocks.STONE.defaultBlockState());
+        client.onServer(level -> level.setBlockAndUpdate(pos, Blocks.STONE.defaultBlockState()));
         client.settle();
         client.awaitStill(HudLayerSamples.STILL_FRAMES);
         Assertions.assertThat(HudLayerSamples.project(center)).as("the projection once the block is placed").isEqualTo(screen);

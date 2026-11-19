@@ -122,8 +122,10 @@ public class OutlinesSamples {
         BlockPos first = BlockPos.containing(client.minecraft().gameRenderer.getMainCamera().position().add(0.0D, 0.0D, OutlinesSamples.DISTANCE));
         BlockPos second = first.east();
         BlockState diamond = Blocks.DIAMOND_BLOCK.defaultBlockState();
-        client.serverLevel().setBlockAndUpdate(first, diamond);
-        client.serverLevel().setBlockAndUpdate(second, diamond);
+        client.onServer(level -> {
+            level.setBlockAndUpdate(first, diamond);
+            level.setBlockAndUpdate(second, diamond);
+        });
         client.settle();
         client.ticks(OutlinesSamples.STILL_FRAMES);
         Assertions.assertThat(asked)
@@ -178,7 +180,7 @@ public class OutlinesSamples {
         client.joinWorld();
         client.pose(client.serverLevel().getRespawnData().pos().getBottomCenter().add(0.0D, OutlinesSamples.HEIGHT, 0.0D), 0.0F, 0.0F);
         BlockPos pos = BlockPos.containing(client.minecraft().gameRenderer.getMainCamera().position().add(0.0D, 0.0D, OutlinesSamples.DISTANCE));
-        client.serverLevel().setBlockAndUpdate(pos, block.defaultBlockState());
+        client.onServer(level -> level.setBlockAndUpdate(pos, block.defaultBlockState()));
         client.settle();
         client.awaitStill(OutlinesSamples.STILL_FRAMES);
         return pos;
