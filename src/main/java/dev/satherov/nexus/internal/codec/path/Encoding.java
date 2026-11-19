@@ -8,6 +8,7 @@ import dev.satherov.nexus.Nexus;
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.codec.format.CodecFormat;
+import dev.satherov.nexus.api.codec.result.NexusCodecException;
 import dev.satherov.nexus.internal.codec.format.NbtOperations;
 import dev.satherov.nexus.internal.network.client.ClientConnection;
 
@@ -101,6 +102,27 @@ public class Encoding {
         } catch (RuntimeException failure) {
             return null;
         }
+    }
+    
+    ///
+    /// Checks that the given codec can encode the given value to NBT, with the registries of the running server or of the client's play connection.
+    ///
+    /// Does nothing if neither exists, since a value that holds a holder of a registry that only a world loads could not be encoded then.
+    ///
+    /// @param codec The codec of the value.
+    /// @param value The value to check.
+    ///
+    /// @throws NexusCodecException If the value could not be encoded.
+    ///
+    public static <T> void requireEncodable(NexusCodec<T, ?> codec, T value) {
+        RegistryAccess source = Encoding.sourceOfRegistries();
+        if (source == null) {
+            return;
+        }
+        
+        //noinspection unchecked Every access is a supertype of Access.Registries, the last of the sealed accesses.
+        NexusCodec<T, ? super Access.Registries> viewed = (NexusCodec<T, ? super Access.Registries>) codec;
+        viewed.encode(Encoding.format(source), value);
     }
     
     ///
