@@ -136,11 +136,14 @@ public class HoldersTest {
     }
     
     @Test
-    public void holderRefusesDirectHolderInJsonAndNbt() {
+    public void holderRefusesADirectHolderInEveryFormat() {
         Holder<Item> direct = Holder.direct(Items.STONE);
         
         Assertions.assertThatThrownBy(() -> HoldersTest.ITEM.encode(HoldersTest.JSON, direct)).isInstanceOf(NexusCodecException.class);
         Assertions.assertThatThrownBy(() -> HoldersTest.ITEM.encode(HoldersTest.NBT, direct)).isInstanceOf(NexusCodecException.class);
+        Assertions.assertThatThrownBy(() -> HoldersTest.ITEM.encode(CodecFormat.netty(HoldersTest.writable(ConnectionType.OTHER)), direct))
+                .isInstanceOf(NexusCodecException.class)
+                .hasMessageContainingAll("direct holder", "minecraft:item");
     }
     
     @Test

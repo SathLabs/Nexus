@@ -75,7 +75,9 @@ public class HolderCodecs {
         return new Traversal<>("holder") {
             
             ///
-            /// Writes the id of the holder's value as a VarInt on the network, and the identifier of a reference holder otherwise.
+            /// Writes the id of a reference holder's value as a VarInt on the network, and its identifier otherwise.
+            ///
+            /// Fails on a direct holder.
             ///
             @Override
             public <V> V write(Operations<V> operations, Holder<T> value) {
@@ -175,6 +177,14 @@ public class HolderCodecs {
                 PathReader<T> direct = inline.reader(steps, from);
                 return from < steps.size() ? new DirectReader<>(direct) : new ReferenceReader<>(registry, direct);
             }
+            
+            ///
+            /// Checks the codec of the value of a direct holder.
+            ///
+            @Override
+            public boolean hasKeyedForm() {
+                return inline.hasKeyedForm();
+            }
         };
     }
     
@@ -201,7 +211,7 @@ public class HolderCodecs {
             throw CodecErrors.unregistered(registry);
         }
         
-        return holder.unwrapKey().orElseThrow(() -> new NexusCodecException("Expected a holder of the registry '" + registry.identifier() + "', found a direct holder"));
+        return holder.unwrapKey().orElseThrow(() -> HolderCodecs.directHolder(registry));
     }
     
     ///
@@ -224,7 +234,7 @@ public class HolderCodecs {
     }
     
     ///
-    /// Gets the id of the value of the given holder in the given registry of the given netty format.
+    /// Gets the id of the value of the given reference holder in the given registry of the given netty format.
     ///
     private static <T> int idOf(Operations<?> operations, ResourceKey<? extends Registry<T>> registry, Holder<T> holder) {
         if (!holder.isBound()) {
@@ -234,6 +244,10 @@ public class HolderCodecs {
         int id = HolderCodecs.syncedRegistryOf(operations, registry).getId(holder.value());
         if (id == -1) {
             throw CodecErrors.unregistered(registry);
+        }
+        
+        if (holder.kind() == Holder.Kind.DIRECT) {
+            throw HolderCodecs.directHolder(registry);
         }
         
         return id;
@@ -267,6 +281,13 @@ public class HolderCodecs {
     ///
     private static NexusCodecException inaccessible(ResourceKey<?> registry) {
         return new NexusCodecException("Could not access the registry '" + registry.identifier() + "'");
+    }
+    
+    ///
+    /// Creates the failure for a direct holder, which the codec of a holder can't write.
+    ///
+    private static NexusCodecException directHolder(ResourceKey<?> registry) {
+        return new NexusCodecException("Expected a holder of the registry '" + registry.identifier() + "', found a direct holder");
     }
     
     ///
