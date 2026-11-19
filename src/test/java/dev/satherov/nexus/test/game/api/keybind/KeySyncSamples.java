@@ -26,6 +26,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 
 import com.mojang.blaze3d.platform.InputConstants;
@@ -39,6 +40,8 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 ///
 /// The client tests that check keys reach the server with their firings and their held state.
@@ -94,9 +97,9 @@ public class KeySyncSamples {
         KeySyncSamples.enterLevel(client);
         ServerPlayer player = KeySyncSamples.getPlayer(client);
         keyboard.hold(GLFW.GLFW_KEY_F20);
-        client.until("the server to read the key down", () -> held.isDown(player));
+        client.until("the server to read the key down", () -> KeySyncSamples.readOnServer(client, () -> held.isDown(player)));
         keyboard.release(GLFW.GLFW_KEY_F20);
-        client.until("the server to read the key up", () -> !held.isDown(player));
+        client.until("the server to read the key up", () -> !KeySyncSamples.readOnServer(client, () -> held.isDown(player)));
         client.leaveWorld();
     }
 
@@ -107,9 +110,9 @@ public class KeySyncSamples {
         KeySyncSamples.enterLevel(client);
         ServerPlayer player = KeySyncSamples.getPlayer(client);
         keyboard.hold(GLFW.GLFW_KEY_F20);
-        client.until("the server to read the key down", () -> held.isDown(player));
+        client.until("the server to read the key down", () -> KeySyncSamples.readOnServer(client, () -> held.isDown(player)));
         client.minecraft().setScreen(new KeySyncSamples.PlainScreen());
-        client.until("the server to read the key up once the screen opened", () -> !held.isDown(player));
+        client.until("the server to read the key up once the screen opened", () -> !KeySyncSamples.readOnServer(client, () -> held.isDown(player)));
         Assertions.assertThat(keyboard.isHeld(GLFW.GLFW_KEY_F20)).as("the key is still held").isTrue();
         keyboard.release(GLFW.GLFW_KEY_F20);
         client.minecraft().setScreen(null);
@@ -123,13 +126,14 @@ public class KeySyncSamples {
         KeySyncSamples.enterLevel(client);
         ServerPlayer player = KeySyncSamples.getPlayer(client);
         keyboard.hold(GLFW.GLFW_KEY_F21);
-        client.until("the server to read the key down", () -> everywhere.isDown(player));
+        client.until("the server to read the key down", () -> KeySyncSamples.readOnServer(client, () -> everywhere.isDown(player)));
         client.leaveWorld();
         Assertions.assertThat(everywhere.isDown(player)).as("the key of the player who left").isFalse();
 
         keyboard.release(GLFW.GLFW_KEY_F21);
         KeySyncSamples.enterLevel(client);
-        Assertions.assertThat(everywhere.isDown(KeySyncSamples.getPlayer(client))).as("the key after the relog").isFalse();
+        ServerPlayer rejoined = KeySyncSamples.getPlayer(client);
+        Assertions.assertThat(KeySyncSamples.readOnServer(client, () -> everywhere.isDown(rejoined))).as("the key after the relog").isFalse();
         client.leaveWorld();
     }
 
@@ -140,14 +144,14 @@ public class KeySyncSamples {
         KeySyncSamples.enterLevel(client);
         ServerPlayer first = KeySyncSamples.getPlayer(client);
         keyboard.hold(GLFW.GLFW_KEY_F21);
-        client.until("the server to read the key down", () -> everywhere.isDown(first));
+        client.until("the server to read the key down", () -> KeySyncSamples.readOnServer(client, () -> everywhere.isDown(first)));
         client.leaveWorld();
 
         KeySyncSamples.enterLevel(client);
         ServerPlayer second = KeySyncSamples.getPlayer(client);
-        client.until("the server to read the key down after the relog", () -> everywhere.isDown(second));
+        client.until("the server to read the key down after the relog", () -> KeySyncSamples.readOnServer(client, () -> everywhere.isDown(second)));
         keyboard.release(GLFW.GLFW_KEY_F21);
-        client.until("the server to read the key up", () -> !everywhere.isDown(second));
+        client.until("the server to read the key up", () -> !KeySyncSamples.readOnServer(client, () -> everywhere.isDown(second)));
         client.leaveWorld();
     }
 
@@ -158,7 +162,7 @@ public class KeySyncSamples {
         KeySyncSamples.enterLevel(client);
         ServerPlayer player = KeySyncSamples.getPlayer(client);
         keyboard.hold(GLFW.GLFW_KEY_F21);
-        client.until("the server to read the key down", () -> everywhere.isDown(player));
+        client.until("the server to read the key down", () -> KeySyncSamples.readOnServer(client, () -> everywhere.isDown(player)));
 
         LocalPlayer before = client.minecraft().player;
         MinecraftServer server = player.level().getServer();
@@ -171,10 +175,10 @@ public class KeySyncSamples {
         ServerPlayer replaced = replacing.join();
         client.until("the client to respawn", () -> client.minecraft().player != before);
         client.ticks(KeySyncSamples.SETTLE_TICKS);
-        Assertions.assertThat(everywhere.isDown(replaced)).as("the key after the replace").isTrue();
+        Assertions.assertThat(KeySyncSamples.readOnServer(client, () -> everywhere.isDown(replaced))).as("the key after the replace").isTrue();
 
         keyboard.release(GLFW.GLFW_KEY_F21);
-        client.until("the server to read the key up", () -> !everywhere.isDown(replaced));
+        client.until("the server to read the key up", () -> !KeySyncSamples.readOnServer(client, () -> everywhere.isDown(replaced)));
         client.leaveWorld();
     }
 
@@ -185,12 +189,12 @@ public class KeySyncSamples {
         KeySyncSamples.enterLevel(client);
         ServerPlayer player = KeySyncSamples.getPlayer(client);
         keyboard.hold(GLFW.GLFW_KEY_F20);
-        client.until("the server to read the key down", () -> held.isDown(player));
+        client.until("the server to read the key down", () -> KeySyncSamples.readOnServer(client, () -> held.isDown(player)));
         player.level().getServer().execute(() -> {
             player.disconnect();
             NeoForge.EVENT_BUS.post(new PlayerEvent.PlayerLoggedOutEvent(player));
         });
-        client.until("the server to read the key up once the player logged out", () -> !held.isDown(player));
+        client.until("the server to read the key up once the player logged out", () -> !KeySyncSamples.readOnServer(client, () -> held.isDown(player)));
         Assertions.assertThat(keyboard.isHeld(GLFW.GLFW_KEY_F20)).as("the key is still held").isTrue();
         keyboard.release(GLFW.GLFW_KEY_F20);
         client.leaveWorld();
@@ -210,7 +214,7 @@ public class KeySyncSamples {
         int settled = player.level().getServer().getTickCount() + KeySyncSamples.SETTLE_TICKS;
         client.until("the server to handle what the client sent", () -> player.level().getServer().getTickCount() >= settled);
         Assertions.assertThat(KeySyncSamples.DEPARTED_RUNS.get()).as("runs of the server action").isZero();
-        Assertions.assertThat(departed.isDown(player)).as("the key on the server").isFalse();
+        Assertions.assertThat(KeySyncSamples.readOnServer(client, () -> departed.isDown(player))).as("the key on the server").isFalse();
         keyboard.release(GLFW.GLFW_KEY_F7);
         client.leaveWorld();
     }
@@ -227,7 +231,7 @@ public class KeySyncSamples {
         client.until("a server tick to read the key down", () -> !KeySyncSamples.HELD_TICKS_ON_FIRST_TICK.isEmpty());
         Assertions.assertThat(KeySyncSamples.HELD_TICKS_ON_FIRST_TICK).as("server held ticks on the first server tick the key is down").containsExactly(1);
         keyboard.release(GLFW.GLFW_KEY_F20);
-        client.until("the server to read the key up", () -> !held.isDown(player));
+        client.until("the server to read the key up", () -> !KeySyncSamples.readOnServer(client, () -> held.isDown(player)));
         client.leaveWorld();
     }
 
@@ -239,14 +243,14 @@ public class KeySyncSamples {
         ServerPlayer player = KeySyncSamples.getPlayer(client);
         KeySyncSamples.HELD_TICKS_ON_RELEASE.clear();
         keyboard.hold(GLFW.GLFW_KEY_F8);
-        client.until("the server held ticks to grow", () -> released.getHeldTicks(player) >= KeySyncSamples.GROWN_TICKS);
+        client.until("the server held ticks to grow", () -> KeySyncSamples.readOnServer(client, () -> released.getHeldTicks(player)) >= KeySyncSamples.GROWN_TICKS);
         keyboard.release(GLFW.GLFW_KEY_F8);
         client.until("the server action to run", () -> !KeySyncSamples.HELD_TICKS_ON_RELEASE.isEmpty());
         Assertions.assertThat(KeySyncSamples.HELD_TICKS_ON_RELEASE).as("runs of the server action").hasSize(1);
         Assertions.assertThat(KeySyncSamples.HELD_TICKS_ON_RELEASE.getFirst())
                 .as("server held ticks when the release arrived")
                 .isGreaterThanOrEqualTo(KeySyncSamples.GROWN_TICKS);
-        client.until("the server to read the key up", () -> !released.isDown(player));
+        client.until("the server to read the key up", () -> !KeySyncSamples.readOnServer(client, () -> released.isDown(player)));
         client.leaveWorld();
     }
 
@@ -260,11 +264,11 @@ public class KeySyncSamples {
         keyboard.hold(GLFW.GLFW_KEY_F20);
         client.until("the server action to run", () -> !KeySyncSamples.HELD_TICKS_ON_ARRIVAL.isEmpty());
         Assertions.assertThat(KeySyncSamples.HELD_TICKS_ON_ARRIVAL).as("server held ticks when the key arrived").containsExactly(1);
-        client.until("the server held ticks to grow", () -> held.getHeldTicks(player) >= KeySyncSamples.GROWN_TICKS);
+        client.until("the server held ticks to grow", () -> KeySyncSamples.readOnServer(client, () -> held.getHeldTicks(player)) >= KeySyncSamples.GROWN_TICKS);
 
         keyboard.release(GLFW.GLFW_KEY_F20);
-        client.until("the server to read the key up", () -> !held.isDown(player));
-        Assertions.assertThat(held.getHeldTicks(player)).as("server held ticks after the release").isZero();
+        client.until("the server to read the key up", () -> !KeySyncSamples.readOnServer(client, () -> held.isDown(player)));
+        Assertions.assertThat(KeySyncSamples.readOnServer(client, () -> held.getHeldTicks(player))).as("server held ticks after the release").isZero();
         client.leaveWorld();
     }
 
@@ -275,10 +279,10 @@ public class KeySyncSamples {
         KeySyncSamples.enterLevel(client);
         ServerPlayer player = KeySyncSamples.getPlayer(client);
         keyboard.hold(GLFW.GLFW_KEY_F22);
-        client.until("the server progress to reach one", () -> charged.getProgress(player) >= 1.0F);
-        Assertions.assertThat(charged.getProgress(player)).as("the server progress of the charged key").isEqualTo(1.0F);
+        client.until("the server progress to reach one", () -> KeySyncSamples.readOnServer(client, () -> charged.getProgress(player)) >= 1.0F);
+        Assertions.assertThat(KeySyncSamples.readOnServer(client, () -> charged.getProgress(player))).as("the server progress of the charged key").isEqualTo(1.0F);
         keyboard.release(GLFW.GLFW_KEY_F22);
-        client.until("the server to read the key up", () -> !charged.isDown(player));
+        client.until("the server to read the key up", () -> !KeySyncSamples.readOnServer(client, () -> charged.isDown(player)));
         client.leaveWorld();
     }
 
@@ -332,7 +336,7 @@ public class KeySyncSamples {
         client.keyboard().press(GLFW.GLFW_KEY_F19);
         client.ticks(KeySyncSamples.SETTLE_TICKS);
         Assertions.assertThat(missing.isDown()).as("the key on the client").isFalse();
-        Assertions.assertThat(missing.isDown(player)).as("the key on the server").isFalse();
+        Assertions.assertThat(KeySyncSamples.readOnServer(client, () -> missing.isDown(player))).as("the key on the server").isFalse();
         Assertions.assertThat(KeySyncSamples.MISSING_RUNS.get()).as("runs of either action").isZero();
         client.leaveWorld();
     }
@@ -343,7 +347,14 @@ public class KeySyncSamples {
     }
 
     private static ServerPlayer getPlayer(Client client) {
-        return client.serverLevel().players().getFirst();
+        ServerLevel level = client.serverLevel();
+        return KeySyncSamples.readOnServer(client, () -> level.players().getFirst());
+    }
+
+    private static <VALUE> VALUE readOnServer(Client client, Supplier<VALUE> read) {
+        AtomicReference<VALUE> value = new AtomicReference<>();
+        client.onServer(_ -> value.set(read.get()));
+        return value.get();
     }
 
     private static void onPressed(ServerPlayer player) {
