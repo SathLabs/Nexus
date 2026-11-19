@@ -5,6 +5,7 @@ import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.keybind.Keybind;
 import dev.satherov.nexus.api.keybind.Keybinds;
 import dev.satherov.nexus.api.keybind.activation.Activation;
+import dev.satherov.nexus.api.persistence.PlayerData;
 import dev.satherov.nexus.gametest.api.client.Client;
 import dev.satherov.nexus.gametest.api.client.ClientTest;
 import dev.satherov.nexus.gametest.api.client.Keyboard;
@@ -24,6 +25,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
 import com.mojang.blaze3d.platform.InputConstants;
@@ -34,6 +36,7 @@ import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -149,6 +152,33 @@ public class KeySyncSamples {
     }
 
     @ClientTest
+    public static void heldEverywhereKeyStaysDownThroughAReplace(Client client) {
+        Keybind everywhere = Objects.requireNonNull(KeySyncSamples.everywhere);
+        Keyboard keyboard = client.keyboard();
+        KeySyncSamples.enterLevel(client);
+        ServerPlayer player = KeySyncSamples.getPlayer(client);
+        keyboard.hold(GLFW.GLFW_KEY_F21);
+        client.until("the server to read the key down", () -> everywhere.isDown(player));
+
+        LocalPlayer before = client.minecraft().player;
+        MinecraftServer server = player.level().getServer();
+        PlayerData data = Nexus.getMod().getPersistence().getPlayerData();
+        CompletableFuture<ServerPlayer> replacing = server.submit(() -> {
+            data.replace(server, player.getUUID(), data.snapshot(player));
+            return Objects.requireNonNull(server.getPlayerList().getPlayer(player.getUUID()));
+        });
+        client.until("the server to replace the player", replacing::isDone);
+        ServerPlayer replaced = replacing.join();
+        client.until("the client to respawn", () -> client.minecraft().player != before);
+        client.ticks(KeySyncSamples.SETTLE_TICKS);
+        Assertions.assertThat(everywhere.isDown(replaced)).as("the key after the replace").isTrue();
+
+        keyboard.release(GLFW.GLFW_KEY_F21);
+        client.until("the server to read the key up", () -> !everywhere.isDown(replaced));
+        client.leaveWorld();
+    }
+
+    @ClientTest
     public static void heldKeyReadsUpOnTheServerOnceThePlayerLogsOut(Client client) {
         Keybind held = Objects.requireNonNull(KeySyncSamples.held);
         Keyboard keyboard = client.keyboard();
@@ -156,7 +186,10 @@ public class KeySyncSamples {
         ServerPlayer player = KeySyncSamples.getPlayer(client);
         keyboard.hold(GLFW.GLFW_KEY_F20);
         client.until("the server to read the key down", () -> held.isDown(player));
-        player.level().getServer().execute(() -> NeoForge.EVENT_BUS.post(new PlayerEvent.PlayerLoggedOutEvent(player)));
+        player.level().getServer().execute(() -> {
+            player.disconnect();
+            NeoForge.EVENT_BUS.post(new PlayerEvent.PlayerLoggedOutEvent(player));
+        });
         client.until("the server to read the key up once the player logged out", () -> !held.isDown(player));
         Assertions.assertThat(keyboard.isHeld(GLFW.GLFW_KEY_F20)).as("the key is still held").isTrue();
         keyboard.release(GLFW.GLFW_KEY_F20);

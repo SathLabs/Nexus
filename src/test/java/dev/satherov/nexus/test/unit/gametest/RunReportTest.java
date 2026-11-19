@@ -620,6 +620,7 @@ public class RunReportTest {
                         Map.entry("nexus:encoding_samples/owner_outside_a_world_is_the_built_in_registry", Expected.passed()),
                         Map.entry("nexus:key_event_samples/cancelled_activation_still_sends_the_held_state", Expected.passed()),
                         Map.entry("nexus:key_sync_samples/held_everywhere_key_reads_down_on_the_server_after_a_relog", Expected.passed()),
+                        Map.entry("nexus:key_sync_samples/held_everywhere_key_stays_down_through_a_replace", Expected.passed()),
                         Map.entry("nexus:key_sync_samples/held_key_reads_up_on_the_server_once_the_player_logs_out", Expected.passed()),
                         Map.entry("nexus:key_sync_samples/key_of_a_disconnected_player_does_nothing_on_the_server", Expected.passed()),
                         Map.entry("nexus:key_sync_samples/server_held_ticks_are_one_on_the_first_server_tick_the_key_is_down", Expected.passed()),

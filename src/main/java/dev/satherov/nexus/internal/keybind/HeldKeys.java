@@ -77,9 +77,16 @@ public final class HeldKeys {
     ///
     /// Removes every key of the player that logged out.
     ///
+    /// Does nothing if the player is still connected.
+    ///
     /// @param event The event of the player logging out.
     ///
     private void onLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+        // A player replaced with saved data logs out on a connection that stays open, and the client won't send the keys it holds down again.
+        if (event.getEntity() instanceof ServerPlayer player && !player.hasDisconnected()) {
+            return;
+        }
+        
         this.downTicksByPlayer.remove(event.getEntity().getUUID());
     }
     
