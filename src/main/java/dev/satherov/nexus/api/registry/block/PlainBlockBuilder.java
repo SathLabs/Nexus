@@ -28,6 +28,7 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
+import java.util.stream.Stream;
 
 ///
 /// A builder of one block without an item.
@@ -243,14 +244,13 @@ public final class PlainBlockBuilder<BLOCK extends Block, PARENT>
     }
     
     ///
-    /// Declares the translation of the block, and the translation of the item if [#item(BiFunction)] was called.
+    /// The translation key of the block, and the translation keys of the item if [#item(BiFunction)] was called.
+    ///
+    /// @return The translation keys of the block and the item.
     ///
     @Override
-    protected void declareTranslations() {
-        this.translation.get();
-        ItemBuilder<?, ?> item = this.item;
-        if (item != null) {
-            EntryBuilder.declareAllTranslations(item);
-        }
+    protected List<String> getTranslationKeys() {
+        List<String> item = ObjectMapping.mapNonNullOrElse(this.item, EntryBuilder::getAllTranslationKeys, List.of());
+        return Stream.concat(Stream.of(this.getTranslationKey("block")), item.stream()).toList();
     }
 }

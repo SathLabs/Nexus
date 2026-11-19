@@ -55,8 +55,10 @@ public class FluidBuilderSamples {
     private static @Nullable FluidEntry<FluidType, BaseFlowingFluid.Source, BaseFlowingFluid.Flowing, LiquidBlock, BucketItem> replacedBucket;
     private static @Nullable Throwable takenBucketRefusal;
     private static @Nullable Throwable takenTranslationRefusal;
+    private static @Nullable Throwable takenTypeTranslationRefusal;
+    private static @Nullable Throwable takenItemTranslationRefusal;
     private static @Nullable PlainFluidBuilder<FluidType, BaseFlowingFluid.Source, BaseFlowingFluid.Flowing, Registrations> takenOver;
-    private static boolean clientRequested;
+    private static boolean clientCodeRan;
     
     @ServerTest
     public static void registersTheTypeAndBothFluidsUnderTheirNames(GameTestHelper helper) {
@@ -218,6 +220,37 @@ public class FluidBuilderSamples {
     }
     
     @ServerTest
+    public static void refusesAFluidWhoseTypeTranslationIsTakenBeforeRegisteringAnything(GameTestHelper helper) {
+        Throwable refusal = FluidBuilderSamples.takenTypeTranslationRefusal;
+        List<String> keys = Nexus.getMod().getTranslations().getAll().stream().map(Translation::getKey).toList();
+        helper.assertTrue(refusal instanceof IllegalStateException, "The fluid with a taken type translation was registered");
+        helper.assertValueEqual(Objects.requireNonNull(refusal).getMessage(), "Key 'fluid_type.nexus.fluid_builder_samples.type_taken' is already declared", "message");
+        helper.assertTrue(
+                Nexus.getMod().getRegistrations().getAll().stream().map(RegistryEntry::getName).noneMatch(name -> name.contains("fluid_builder_samples.type_taken")),
+                "A sub-object of the fluid with a taken type translation was registered"
+        );
+        helper.assertFalse(keys.contains("block.nexus.fluid_builder_samples.type_taken"), "The fluid with a taken type translation declared the translation of its block");
+        helper.assertFalse(keys.contains("item.nexus.fluid_builder_samples.type_taken_bucket"), "The fluid with a taken type translation declared the translation of its bucket");
+        helper.succeed();
+    }
+    
+    @ServerTest
+    public static void refusesAFluidWhoseBlockItemTranslationIsTakenBeforeRegisteringAnything(GameTestHelper helper) {
+        Throwable refusal = FluidBuilderSamples.takenItemTranslationRefusal;
+        List<String> keys = Nexus.getMod().getTranslations().getAll().stream().map(Translation::getKey).toList();
+        helper.assertTrue(refusal instanceof IllegalStateException, "The fluid with a taken block item translation was registered");
+        helper.assertValueEqual(Objects.requireNonNull(refusal).getMessage(), "Key 'item.nexus.fluid_builder_samples.item_taken' is already declared", "message");
+        helper.assertTrue(
+                Nexus.getMod().getRegistrations().getAll().stream().map(RegistryEntry::getName).noneMatch(name -> name.contains("fluid_builder_samples.item_taken")),
+                "A sub-object of the fluid with a taken block item translation was registered"
+        );
+        helper.assertFalse(keys.contains("fluid_type.nexus.fluid_builder_samples.item_taken"), "The fluid with a taken block item translation declared the translation of its type");
+        helper.assertFalse(keys.contains("block.nexus.fluid_builder_samples.item_taken"), "The fluid with a taken block item translation declared the translation of its block");
+        helper.assertFalse(keys.contains("item.nexus.fluid_builder_samples.item_taken_bucket"), "The fluid with a taken block item translation declared the translation of its bucket");
+        helper.succeed();
+    }
+    
+    @ServerTest
     public static void namesTheBucketAfterTheFluid(GameTestHelper helper) {
         FluidEntry<FluidType, BaseFlowingFluid.Source, BaseFlowingFluid.Flowing, LiquidBlock, BucketItem> withItem = FluidBuilderSamples.withItem();
         FluidEntry<FluidType, SampleSource, SampleFlowing, LiquidBlock, SampleBucket> full = FluidBuilderSamples.full();
@@ -263,8 +296,8 @@ public class FluidBuilderSamples {
     }
     
     @ServerTest
-    public static void neverRequestsTheClientHooksOnADedicatedServer(GameTestHelper helper) {
-        helper.assertFalse(FluidBuilderSamples.clientRequested, "The model or the client extensions were requested on a dedicated server");
+    public static void neverRunsTheClientCodeOnADedicatedServer(GameTestHelper helper) {
+        helper.assertFalse(FluidBuilderSamples.clientCodeRan, "The client code of a fluid ran on a dedicated server");
         helper.succeed();
     }
     
@@ -337,14 +370,9 @@ public class FluidBuilderSamples {
             FluidBuilderSamples.full = registrations.fluid("fluid_builder_samples_full", "Full Sample Fluid")
                     .type(properties -> new FluidType(properties.lightLevel(7)))
                     .fluids(SampleSource::new, SampleFlowing::new)
-                    .model(() -> {
-                        FluidBuilderSamples.clientRequested = true;
-                        return SampleClient::model;
-                    })
-                    .extensions(() -> {
-                        FluidBuilderSamples.clientRequested = true;
-                        return SampleClient::extensions;
-                    })
+                    .model(() -> SampleClient::model)
+                    .extensions(() -> SampleClient::extensions)
+                    .client(() -> (_, _) -> FluidBuilderSamples.clientCodeRan = true)
                     .block()
                     .end()
                     .bucket(SampleBucket::new)
@@ -378,6 +406,25 @@ public class FluidBuilderSamples {
             registrations.block("fluid_builder_samples/translation_taken", "Sample Block With A Taken Translation").register();
             FluidBuilderSamples.takenTranslationRefusal = Assertions.catchThrowable(() -> registrations.fluid("fluid_builder_samples.translation_taken", "Sample Fluid With A Taken Translation")
                     .block()
+                    .end()
+                    .register()
+            );
+            
+            // Another identifier, but the same translation key of the type once the `/` becomes a `.`.
+            registrations.fluid("fluid_builder_samples/type_taken", "Sample Fluid With A Taken Type Translation").register();
+            FluidBuilderSamples.takenTypeTranslationRefusal = Assertions.catchThrowable(() -> registrations.fluid("fluid_builder_samples.type_taken", "Sample Fluid With A Taken Type Translation")
+                    .block()
+                    .end()
+                    .register()
+            );
+            
+            // Another identifier, but the same translation key of the named block item once the `/` becomes a `.`.
+            registrations.item("fluid_builder_samples/item_taken", "Sample Item With A Taken Translation").noTab().register();
+            FluidBuilderSamples.takenItemTranslationRefusal = Assertions.catchThrowable(() -> registrations.fluid("fluid_builder_samples.item_taken", "Sample Fluid With A Taken Item Translation")
+                    .block()
+                    .item()
+                    .named("Sample Block Item With A Taken Translation")
+                    .end()
                     .end()
                     .register()
             );

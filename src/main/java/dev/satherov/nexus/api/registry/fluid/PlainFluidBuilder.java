@@ -347,8 +347,6 @@ public final class PlainFluidBuilder
     ///
     /// Creates the entry for the given key, registering the type, the flowing fluid, and the block and the bucket if set.
     ///
-    /// Declares the translations of the block and the bucket before anything is registered.
-    ///
     /// Adds the model and the client extensions as client hooks if they were given.
     ///
     /// @param key The key of the source.
@@ -358,16 +356,10 @@ public final class PlainFluidBuilder
     @Override
     protected PlainFluidEntry<TYPE, SOURCE, FLOWING> createEntry(ResourceKey<Fluid> key) {
         Registrations registrations = this.getRegistrations();
-        PlainBlockBuilder<? extends LiquidBlock, ? extends FluidBuilder<TYPE, SOURCE, FLOWING, ?, ?, PARENT>> block = this.block;
-        if (block != null) {
-            // The type and the flowing fluid are registered before the block and the bucket, so a taken translation key of those has to throw first.
-            EntryBuilder.declareAllTranslations(block);
-            EntryBuilder.declareAllTranslations(block.end().bucket());
-        }
-        
         Translation translation = this.define("fluid_type", this.english);
         RegistryEntry<FluidType, TYPE> type = registrations.register(NeoForgeRegistries.Keys.FLUID_TYPES, this.getName(), () -> this.createType(translation)).register();
         RegistryEntry<Fluid, FLOWING> flowing = registrations.register(Registries.FLUID, this.getFlowingName(), () -> this.flowingFactory.apply(this.linked.get())).register();
+        PlainBlockBuilder<? extends LiquidBlock, ? extends FluidBuilder<TYPE, SOURCE, FLOWING, ?, ?, PARENT>> block = this.block;
         PlainFluidEntry<TYPE, SOURCE, FLOWING> entry = block == null ?
                 new PlainFluidEntry<>(key, this, translation, type, flowing) :
                 new FluidEntry<>(key, block.end(), translation, type, flowing, EntryBuilder.registerSubObject(block), EntryBuilder.registerSubObject(block.end().bucket()));
@@ -401,6 +393,24 @@ public final class PlainFluidBuilder
         }
         
         return Stream.of(fluids, EntryBuilder.getAllKeys(block), EntryBuilder.getAllKeys(block.end().bucket()))
+                .flatMap(List::stream)
+                .toList();
+    }
+    
+    ///
+    /// The translation key of the type, and the translation keys of the block and the bucket if [#block(BiFunction)] was called.
+    ///
+    /// @return The translation keys of the type and the sub-objects.
+    ///
+    @Override
+    protected List<String> getTranslationKeys() {
+        List<String> type = List.of(this.getTranslationKey("fluid_type"));
+        PlainBlockBuilder<? extends LiquidBlock, ? extends FluidBuilder<TYPE, SOURCE, FLOWING, ?, ?, PARENT>> block = this.block;
+        if (block == null) {
+            return type;
+        }
+        
+        return Stream.of(type, EntryBuilder.getAllTranslationKeys(block), EntryBuilder.getAllTranslationKeys(block.end().bucket()))
                 .flatMap(List::stream)
                 .toList();
     }

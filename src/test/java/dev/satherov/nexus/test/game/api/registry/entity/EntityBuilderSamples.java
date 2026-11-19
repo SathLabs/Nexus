@@ -69,7 +69,7 @@ public class EntityBuilderSamples {
     private static @Nullable LivingEntityBuilder<SampleMob, Registrations> takenOver;
     private static @Nullable Throwable attributesRefusal;
     private static @Nullable Throwable takenEggRefusal;
-    private static boolean clientRequested;
+    private static boolean clientCodeRan;
     
     @ServerTest
     public static void registersTheTypeUnderItsName(GameTestHelper helper) {
@@ -274,8 +274,8 @@ public class EntityBuilderSamples {
     }
     
     @ServerTest
-    public static void neverRequestsTheRendererOnADedicatedServer(GameTestHelper helper) {
-        helper.assertFalse(EntityBuilderSamples.clientRequested, "A renderer was requested on a dedicated server");
+    public static void neverRunsTheClientCodeOnADedicatedServer(GameTestHelper helper) {
+        helper.assertFalse(EntityBuilderSamples.clientCodeRan, "The client code of an entity type ran on a dedicated server");
         helper.succeed();
     }
     
@@ -386,10 +386,8 @@ public class EntityBuilderSamples {
                     .type(builder -> builder.eyeHeight(0.5F))
                     .size(2.0F, 3.0F)
                     .type(EntityType.Builder::fireImmune)
-                    .renderer(() -> {
-                        EntityBuilderSamples.clientRequested = true;
-                        return SampleClient::renderer;
-                    })
+                    .renderer(() -> SampleClient::renderer)
+                    .client(() -> (_, _) -> EntityBuilderSamples.clientCodeRan = true)
                     .register();
             
             EntityBuilderSamples.slashed = registrations.entity("entity_builder_samples/slashed", "Slashed Sample Entity", MobCategory.MISC, SampleEntity::new).register();
@@ -398,10 +396,7 @@ public class EntityBuilderSamples {
             LivingEntityBuilder<SampleMob, Registrations> builder = registrations.livingEntity("entity_builder_samples_mob", "Sample Mob", MobCategory.CREATURE, SampleMob::new)
                     .attributes(() -> Mob.createMobAttributes().add(Attributes.MAX_HEALTH, 42.0D))
                     .spawnPlacement(SpawnPlacementTypes.ON_GROUND, Heightmap.Types.OCEAN_FLOOR, (_, _, _, _, _) -> false)
-                    .renderer(() -> {
-                        EntityBuilderSamples.clientRequested = true;
-                        return SampleClient::renderer;
-                    });
+                    .renderer(() -> SampleClient::renderer);
             EntityBuilderSamples.mob = builder.egg()
                     .properties(Item.Properties::new)
                     .end()
@@ -410,10 +405,7 @@ public class EntityBuilderSamples {
             
             EntityBuilderSamples.custom = registrations.livingEntity("entity_builder_samples_custom", "Custom Sample Mob", MobCategory.CREATURE, SampleMob::new)
                     .attributes(Mob::createMobAttributes)
-                    .renderer(() -> {
-                        EntityBuilderSamples.clientRequested = true;
-                        return SampleClient::renderer;
-                    })
+                    .renderer(() -> SampleClient::renderer)
                     .egg(SampleEgg::new)
                     .properties(properties -> properties.requiredFeatures(FeatureFlags.TRADE_REBALANCE))
                     .noTab()

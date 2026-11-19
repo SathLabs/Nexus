@@ -47,7 +47,7 @@ public class MenuBuilderSamples {
 
     private static @Nullable MenuEntry<NumberMenu> number;
     private static @Nullable MenuEntry<NumberMenu> screened;
-    private static boolean clientRequested;
+    private static boolean clientCodeRan;
 
     @ServerTest
     public static void namesTheTitleAfterItsKey(GameTestHelper helper) {
@@ -100,8 +100,8 @@ public class MenuBuilderSamples {
     }
 
     @ServerTest
-    public static void neverRequestsTheScreenOnADedicatedServer(GameTestHelper helper) {
-        helper.assertFalse(MenuBuilderSamples.clientRequested, "A screen was requested on a dedicated server");
+    public static void neverRunsTheClientCodeOnADedicatedServer(GameTestHelper helper) {
+        helper.assertFalse(MenuBuilderSamples.clientCodeRan, "The client code of a menu ran on a dedicated server");
         helper.succeed();
     }
 
@@ -150,10 +150,8 @@ public class MenuBuilderSamples {
 
             MenuBuilderSamples.screened = registrations
                     .menu("menu_builder_samples_screened", "Screened Sample", (id, _, _) -> new NumberMenu(Objects.requireNonNull(MenuBuilderSamples.screened).get(), id, 0))
-                    .screen(() -> {
-                        MenuBuilderSamples.clientRequested = true;
-                        return NumberScreen::new;
-                    })
+                    .screen(() -> NumberScreen::new)
+                    .client(() -> (_, _) -> MenuBuilderSamples.clientCodeRan = true)
                     .register();
         }
     }

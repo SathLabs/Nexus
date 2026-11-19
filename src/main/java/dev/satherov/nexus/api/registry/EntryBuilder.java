@@ -184,25 +184,24 @@ public abstract class EntryBuilder
     }
     
     ///
-    /// Declares the translations of the object of the given builder and of every sub-object it registers, as far as
-    /// [#declareTranslations()] declares them.
+    /// The translation keys of the object of the given builder and of every sub-object it registers, as far as
+    /// [#getTranslationKeys()] returns them.
     ///
-    /// If another builder took over the given one, the translations will be those of the builder that took over last.
+    /// If another builder took over the given one, the keys will be those of the builder that took over last.
     ///
-    /// Meant for a builder that registers objects of its own before its sub-objects, so a taken translation key throws before anything is registered.
+    /// Meant to be used for the sub-objects in [#getTranslationKeys()].
     ///
     /// @param builder The builder of the object.
     ///
-    /// @throws IllegalStateException If a translation key is already declared.
+    /// @return The translation keys of the object and its sub-objects.
     ///
-    protected static void declareAllTranslations(EntryBuilder<?, ?, ?, ?, ?> builder) {
+    protected static List<String> getAllTranslationKeys(EntryBuilder<?, ?, ?, ?, ?> builder) {
         EntryBuilder<?, ?, ?, ?, ?> successor = builder.successor;
         if (successor != null) {
-            EntryBuilder.declareAllTranslations(successor);
-            return;
+            return EntryBuilder.getAllTranslationKeys(successor);
         }
         
-        builder.declareTranslations();
+        return builder.getTranslationKeys();
     }
     
     ///
@@ -364,12 +363,31 @@ public abstract class EntryBuilder
         this.checkUnregistered();
         // Check every key before creating the entry, or a refused one would leave the listeners and sub-objects of the entry behind.
         EntryBuilder.getAllKeys(this).forEach(key -> this.registrations.checkAddable(key.registryKey(), key.identifier()));
+        this.checkUndeclared(this.getTranslationKeys());
         ENTRY entry = this.createEntry(this.key);
         this.registrations.add(entry, this::create, value -> this.callbacks.forEach(callback -> callback.accept(value)));
         
         this.registered = true;
         this.clientCode.forEach(code -> this.addClientHook(bus -> code.get().accept(bus, entry)));
         return entry;
+    }
+    
+    ///
+    /// Throws an [IllegalStateException] if any of the given translation keys is already declared in the translations of the mod.
+    ///
+    private void checkUndeclared(List<String> keys) {
+        List<String> declared = this.registrations.getMod()
+                .getTranslations()
+                .getAll()
+                .stream()
+                .map(Translation::getKey)
+                .toList();
+        
+        for (String key : keys) {
+            if (declared.contains(key)) {
+                throw new IllegalStateException("Key '" + key + "' is already declared");
+            }
+        }
     }
     
     ///
@@ -431,7 +449,21 @@ public abstract class EntryBuilder
     ///
     @CanIgnoreReturnValue
     protected Translation define(String category, String english) {
-        return this.registrations.getMod().getTranslations().defineKey(Util.makeDescriptionId(category, this.key.identifier()), english);
+        return this.registrations.getMod().getTranslations().defineKey(this.getTranslationKey(category), english);
+    }
+    
+    ///
+    /// The translation key `<category>.<modid>.<name>` that [#define(String, String)] declares for the given category.
+    /// - `<category>` is the given category.
+    /// - `<modid>` is the id of the mod.
+    /// - `<name>` is the name of this builder, with every `/` replaced by `.`.
+    ///
+    /// @param category The first part of the key.
+    ///
+    /// @return The translation key.
+    ///
+    protected String getTranslationKey(String category) {
+        return Util.makeDescriptionId(category, this.key.identifier());
     }
     
     ///
@@ -471,13 +503,15 @@ public abstract class EntryBuilder
     }
     
     ///
-    /// Declares the translations that [#createEntry(ResourceKey)] would declare for the object and its sub-objects.
+    /// The translation keys that [#createEntry(ResourceKey)] declares for the object and its sub-objects.
     ///
-    /// A translation declared here will not be declared again when the entry is created.
-    /// Declares nothing by default.
+    /// Every key will be checked before the entry is created.
+    /// If a key is missing, a taken one will leave the translations declared before it behind.
     ///
-    /// @throws IllegalStateException If a translation key is already declared.
+    /// @return The translation keys, or an empty list if this builder doesn't declare any.
     ///
     @ForOverride
-    protected void declareTranslations() { }
+    protected List<String> getTranslationKeys() {
+        return List.of();
+    }
 }

@@ -68,6 +68,11 @@ public final class ItemBuilder<ITEM extends Item, PARENT>
     private Supplier<Translation> translation;
     
     ///
+    /// If the item has a translation of its own instead of the one of the object it belongs to.
+    ///
+    private boolean hasOwnTranslation;
+    
+    ///
     /// The properties the factory receives, before the id, the description, the defaults, and the edits are applied.
     ///
     private Supplier<Item.Properties> properties = Item.Properties::new;
@@ -105,6 +110,7 @@ public final class ItemBuilder<ITEM extends Item, PARENT>
         this.factory = factory;
         this.defaults = defaults;
         this.translation = this.declare(english);
+        this.hasOwnTranslation = true;
     }
     
     ///
@@ -272,6 +278,7 @@ public final class ItemBuilder<ITEM extends Item, PARENT>
     public ItemBuilder<ITEM, PARENT> named(String english) {
         this.checkUnregistered();
         this.translation = this.declare(english);
+        this.hasOwnTranslation = true;
         return this;
     }
     
@@ -315,10 +322,16 @@ public final class ItemBuilder<ITEM extends Item, PARENT>
     }
     
     ///
-    /// Declares the translation of the item, which is the translation of the object the item belongs to unless [#named(String)] was called.
+    /// The translation key of the item if it has a translation of its own.
+    ///
+    /// @return The translation key of the item, or an empty list if the item has the translation of the object it belongs to.
     ///
     @Override
-    protected void declareTranslations() {
-        this.translation.get();
+    protected List<String> getTranslationKeys() {
+        if (this.hasOwnTranslation) {
+            return List.of(this.getTranslationKey("item"));
+        }
+        
+        return List.of();
     }
 }

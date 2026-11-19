@@ -90,10 +90,12 @@ public final class BlockBuilder
     }
     
     ///
-    /// Declares the translations of the block and the item, from the builder of the block.
+    /// The translation keys of the block and the item, from the builder of the block.
+    ///
+    /// @return The translation keys of the block and the item.
     ///
     @Override
-    protected void declareTranslations() {
-        this.block.declareTranslations();
+    protected List<String> getTranslationKeys() {
+        return this.block.getTranslationKeys();
     }
 }

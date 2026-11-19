@@ -51,7 +51,7 @@ public class ParticleEntrySamples {
     private static @Nullable ParticleEntry<SimpleParticleType, SimpleParticleType> unlimited;
     private static @Nullable ParticleEntry<SimpleParticleType, SimpleParticleType> sprites;
     private static @Nullable ParticleEntry<SimpleParticleType, SimpleParticleType> provider;
-    private static boolean clientRequested;
+    private static boolean clientCodeRan;
     
     @ServerTest
     public static void spawnSendsTheParticlesToThePlayersNearThePosition(GameTestHelper helper) {
@@ -204,8 +204,8 @@ public class ParticleEntrySamples {
     }
     
     @ServerTest
-    public static void neverRequestsTheProvidersOnADedicatedServer(GameTestHelper helper) {
-        helper.assertFalse(ParticleEntrySamples.clientRequested, "A particle provider was requested on a dedicated server");
+    public static void neverRunsTheClientCodeOnADedicatedServer(GameTestHelper helper) {
+        helper.assertFalse(ParticleEntrySamples.clientCodeRan, "The client code of a particle type ran on a dedicated server");
         helper.succeed();
     }
     
@@ -291,17 +291,12 @@ public class ParticleEntrySamples {
             ParticleEntrySamples.plain = registrations.particle("particle_entry_samples_plain").register();
             ParticleEntrySamples.unlimited = registrations.particle("particle_entry_samples_unlimited", () -> new SimpleParticleType(true)).register();
             ParticleEntrySamples.sprites = registrations.particle("particle_entry_samples_sprites")
-                    .sprites(() -> {
-                        ParticleEntrySamples.clientRequested = true;
-                        return SampleClient::spriteProvider;
-                    })
+                    .sprites(() -> SampleClient::spriteProvider)
                     .register();
             
             ParticleEntrySamples.provider = registrations.particle("particle_entry_samples_provider")
-                    .provider(() -> {
-                        ParticleEntrySamples.clientRequested = true;
-                        return SampleClient::provider;
-                    })
+                    .provider(() -> SampleClient::provider)
+                    .client(() -> (_, _) -> ParticleEntrySamples.clientCodeRan = true)
                     .register();
         }
     }

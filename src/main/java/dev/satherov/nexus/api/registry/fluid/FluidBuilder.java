@@ -161,4 +161,14 @@ public final class FluidBuilder
     protected List<ResourceKey<?>> getSubObjectKeys() {
         return this.fluid.getSubObjectKeys();
     }
+    
+    ///
+    /// The translation keys of the type, the block, and the bucket, from the builder of the fluid.
+    ///
+    /// @return The translation keys of the type and the sub-objects.
+    ///
+    @Override
+    protected List<String> getTranslationKeys() {
+        return this.fluid.getTranslationKeys();
+    }
 }
