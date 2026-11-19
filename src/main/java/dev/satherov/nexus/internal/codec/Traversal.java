@@ -61,7 +61,8 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     ///
     /// Writes through the operations of the format and puts this codec's name and the format on top of a failure.
     ///
-    /// Fails on a tag that vanilla's NBT reader would refuse as too deep.
+    /// Fails on a tag that vanilla's NBT reader would refuse as too deep, counting the tag as the root.
+    /// If the tag is nested inside another tag, the levels of the outer tag will not be counted.
     ///
     @Override
     public <V> V encode(CodecFormat<V, ? extends A> format, T value) {
@@ -304,6 +305,17 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     ///
     public PathReader<T> reader(List<ComponentPath.Step> steps, int from) {
         return new EncodedReader<>(this, new TagReader(steps.subList(from, steps.size())));
+    }
+    
+    ///
+    /// If this codec and every codec it holds can encode and decode in JSON and NBT.
+    ///
+    /// The default implementation returns `true`, for a codec that holds no other codec.
+    ///
+    /// @return `true` if this codec and every codec it holds can encode and decode in JSON and NBT.
+    ///
+    public boolean hasKeyedForm() {
+        return true;
     }
     
     ///

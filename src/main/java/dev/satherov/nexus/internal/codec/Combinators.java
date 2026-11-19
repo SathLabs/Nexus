@@ -19,6 +19,7 @@ import com.google.common.base.Suppliers;
 import com.google.common.collect.Comparators;
 import com.mojang.datafixers.util.Either;
 
+import org.apache.commons.lang3.mutable.MutableBoolean;
 import org.apache.commons.lang3.mutable.MutableInt;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
@@ -110,6 +111,14 @@ public class Combinators {
                 
                 return new EitherReader<>(left, right);
             }
+            
+            ///
+            /// Checks both codecs.
+            ///
+            @Override
+            public boolean hasKeyedForm() {
+                return first.hasKeyedForm() && second.hasKeyedForm();
+            }
         };
     }
     
@@ -146,6 +155,14 @@ public class Combinators {
                 }
                 
                 return Combinators.readEither(operations, input, list, codec).map(Function.identity(), List::of);
+            }
+            
+            ///
+            /// Checks the codec of the elements.
+            ///
+            @Override
+            public boolean hasKeyedForm() {
+                return codec.hasKeyedForm();
             }
         };
     }
@@ -255,6 +272,14 @@ public class Combinators {
                 
                 return new ShortReader<>(toShort, shortReader, structReader);
             }
+            
+            ///
+            /// Checks the codec of the short form and the struct.
+            ///
+            @Override
+            public boolean hasKeyedForm() {
+                return mapped.hasKeyedForm();
+            }
         };
     }
     
@@ -302,6 +327,11 @@ public class Combinators {
             /// The number of levels of this codec that are being written or read on the current thread.
             ///
             private final ThreadLocal<MutableInt> depth = ThreadLocal.withInitial(MutableInt::new);
+            
+            ///
+            /// If the codec the definition returns is being checked for a keyed form on the current thread.
+            ///
+            private final ThreadLocal<MutableBoolean> checking = ThreadLocal.withInitial(MutableBoolean::new);
             
             ///
             /// Writes the value with the codec the definition returns.
@@ -361,6 +391,24 @@ public class Combinators {
                     return this.defined.get().reader(steps, from);
                 } finally {
                     building.clear(from);
+                }
+            }
+            
+            ///
+            /// Checks the codec the definition returns, and counts this codec as having a keyed form where the definition reaches it again.
+            ///
+            @Override
+            public boolean hasKeyedForm() {
+                MutableBoolean checking = this.checking.get();
+                if (checking.isTrue()) {
+                    return true;
+                }
+                
+                checking.setTrue();
+                try {
+                    return this.defined.get().hasKeyedForm();
+                } finally {
+                    checking.setFalse();
                 }
             }
         };
@@ -462,6 +510,14 @@ public class Combinators {
             public PathReader<T> reader(List<ComponentPath.Step> steps, int from) {
                 PathReader<S> mapped = codec.reader(steps, from);
                 return mapped instanceof Traversal.EncodedReader<S> ? super.reader(steps, from) : new MappedReader<>(back, mapped);
+            }
+            
+            ///
+            /// Checks the codec of the values to map.
+            ///
+            @Override
+            public boolean hasKeyedForm() {
+                return codec.hasKeyedForm();
             }
         };
     }
@@ -690,6 +746,14 @@ public class Combinators {
             
             //noinspection unchecked A value is only ever written by the subtype that its own identifier picks.
             return (Structs.Inlinable<T, ? super A>) subtype;
+        }
+        
+        ///
+        /// Checks the codec of every subtype.
+        ///
+        @Override
+        public boolean hasKeyedForm() {
+            return this.subtypes.values().stream().allMatch(Traversal::hasKeyedForm);
         }
     }
     

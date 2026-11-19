@@ -364,6 +364,14 @@ public class VanillaTypes {
                         onNetwork.read(operations, input) :
                         onKeyed.read(operations, input);
             }
+            
+            ///
+            /// Checks the codec to run in JSON and NBT.
+            ///
+            @Override
+            public boolean hasKeyedForm() {
+                return onKeyed.hasKeyedForm();
+            }
         };
     }
     

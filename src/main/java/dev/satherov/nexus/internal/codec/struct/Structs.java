@@ -99,6 +99,14 @@ public class Structs {
                 PathReader<T> present = codec.reader(steps, from);
                 return present instanceof Traversal.EncodedReader<T> ? super.reader(steps, from) : new PresentReader<>(present);
             }
+            
+            ///
+            /// Checks the codec of a present value.
+            ///
+            @Override
+            public boolean hasKeyedForm() {
+                return codec.hasKeyedForm();
+            }
         };
     }
     
@@ -770,6 +778,14 @@ public class Structs {
             }
             
             throw CodecErrors.unknownStep(this.keys, step);
+        }
+        
+        ///
+        /// Checks the codec of every field, which is the struct of an inline field.
+        ///
+        @Override
+        public boolean hasKeyedForm() {
+            return this.fields.stream().allMatch(field -> field.codec().hasKeyedForm());
         }
     }
     
