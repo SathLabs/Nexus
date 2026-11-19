@@ -18,6 +18,7 @@ import net.minecraft.util.LightCoordsUtil;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
 
+import com.google.common.base.Suppliers;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexFormat;
@@ -30,6 +31,7 @@ import org.jspecify.annotations.Nullable;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Supplier;
 
 ///
 /// The vertices and labels of one recorded shape.
@@ -63,9 +65,10 @@ public final class Primitives {
     ///
     public void writeInto(Map<RenderType, BufferBuilder> builders, Vec3 origin) {
         this.verticesByType.forEach((type, vertices) -> {
-            BufferBuilder builder = Objects.requireNonNull(builders.get(type), "There is no builder for render type '" + type + "'");
+            BufferBuilder builder = Objects.requireNonNull(builders.get(type), () -> "There is no builder for render type '" + type + "'");
             VertexFormat format = type.pipeline().getVertexFormat();
-            vertices.forEach(vertex -> vertex.writeInto(builder, format, origin));
+            Supplier<ShapeInputs.Elements> elements = Suppliers.memoize(() -> ShapeInputs.Elements.of(format));
+            vertices.forEach(vertex -> vertex.writeInto(builder, elements, origin));
         });
     }
     
@@ -129,11 +132,11 @@ public final class Primitives {
         /// The buffer builder skips every element that its vertex format doesn't have.
         /// If the vertex shows a sprite of a [TextureAtlas], its position on the sprite will be written as a position in the atlas.
         ///
-        /// @param builder The buffer builder of the render type of the vertex.
-        /// @param format  The vertex format of the pipeline of the render type.
-        /// @param origin  The position that the written position is relative to.
+        /// @param builder  The buffer builder of the render type of the vertex.
+        /// @param elements The elements of the shape inputs in the vertex format of the render type, called only if the vertex has shape inputs.
+        /// @param origin   The position that the written position is relative to.
         ///
-        private void writeInto(BufferBuilder builder, VertexFormat format, Vec3 origin) {
+        private void writeInto(BufferBuilder builder, Supplier<ShapeInputs.Elements> elements, Vec3 origin) {
             Vec3 relative = this.position.subtract(origin);
             float u = this.u;
             float v = this.v;
@@ -149,7 +152,7 @@ public final class Primitives {
                     .setNormal((float) this.normal.x, (float) this.normal.y, (float) this.normal.z)
                     .setLineWidth(this.lineWidth);
             if (this.shape != null) {
-                this.shape.writeInto(builder, format, origin);
+                this.shape.writeInto(builder, elements.get(), origin);
             }
         }
     }
@@ -167,50 +170,131 @@ public final class Primitives {
     record ShapeInputs(Vec3 center, Vec3 axis, float radius, float width, Vec2 corner, Kind kind) {
         
         ///
-        /// Gets the element of the given input in the given vertex format.
+        /// The arrays that the raw bits are written into, by the number of values minus one.
         ///
-        /// @param format The vertex format of the pipeline of the render type.
-        /// @param input  The name of the input.
+        /// Every conversion into raw bits reuses the array of its number of values.
         ///
-        /// @return The element.
+        private static final int[][] RAW = { new int[1], new int[2], new int[3] };
+        
         ///
-        /// @throws NullPointerException If the vertex format has no element of that name.
+        /// Puts the given `int` into an array as its raw bits.
         ///
-        private static VertexFormatElement element(VertexFormat format, String input) {
-            return Objects.requireNonNull(format.getElementMapping().get(input), "The vertex format '" + format + "' has no input '" + input + "'");
+        /// @param value The value to put.
+        ///
+        /// @return The raw bits, in the array that the next conversion of one value reuses.
+        ///
+        private static int[] raw(int value) {
+            int[] raw = ShapeInputs.RAW[0];
+            raw[0] = value;
+            return raw;
+        }
+        
+        ///
+        /// Converts the given `float` into its raw bits.
+        ///
+        /// @param value The value to convert.
+        ///
+        /// @return The raw bits, in the array that the next conversion of one value reuses.
+        ///
+        private static int[] raw(float value) {
+            return ShapeInputs.raw(Float.floatToRawIntBits(value));
         }
         
         ///
         /// Converts the given `float`s into their raw bits.
         ///
-        /// @param values The values to convert.
+        /// @param x The first value to convert.
+        /// @param y The second value to convert.
         ///
-        /// @return The raw bits, one `int` per value.
+        /// @return The raw bits, in the array that the next conversion of two values reuses.
         ///
-        private static int[] raw(float... values) {
-            int[] raw = new int[values.length];
-            for (int i = 0; i < values.length; i++) {
-                raw[i] = Float.floatToRawIntBits(values[i]);
-            }
-            
+        private static int[] raw(float x, float y) {
+            int[] raw = ShapeInputs.RAW[1];
+            raw[0] = Float.floatToRawIntBits(x);
+            raw[1] = Float.floatToRawIntBits(y);
+            return raw;
+        }
+        
+        ///
+        /// Converts the given `float`s into their raw bits.
+        ///
+        /// @param x The first value to convert.
+        /// @param y The second value to convert.
+        /// @param z The third value to convert.
+        ///
+        /// @return The raw bits, in the array that the next conversion of three values reuses.
+        ///
+        private static int[] raw(float x, float y, float z) {
+            int[] raw = ShapeInputs.RAW[2];
+            raw[0] = Float.floatToRawIntBits(x);
+            raw[1] = Float.floatToRawIntBits(y);
+            raw[2] = Float.floatToRawIntBits(z);
             return raw;
         }
         
         ///
         /// Writes the inputs into the current vertex of the given buffer builder, with the center relative to the given origin.
         ///
-        /// @param builder The buffer builder of the render type of the vertex.
-        /// @param format  The vertex format of the pipeline of the render type.
-        /// @param origin  The position that the written center is relative to.
+        /// @param builder  The buffer builder of the render type of the vertex.
+        /// @param elements The elements of the inputs in the vertex format of the render type.
+        /// @param origin   The position that the written center is relative to.
         ///
-        private void writeInto(BufferBuilder builder, VertexFormat format, Vec3 origin) {
+        private void writeInto(BufferBuilder builder, Elements elements, Vec3 origin) {
             Vec3 relative = this.center.subtract(origin);
-            builder.misc(ShapeInputs.element(format, "Center"), ShapeInputs.raw((float) relative.x, (float) relative.y, (float) relative.z))
-                    .misc(ShapeInputs.element(format, "Axis"), ShapeInputs.raw((float) this.axis.x, (float) this.axis.y, (float) this.axis.z))
-                    .misc(ShapeInputs.element(format, "Radius"), ShapeInputs.raw(this.radius))
-                    .misc(ShapeInputs.element(format, "Width"), ShapeInputs.raw(this.width))
-                    .misc(ShapeInputs.element(format, "Corner"), ShapeInputs.raw(this.corner.x, this.corner.y))
-                    .misc(ShapeInputs.element(format, "Kind"), this.kind.ordinal());
+            // Each call writes its raw bits before the next one reuses the array.
+            builder.misc(elements.center(), ShapeInputs.raw((float) relative.x, (float) relative.y, (float) relative.z))
+                    .misc(elements.axis(), ShapeInputs.raw((float) this.axis.x, (float) this.axis.y, (float) this.axis.z))
+                    .misc(elements.radius(), ShapeInputs.raw(this.radius))
+                    .misc(elements.width(), ShapeInputs.raw(this.width))
+                    .misc(elements.corner(), ShapeInputs.raw(this.corner.x, this.corner.y))
+                    .misc(elements.kind(), ShapeInputs.raw(this.kind.ordinal()));
+        }
+        
+        ///
+        /// The elements of the inputs of the shape program in one vertex format.
+        ///
+        /// @param center The element of the `Center` input.
+        /// @param axis   The element of the `Axis` input.
+        /// @param radius The element of the `Radius` input.
+        /// @param width  The element of the `Width` input.
+        /// @param corner The element of the `Corner` input.
+        /// @param kind   The element of the `Kind` input.
+        ///
+        private record Elements(VertexFormatElement center, VertexFormatElement axis, VertexFormatElement radius, VertexFormatElement width, VertexFormatElement corner, VertexFormatElement kind) {
+            
+            ///
+            /// Gets the elements of the inputs in the given vertex format.
+            ///
+            /// @param format The vertex format of the pipeline of the render type.
+            ///
+            /// @return The elements.
+            ///
+            /// @throws NullPointerException If the vertex format has no element of an input.
+            ///
+            private static Elements of(VertexFormat format) {
+                return new Elements(
+                        Elements.element(format, "Center"),
+                        Elements.element(format, "Axis"),
+                        Elements.element(format, "Radius"),
+                        Elements.element(format, "Width"),
+                        Elements.element(format, "Corner"),
+                        Elements.element(format, "Kind")
+                );
+            }
+            
+            ///
+            /// Gets the element of the given input in the given vertex format.
+            ///
+            /// @param format The vertex format of the pipeline of the render type.
+            /// @param input  The name of the input.
+            ///
+            /// @return The element.
+            ///
+            /// @throws NullPointerException If the vertex format has no element of that name.
+            ///
+            private static VertexFormatElement element(VertexFormat format, String input) {
+                return Objects.requireNonNull(format.getElementMapping().get(input), () -> "The vertex format '" + format + "' has no input '" + input + "'");
+            }
         }
         
         ///
