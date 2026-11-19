@@ -7,6 +7,7 @@ import dev.satherov.nexus.api.render.glow.Glows;
 import dev.satherov.nexus.api.render.hud.HudSlot;
 import dev.satherov.nexus.api.render.pipeline.Pipeline;
 import dev.satherov.nexus.api.render.pipeline.Shading;
+import dev.satherov.nexus.api.render.post.PostEffect;
 import dev.satherov.nexus.api.render.shape.Drawing;
 import dev.satherov.nexus.api.render.shape.Paint;
 import dev.satherov.nexus.api.render.shape.Scene;
@@ -24,11 +25,16 @@ import net.neoforged.neoforge.event.level.LevelEvent;
 
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.ARGB;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.portal.TeleportTransition;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -39,6 +45,8 @@ import org.jspecify.annotations.Nullable;
 
 import java.lang.reflect.Proxy;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 ///
 /// Checks the registrations of one mod with the renderer, how its draw hooks share the pose stack, and when its state ends.
@@ -200,6 +208,52 @@ public class RenderSamples {
         Assertions.assertThat(RenderSamples.redPixels(client, client.capture(), new AABB(pos))).as("the red pixels around the block after the rejoin").isZero();
     }
     
+    @ClientTest
+    public static void setupInLoadSurvivesDimensionChange(Client client) {
+        Vec3 eye = RenderSamples.enter(client);
+        AABB box = AABB.ofSize(eye.add(0.0D, 0.0D, RenderSamples.DISTANCE), 1.0D, 1.0D, 1.0D);
+        BlockPos pos = BlockPos.containing(eye.add(0.0D, -1.0D, 4.0D));
+        PostEffect leftEffect = Nexus.getMod().getRender().postEffect("red");
+        PostEffect loadedEffect = Nexus.getMod().getRender().postEffect("invert");
+        Drawing leftDrawing = RenderSamples.scene().draw(Shape.box(box), Paint.fill(RenderSamples.RED));
+        Glow leftGlow = RenderSamples.glows().block(RenderSamples.KEY, pos, RenderSamples.RED);
+        AtomicReference<Drawing> loadedDrawing = new AtomicReference<>();
+        AtomicReference<Glow> loadedGlow = new AtomicReference<>();
+        Consumer<LevelEvent.Load> listener = event -> {
+            if (event.getLevel() instanceof ClientLevel level && level.dimension() == Level.NETHER) {
+                loadedDrawing.set(RenderSamples.scene().draw(Shape.box(box), Paint.fill(RenderSamples.GREEN)));
+                loadedGlow.set(RenderSamples.glows().block(RenderSamples.KEY + "_nether", pos, RenderSamples.GREEN));
+                loadedEffect.activate();
+            }
+        };
+        
+        leftEffect.activate();
+        NeoForge.EVENT_BUS.addListener(LevelEvent.Load.class, listener);
+        try {
+            client.onServer(level -> {
+                ServerPlayer player = level.players().getFirst();
+                ServerLevel nether = Objects.requireNonNull(level.getServer().getLevel(Level.NETHER), "the nether of the server");
+                player.teleport(new TeleportTransition(nether, player.position(), Vec3.ZERO, 0.0F, 0.0F, TeleportTransition.DO_NOTHING));
+            });
+            client.until("the client to enter the nether", () -> {
+                ClientLevel current = client.minecraft().level;
+                return current != null && current.dimension() == Level.NETHER;
+            });
+            
+            Assertions.assertThat(leftDrawing.isActive()).as("the drawing made before the dimension change").isFalse();
+            Assertions.assertThat(leftGlow.isActive()).as("the glow made before the dimension change").isFalse();
+            Assertions.assertThat(leftEffect.isActive()).as("the effect activated before the dimension change").isFalse();
+            Assertions.assertThat(Objects.requireNonNull(loadedDrawing.get(), "the drawing made in the load of the nether").isActive()).as("the drawing made in the load of the nether").isTrue();
+            Assertions.assertThat(Objects.requireNonNull(loadedGlow.get(), "the glow made in the load of the nether").isActive()).as("the glow made in the load of the nether").isTrue();
+            Assertions.assertThat(RenderSamples.glows().hasAny()).as("the glows after the dimension change").isTrue();
+            Assertions.assertThat(loadedEffect.isActive()).as("the effect activated in the load of the nether").isTrue();
+        } finally {
+            NeoForge.EVENT_BUS.unregister(listener);
+            leftEffect.deactivate();
+            loadedEffect.deactivate();
+        }
+    }
+    
     private static Vec3 enter(Client client) {
         client.joinWorld();
         client.hideHud(true);
@@ -217,7 +271,7 @@ public class RenderSamples {
     }
     
     private static void place(Client client, BlockPos pos) {
-        client.serverLevel().setBlockAndUpdate(pos, Blocks.STONE.defaultBlockState());
+        client.onServer(level -> level.setBlockAndUpdate(pos, Blocks.STONE.defaultBlockState()));
         client.settle();
         client.awaitStill(RenderSamples.STILL_FRAMES);
     }

@@ -6,6 +6,7 @@ import dev.satherov.nexus.api.render.Render;
 import dev.satherov.nexus.internal.render.post.PostEffects;
 
 import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.neoforge.event.level.LevelEvent;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
@@ -19,6 +20,7 @@ import org.jetbrains.annotations.ApiStatus;
 /// They run under a shader pack as well.
 ///
 /// Every effect is deactivated once the level of the client unloads, on a dimension change and on logout alike.
+/// On a dimension change, effects activated in the [LevelEvent.Load] of the new level stay active.
 ///
 /// Can be accessed through [Render#postEffect(String)].
 ///

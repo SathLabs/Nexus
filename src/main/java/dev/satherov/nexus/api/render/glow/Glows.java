@@ -4,6 +4,8 @@ import dev.satherov.nexus.api.mod.NexusMod;
 import dev.satherov.nexus.api.render.Render;
 import dev.satherov.nexus.internal.render.glow.GlowingBlock;
 
+import net.neoforged.neoforge.event.level.LevelEvent;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.core.BlockPos;
@@ -31,6 +33,7 @@ import java.util.Map;
 /// Every method throws an [IllegalStateException] off the client thread,
 /// and every method but [#tick()] and [#hasAny()] also while the client is in no level.
 /// Every glow is dropped once the level of the client unloads, on a dimension change and on logout alike.
+/// On a dimension change, glows made in the [LevelEvent.Load] of the new level are kept.
 ///
 /// Can be accessed through [Render#getGlows()].
 ///

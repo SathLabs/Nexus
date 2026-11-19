@@ -19,6 +19,7 @@ import dev.satherov.nexus.internal.render.outline.OutlineRules;
 import dev.satherov.nexus.internal.render.post.PostEffects;
 import dev.satherov.nexus.internal.render.shader.Programs;
 import dev.satherov.nexus.internal.render.shape.Scenes;
+import dev.satherov.nexus.internal.tick.client.ClientSession;
 import dev.satherov.nexus.mixin.render.GameRendererMixin;
 
 import net.neoforged.bus.api.EventPriority;
@@ -49,6 +50,7 @@ import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.phys.Vec3;
 
 import com.google.common.base.Suppliers;
@@ -80,7 +82,7 @@ import java.util.function.Supplier;
 /// - Registers the pipelines of the library and the mods, the modifier of the pack overlay, the HUD layers, the debug renderers, and the glow modifier of the entities.
 /// - Runs the scenes, the draw hooks, the glows, and the outline rules at their stage of the frame.
 /// - Ticks the debug renderers after each client tick.
-/// - Starts the scenes and the glows on login and ends them, the outline rules, and the post effects when the level of the client unloads.
+/// - Starts the scenes and the glows on login and ends them, the outline rules, and the post effects when the client leaves its level.
 /// - Makes the scenes rebuild their GPU buffers once a texture atlas is stitched again.
 /// - Projects world positions onto the screen for [Render], with the projection matrix the level was last drawn with.
 /// - Registers the reload listeners of the programs and the outline rules and stores the pipelines created from program files.
@@ -181,6 +183,8 @@ public class RenderDispatch {
         NeoForge.EVENT_BUS.addListener(ClientTickEvent.Post.class, _ -> DebugRenderers.INSTANCE.tick());
         // The client session only opens the client scope at normal priority, so we have to start after it.
         NeoForge.EVENT_BUS.addListener(EventPriority.LOW, ClientPlayerNetworkEvent.LoggingIn.class, RenderDispatch::start);
+        // A new level loads before the old one unloads, so we have to end the state of the old one before any mod sets up its own in the load.
+        NeoForge.EVENT_BUS.addListener(EventPriority.HIGHEST, LevelEvent.Load.class, RenderDispatch::leave);
         NeoForge.EVENT_BUS.addListener(LevelEvent.Unload.class, RenderDispatch::end);
     }
     
@@ -394,18 +398,39 @@ public class RenderDispatch {
     }
     
     ///
+    /// Ends the scenes, the glows, the outline rules, and the post effects and frees the pack overlay if the client leaves its level for the level that loads.
+    ///
+    /// @param event The load event of the level.
+    ///
+    private static void leave(LevelEvent.Load event) {
+        if (ClientSession.isSwitchingTo(event.getLevel()) && Minecraft.getInstance().level != null) {
+            RenderDispatch.endAll();
+        }
+    }
+    
+    ///
     /// Ends the scenes, the glows, the outline rules, and the post effects and frees the pack overlay when the level of the client unloads.
+    ///
+    /// Does nothing if the client switches from the level to another one, whose load already ended them.
     ///
     /// @param event The unload event of the level.
     ///
     private static void end(LevelEvent.Unload event) {
-        if (event.getLevel() == Minecraft.getInstance().level) {
-            Scenes.INSTANCE.end();
-            GlowOutlines.INSTANCE.end();
-            OutlineRules.INSTANCE.end();
-            PostEffects.INSTANCE.end();
-            PackOverlay.release();
+        LevelAccessor level = event.getLevel();
+        if (level == Minecraft.getInstance().level && !ClientSession.isSwitchingFrom(level)) {
+            RenderDispatch.endAll();
         }
+    }
+    
+    ///
+    /// Ends the scenes, the glows, the outline rules, and the post effects and frees the pack overlay.
+    ///
+    private static void endAll() {
+        Scenes.INSTANCE.end();
+        GlowOutlines.INSTANCE.end();
+        OutlineRules.INSTANCE.end();
+        PostEffects.INSTANCE.end();
+        PackOverlay.release();
     }
     
     ///

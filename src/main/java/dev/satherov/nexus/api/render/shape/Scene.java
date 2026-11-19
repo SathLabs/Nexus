@@ -4,6 +4,8 @@ import dev.satherov.nexus.api.mod.NexusMod;
 import dev.satherov.nexus.api.render.Render;
 import dev.satherov.nexus.internal.render.shape.SceneMesh;
 
+import net.neoforged.neoforge.event.level.LevelEvent;
+
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -28,6 +30,7 @@ import java.util.Set;
 /// Every method but [#tick()] also throws one while the client is in no level.
 ///
 /// Every drawing is removed once the level of the client unloads.
+/// On a dimension change, drawings made in the [LevelEvent.Load] of the new level are kept.
 ///
 /// Every scene is drawn whole, after the scenes created before it.
 /// The shapes of a later scene will be drawn over the translucent shapes of an earlier scene in front of them,

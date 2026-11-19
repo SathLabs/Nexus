@@ -652,6 +652,7 @@ public class RunReportTest {
                         Map.entry("nexus:render_samples/projection_follows_hurt_tilt", Expected.passed()),
                         Map.entry("nexus:render_samples/unload_of_another_level_keeps_state", Expected.passed()),
                         Map.entry("nexus:render_samples/leaving_level_drops_every_glow", Expected.passed()),
+                        Map.entry("nexus:render_samples/setup_in_load_survives_dimension_change", Expected.passed()),
                         Map.entry("nexus:buffer_builder_mixin_samples/refused_element_stays_missing", Expected.passed()),
                         Map.entry("nexus:buffer_builder_mixin_samples/float_element_is_written", Expected.passed()),
                         Map.entry("nexus:buffer_builder_mixin_samples/other_element_types_are_skipped", Expected.passed()),
