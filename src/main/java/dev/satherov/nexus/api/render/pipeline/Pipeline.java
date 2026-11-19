@@ -64,6 +64,9 @@ public final class Pipeline {
     /// and is the main target otherwise.
     /// For any other shading, it is the main target, since the pack draws the geometry itself.
     ///
+    /// If a shader pack is in use, the render target of the output target has to be resolved outside of an open render pass,
+    /// or resolving it may throw an [IllegalStateException].
+    ///
     /// @return The output target.
     ///
     public ClientOnly<Supplier<OutputTarget>> getTarget() {

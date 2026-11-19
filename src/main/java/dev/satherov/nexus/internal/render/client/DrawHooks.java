@@ -239,15 +239,15 @@ public final class DrawHooks {
         
         ///
         /// Draws the mesh through the render type, or through a render pass of our own
-        /// if the pipeline binds any uniform block or is [Shading#OWN] while its render type draws onto the main target.
+        /// if the pipeline binds any uniform block or is [Shading#OWN] while the [PackOverlay] is armed.
         ///
-        /// The pass of an own-shaded pipeline draws into the [PackOverlay] instead of the main target.
+        /// The pass of an own-shaded pipeline draws into the overlay instead of the target of its render type, unless that is the outline target.
         /// The mesh will be closed even if the draw throws.
         ///
         private void draw() {
             try (this.mesh) {
                 Map<String, GpuBufferSlice> uniforms = this.readUniforms();
-                boolean redirected = this.pipeline != null && this.pipeline.getShading() == Shading.OWN && this.type.outputTarget() == OutputTarget.MAIN_TARGET;
+                boolean redirected = this.pipeline != null && this.pipeline.getShading() == Shading.OWN && PackOverlay.isArmed() && this.type.outputTarget() != OutputTarget.OUTLINE_TARGET;
                 if (uniforms.isEmpty() && !redirected) {
                     this.type.draw(this.mesh); // Legal because closing the mesh a second time does nothing
                     return;
