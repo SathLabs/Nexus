@@ -211,11 +211,21 @@ tasks.named('runServerStart', JavaExec) {
             .join(File.pathSeparator)
     doFirst {
         environment 'MOD_CLASSES', modClasses
-        // The console reads the command before the world loads and runs it on the first tick after.
-        standardInput = new ByteArrayInputStream('stop\n'.getBytes('UTF-8'))
         directory.mkdirs()
         new File(directory, 'eula.txt').text = 'eula=true\n'
         log.delete()
+
+        // A stop read before the world exists fails, so it is typed once the log says the server is done starting.
+        def console = new PipedOutputStream()
+        standardInput = new PipedInputStream(console)
+        Thread.startDaemonThread('server start stopper') {
+            def deadline = System.currentTimeMillis() + 600_000L
+            while (System.currentTimeMillis() < deadline && !(log.exists() && log.getText('UTF-8').contains('Done ('))) {
+                Thread.sleep(1_000L)
+            }
+            console.write('stop\n'.getBytes('UTF-8'))
+            console.close()
+        }
     }
     doLast {
         def text = log.exists() ? log.getText('UTF-8') : ''
