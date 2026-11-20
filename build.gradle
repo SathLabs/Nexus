@@ -74,8 +74,10 @@ neoForge {
         }
 
         // A dedicated server started with the dist cleaned, as in production, which the gametest server is not.
+        // It runs on the classpath of the samples, so their registrations load on it as well.
         serverStart {
             server()
+            sourceSet = sourceSets.test
             programArgument '--nogui'
         }
 
