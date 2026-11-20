@@ -218,7 +218,7 @@ tasks.named('runServerStart', JavaExec) {
         // A stop read before the world exists fails, so it is typed once the log says the server is done starting.
         def console = new PipedOutputStream()
         standardInput = new PipedInputStream(console)
-        Thread.startDaemonThread('server start stopper') {
+        Thread.ofPlatform().daemon().name('server start stopper').start {
             def deadline = System.currentTimeMillis() + 600_000L
             while (System.currentTimeMillis() < deadline && !(log.exists() && log.getText('UTF-8').contains('Done ('))) {
                 Thread.sleep(1_000L)
