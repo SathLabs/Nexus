@@ -28,3 +28,19 @@ jobs:
 
       - name: Build with Gradle
         run: ./gradlew build
+      # A dedicated server with the dist cleaned, as players run it, which fails on a client class it loads.
+      - name: Start a dedicated server
+        run: ./gradlew runServerStart
+
+      - name: Run the server gametests
+        run: ./gradlew verifyGameTestServer
+
+      - name: Upload the run logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-logs
+          path: |
+            runs/*/logs/latest.log
+            build/reports/gametest/
+            build/reports/tests/
