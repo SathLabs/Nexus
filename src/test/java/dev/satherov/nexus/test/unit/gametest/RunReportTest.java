@@ -440,6 +440,8 @@ public class RunReportTest {
                         Map.entry("nexus:slot_layout_samples/take_that_throws_leaves_the_holder_alone", Expected.passed()),
                         Map.entry("nexus:slot_layout_samples/try_register_keeps_the_first_source_of_one_id", Expected.passed()),
                         Map.entry("nexus:slot_layout_samples/registration_after_the_event_is_left_out", Expected.passed()),
+                        Map.entry("nexus:slot_source_owner_samples/the_other_mod_keeps_its_own_source", Expected.passed()),
+                        Map.entry("nexus:slot_source_owner_samples/the_owner_keeps_its_source_against_the_other_mod", Expected.passed()),
                         Map.entry("nexus:slot_access_samples/capture_and_take_read_the_slots_of_a_resource_handler", Expected.passed()),
                         Map.entry("nexus:slot_access_samples/restore_keeps_the_components", Expected.passed()),
                         Map.entry("nexus:slot_access_samples/restore_tops_up_a_partly_filled_slot_to_its_capacity", Expected.passed()),
