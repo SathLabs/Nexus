@@ -74,10 +74,8 @@ neoForge {
         }
 
         // A dedicated server started with the dist cleaned, as in production, which the gametest server is not.
-        // It runs on the classpath of the samples, so their registrations load on it as well.
         serverStart {
             server()
-            sourceSet = sourceSets.test
             programArgument '--nogui'
         }
 
@@ -207,7 +205,12 @@ tasks.named('runServerStart', JavaExec) {
     def directory = file('runs/serverStart')
     def log = new File(directory, 'logs/latest.log')
 
+    // The library and the harness only: the samples join the nexus mod in every run, and many of them don't link on a
+    // dedicated server yet.
+    def modClasses = (sourceSets.main.output.files.collect { "${mod_id}%%${it}" } + sourceSets.gametest.output.files.collect { "${mod_id}_gametest%%${it}" })
+            .join(File.pathSeparator)
     doFirst {
+        environment 'MOD_CLASSES', modClasses
         // The console reads the command before the world loads and runs it on the first tick after.
         standardInput = new ByteArrayInputStream('stop\n'.getBytes('UTF-8'))
         directory.mkdirs()

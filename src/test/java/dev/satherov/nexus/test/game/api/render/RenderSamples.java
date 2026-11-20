@@ -91,11 +91,13 @@ public class RenderSamples {
     
     private static final Vec3 MARKER = new Vec3(3.0D, 1.5D, 6.0D);
     
+    private static @Nullable Pipeline fresh;
+    
     private static boolean hudShown;
     
     @ClientTest
     public static void pipelineSupplierIsCalledOnce(Client client) {
-        Pipeline pipeline = Objects.requireNonNull(RenderSamples.Registered.fresh, "the pipeline over a fresh render pipeline");
+        Pipeline pipeline = Objects.requireNonNull(RenderSamples.fresh, "the pipeline over a fresh render pipeline");
         Assertions.assertThat(pipeline.getPipeline().get().get()).as("the render pipeline of the pipeline").isSameAs(pipeline.getPipeline().get().get());
         
         Vec3 center = RenderSamples.enter(client).add(0.0D, 0.0D, RenderSamples.DISTANCE);
@@ -113,7 +115,7 @@ public class RenderSamples {
     public static void drawHookTranslationIsUndone(Client client) {
         Vec3 center = RenderSamples.enter(client).add(0.0D, 0.0D, RenderSamples.DISTANCE);
         SampleQuads.setTint(RenderSamples.GREEN);
-        SampleHooks.show(Objects.requireNonNull(RenderSamples.Registered.fresh, "the pipeline over a fresh render pipeline"), center);
+        SampleHooks.show(Objects.requireNonNull(RenderSamples.fresh, "the pipeline over a fresh render pipeline"), center);
         SampleHooks.translate();
         try {
             client.tick();
@@ -127,7 +129,7 @@ public class RenderSamples {
     public static void drawHookPoseLeftPushedIsPopped(Client client) {
         Vec3 center = RenderSamples.enter(client).add(0.0D, 0.0D, RenderSamples.DISTANCE);
         SampleQuads.setTint(RenderSamples.GREEN);
-        SampleHooks.show(Objects.requireNonNull(RenderSamples.Registered.fresh, "the pipeline over a fresh render pipeline"), center);
+        SampleHooks.show(Objects.requireNonNull(RenderSamples.fresh, "the pipeline over a fresh render pipeline"), center);
         SampleHooks.push();
         try {
             Assertions.assertThatNoException().as("the frame of a hook that leaves a pose pushed").isThrownBy(client::tick);
@@ -342,15 +344,12 @@ public class RenderSamples {
     @EventBusSubscriber(modid = Nexus.MOD_ID)
     public static final class Registered {
         
-        // Kept here rather than in the samples, whose client bodies a dedicated server can't link.
-        private static @Nullable Pipeline fresh;
-        
         @SubscribeEvent
         public static void onConstruct(FMLConstructModEvent event) {
             Render render = Nexus.getMod().getRender();
             Pipeline pipeline = render.pipeline(() -> SampleHooks::fresh, Shading.OWN);
             pipeline.bind(SampleQuads.TINT_BLOCK, () -> SampleQuads::tintBlock);
-            RenderSamples.Registered.fresh = pipeline;
+            RenderSamples.fresh = pipeline;
             render.draw(() -> SampleHooks::shift);
             render.draw(() -> SampleHooks::draw);
             render.hudLayer(RenderSamples.ANCHORED, HudSlot.above(Nexus.getMod().id(RenderSamples.ANCHOR)), () -> RenderSamples::anchored);
