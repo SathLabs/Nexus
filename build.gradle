@@ -30,6 +30,17 @@ sourceSets {
         compileClasspath += sourceSets.main.output
         runtimeClasspath += sourceSets.main.output + sourceSets.test.output
     }
+
+    // A second mod on Nexus for the gametests of cases that take two mods, built against the api like any other mod.
+    consumer {
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+
+    test {
+        compileClasspath += sourceSets.consumer.output
+        runtimeClasspath += sourceSets.consumer.output
+    }
 }
 
 java.registerFeature('gametest') {
@@ -45,12 +56,16 @@ configurations {
     gametestImplementation.extendsFrom implementation
     gametestCompileOnly.extendsFrom compileOnly
     gametestRuntimeOnly.extendsFrom runtimeOnly
+    consumerImplementation.extendsFrom implementation
+    consumerCompileOnly.extendsFrom compileOnly
+    consumerRuntimeOnly.extendsFrom runtimeOnly
 }
 
 neoForge {
     version = neo_version
 
     addModdingDependenciesTo(sourceSets.gametest)
+    addModdingDependenciesTo(sourceSets.consumer)
 
     validateAccessTransformers = true
 
@@ -96,6 +111,10 @@ neoForge {
 
         "${mod_id}_gametest" {
             sourceSet sourceSets.gametest
+        }
+
+        "${mod_id}_consumer" {
+            sourceSet sourceSets.consumer
         }
     }
 
@@ -206,7 +225,9 @@ tasks.named('runServerStart', JavaExec) {
 
     // The library and the harness only: the samples join the nexus mod in every run, and many of them don't link on a
     // dedicated server yet.
-    def modClasses = (sourceSets.main.output.files.collect { "${mod_id}%%${it}" } + sourceSets.gametest.output.files.collect { "${mod_id}_gametest%%${it}" })
+    def modClasses = (sourceSets.main.output.files.collect { "${mod_id}%%${it}" } +
+            sourceSets.gametest.output.files.collect { "${mod_id}_gametest%%${it}" } +
+            sourceSets.consumer.output.files.collect { "${mod_id}_consumer%%${it}" })
             .join(File.pathSeparator)
     doFirst {
         environment 'MOD_CLASSES', modClasses
@@ -290,6 +311,27 @@ tasks.register('generateGametestModMetadata', ProcessResources) {
 }
 sourceSets.gametest.resources.srcDir tasks.named('generateGametestModMetadata')
 neoForge.ideSyncTask tasks.named('generateGametestModMetadata')
+
+tasks.register('generateConsumerModMetadata', ProcessResources) {
+    description = 'Generates the mod metadata file for the consumer mod.'
+
+    def replacements = [
+            minecraft_version_range: mc_version_range,
+            neo_version            : neo_version,
+            mod_id                 : "${mod_id}_consumer",
+            parent_mod_id          : mod_id,
+            mod_name               : mod_name,
+            mod_license            : mod_license,
+            mod_version            : mod_version,
+    ]
+
+    inputs.properties replacements
+    expand replacements
+    from 'src/consumer/templates'
+    into 'build/generated/sources/consumerModMetadata'
+}
+sourceSets.consumer.resources.srcDir tasks.named('generateConsumerModMetadata')
+neoForge.ideSyncTask tasks.named('generateConsumerModMetadata')
 
 publishing {
     publications {
