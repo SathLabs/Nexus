@@ -205,9 +205,9 @@ tasks.named('runServerStart', JavaExec) {
     def directory = file('runs/serverStart')
     def log = new File(directory, 'logs/latest.log')
 
-    // The console reads the command before the world loads and runs it on the first tick after.
-    standardInput = new ByteArrayInputStream('stop\n'.getBytes('UTF-8'))
     doFirst {
+        // The console reads the command before the world loads and runs it on the first tick after.
+        standardInput = new ByteArrayInputStream('stop\n'.getBytes('UTF-8'))
         directory.mkdirs()
         new File(directory, 'eula.txt').text = 'eula=true\n'
         log.delete()
