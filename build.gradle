@@ -137,6 +137,7 @@ dependencies {
     gametestApi platform(libs.junit.bom)
     gametestApi libs.junit.platform.commons
 
+    testImplementation libs.archunit
     testImplementation libs.assertj.core
 
     testImplementation platform(libs.junit.bom)
