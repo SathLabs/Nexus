@@ -12,6 +12,8 @@ import dev.satherov.nexus.gametest.internal.measurement.Measurements;
 import dev.satherov.nexus.gametest.internal.option.RunOptions;
 import dev.satherov.nexus.gametest.mixin.LogoRendererMixin;
 import dev.satherov.nexus.gametest.mixin.MinecraftMixin;
+import dev.satherov.nexus.gametest.mixin.MouseHandlerAccess;
+import dev.satherov.nexus.gametest.mixin.PanoramaAccess;
 import dev.satherov.nexus.gametest.mixin.WindowMixin;
 
 import net.neoforged.neoforge.common.util.Lazy;
@@ -176,6 +178,8 @@ public class ClientRun {
         // Prevent anything from moving on its own to ensure goldens have a consistent baseline.
         minecraft.options.hideSplashTexts().set(true);
         minecraft.options.panoramaSpeed().set(0.0D);
+        // The panorama turned at the default speed until now, by as much as the frames took.
+        ((PanoramaAccess) minecraft.gameRenderer.getPanorama()).setSpin(0.0F);
         minecraft.options.cloudStatus().set(CloudStatus.OFF);
         minecraft.options.vignette().set(false);
         minecraft.options.chunkSectionFadeInTime().set(0.0D);
@@ -380,7 +384,7 @@ public class ClientRun {
     
     ///
     /// Disconnects the client from any server it is connected to and places it back on the title screen,
-    /// sets every option, the window, and the GUI scale back to those of the run, and then runs a single frame.
+    /// sets every option, the window, and the GUI scale back to those of the run, moves the cursor to the top left corner, and then runs a single frame.
     ///
     /// Also clears every toast and hides the debug overlay, so nothing a test left behind shows up in the next one.
     ///
@@ -397,6 +401,8 @@ public class ClientRun {
         
         // Goldens only match if every machine renders them at the same size.
         ClientRun.pinWindow(minecraft, pump);
+        // A test may have left the cursor over a widget, which would highlight it in the next capture.
+        ((MouseHandlerAccess) minecraft.mouseHandler).invokeOnMove(minecraft.getWindow().handle(), 0.0D, 0.0D);
         pump.frame();
     }
     
