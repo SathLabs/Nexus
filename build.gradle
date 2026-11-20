@@ -137,6 +137,10 @@ dependencies {
     gametestApi platform(libs.junit.bom)
     gametestApi libs.junit.platform.commons
 
+    testImplementation(libs.archunit) {
+        // Minecraft pins slf4j strictly, and ArchUnit runs on whatever version that is.
+        exclude group: 'org.slf4j'
+    }
     testImplementation libs.assertj.core
 
     testImplementation platform(libs.junit.bom)
