@@ -68,6 +68,9 @@ public class StaticStateTest {
             Map.entry("dev.satherov.nexus.internal.registry.EntryRegister.FIRED_REGISTRIES", "the registry events fire once per game"),
             Map.entry("dev.satherov.nexus.internal.codec.vanilla.VanillaAdapters.UNHASHABLE", "a codec is logged once per JVM"),
             Map.entry("dev.satherov.nexus.internal.render.iris.IrisBridge.linkageWarned", "the Iris linkage is warned about once per JVM"),
+            Map.entry("dev.satherov.nexus.Nexus.mod", "the library's own handle"),
+            Map.entry("dev.satherov.nexus.internal.persistence.slot.SlotSources.registered", "one table of slot sources for every mod"),
+            Map.entry("dev.satherov.nexus.internal.component.LookupGeneration.GENERATION", "one lookup generation for every mod"),
             // State of the one game the JVM runs: a level, a server or the client's session.
             Map.entry("dev.satherov.nexus.internal.tick.Bindings.TICKERS_BY_LEVEL", "keyed by level"),
             Map.entry("dev.satherov.nexus.internal.tick.Ticks.UNLOADED_LEVELS", "keyed by level"),
@@ -80,6 +83,9 @@ public class StaticStateTest {
             Map.entry("dev.satherov.nexus.internal.tick.client.ClientSession.recorded", "the client's session"),
             Map.entry("dev.satherov.nexus.internal.tick.client.ClientSession.loads", "the client's session"),
             Map.entry("dev.satherov.nexus.api.persistence.Persistence.started", "the server's start"),
+            Map.entry("dev.satherov.nexus.api.persistence.PlayerData.removing", "the one swap the server thread runs"),
+            Map.entry("dev.satherov.nexus.internal.tick.client.ClientSession.loaded", "the client's session"),
+            Map.entry("dev.satherov.nexus.internal.codec.path.Encoding.lastRegistries", "the registries of the running server or client"),
             Map.entry("dev.satherov.nexus.api.network.Network.fired", "the payload registration fires once per game"),
             Map.entry("dev.satherov.nexus.internal.component.LookupGeneration.owner", "the server or client the lookups were built for"),
             Map.entry("dev.satherov.nexus.internal.component.PathReaders.modReaders", "collected once from every mod"),
@@ -102,7 +108,9 @@ public class StaticStateTest {
             Map.entry("dev.satherov.nexus.internal.render.client.PackOverlay.armed", "the client window"),
             Map.entry("dev.satherov.nexus.internal.render.client.PackOverlay.seeded", "the client window"),
             Map.entry("dev.satherov.nexus.internal.render.client.PackOverlay.depthCopied", "the client window"),
-            Map.entry("dev.satherov.nexus.internal.render.client.PackOverlay.formatWarned", "the client window")
+            Map.entry("dev.satherov.nexus.internal.render.client.PackOverlay.formatWarned", "the client window"),
+            Map.entry("dev.satherov.nexus.internal.render.client.PackOverlay.overlay", "the client window"),
+            Map.entry("dev.satherov.nexus.internal.render.shape.Primitives$ShapeInputs.RAW", "scratch arrays of the render thread")
     );
 
     @Test

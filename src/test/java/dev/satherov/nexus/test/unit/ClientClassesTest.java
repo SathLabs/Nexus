@@ -1,6 +1,7 @@
 package dev.satherov.nexus.test.unit;
 
 import dev.satherov.nexus.Nexus;
+import dev.satherov.nexus.api.registry.client.ClientOnly;
 import dev.satherov.nexus.gametest.api.server.ServerTest;
 
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -47,19 +48,26 @@ import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 
 ///
-/// Checks the client rule of the library over every class a dedicated server can load: a client class appears in a
-/// common class only as a type argument, as the parameter of a method whose body runs on the client alone, or behind a
-/// method reference or a plain `new` inside a lambda.
+/// Checks the client rule of the library: registration classes load on both sides, so a client class appears in them
+/// only as a type argument, as the parameter of a method whose body runs on the client alone, or behind a method
+/// reference or a plain `new` inside a lambda. Event subscribers that aren't for the client alone are checked too,
+/// since the bus resolves every method signature of a class it registers.
 ///
 /// A client class is one the Minecraft jar's manifest marks as client-only, which is what FML's dist cleaner masks on a
-/// dedicated server, a class of a client-only library or NeoForge's client package, and a class of Nexus that sits in
-/// a package named `client`, ends its name in `Client`, or subscribes to the client dist only. Every other class of
-/// Nexus is common, except mixins, which are applied to their targets and never loaded on their own, and the unit tests.
+/// dedicated server, a class of a client-only library or of NeoForge's client package, and a class of Nexus that sits in
+/// a package named `client`, ends its name in `Client`, or subscribes to the client dist only. The package
+/// `api.registry.client` is the exception: it holds the common types, such as [ClientOnly], that carry client code.
 ///
 public class ClientClassesTest {
 
     private static final String NEXUS = "dev.satherov.nexus.";
     private static final String UNIT_TESTS = "dev.satherov.nexus.test.unit.";
+    private static final String COMMON_CLIENT_TYPES = "dev.satherov.nexus.api.registry.client";
+    private static final List<String> REGISTRATION_PACKAGES = List.of(
+            "dev.satherov.nexus.api.registry",
+            "dev.satherov.nexus.internal.registry",
+            "dev.satherov.nexus.test.game.api.registry"
+    );
     private static final String CLIENT = "client";
     private static final String MIXIN = "mixin";
     private static final String LAMBDA = "lambda$";
@@ -87,9 +95,9 @@ public class ClientClassesTest {
     }
 
     @Test
-    public void commonFieldsHoldNoClientType() {
+    public void registrationFieldsHoldNoClientType() {
         List<String> offenders = new ArrayList<>();
-        for (JavaClass type : ClientClassesTest.commonClasses()) {
+        for (JavaClass type : ClientClassesTest.registrationClasses()) {
             for (JavaField field : type.getFields()) {
                 if (ClientClassesTest.isClient(field.getRawType())) {
                     offenders.add(field.getFullName() + " holds " + field.getRawType().getName());
@@ -97,13 +105,13 @@ public class ClientClassesTest {
             }
         }
 
-        Assertions.assertThat(offenders).as("Common fields of a client type").isEmpty();
+        Assertions.assertThat(offenders).as("Registration fields of a client type").isEmpty();
     }
 
     @Test
-    public void commonMethodsReturnNoClientType() {
+    public void registrationMethodsReturnNoClientType() {
         List<String> offenders = new ArrayList<>();
-        for (JavaClass type : ClientClassesTest.commonClasses()) {
+        for (JavaClass type : ClientClassesTest.registrationClasses()) {
             for (JavaMethod method : type.getMethods()) {
                 if (ClientClassesTest.isClient(method.getRawReturnType())) {
                     offenders.add(method.getFullName() + " returns " + method.getRawReturnType().getName());
@@ -111,7 +119,7 @@ public class ClientClassesTest {
             }
         }
 
-        Assertions.assertThat(offenders).as("Common methods returning a client type").isEmpty();
+        Assertions.assertThat(offenders).as("Registration methods returning a client type").isEmpty();
     }
 
     @Test
@@ -135,9 +143,9 @@ public class ClientClassesTest {
     }
 
     @Test
-    public void commonLambdasNameNoClientType() throws IOException {
+    public void registrationLambdasNameNoClientType() throws IOException {
         List<String> offenders = new ArrayList<>();
-        for (JavaClass type : ClientClassesTest.commonClasses()) {
+        for (JavaClass type : ClientClassesTest.registrationClasses()) {
             ClassModel model = ClassFile.of().parse(ClientClassesTest.bytesOf(type));
             for (MethodModel method : model.methods()) {
                 if (method.methodName().stringValue().startsWith(ClientClassesTest.LAMBDA) && method.flags().has(AccessFlag.SYNTHETIC)) {
@@ -146,7 +154,7 @@ public class ClientClassesTest {
             }
         }
 
-        Assertions.assertThat(offenders).as("Lambdas of common classes naming a client type, which the server resolves when it links the class").isEmpty();
+        Assertions.assertThat(offenders).as("Registration lambdas naming a client type, which the server resolves when it links the class or creates the lambda").isEmpty();
     }
 
     private static List<String> clientNamesIn(JavaClass type, MethodModel method) {
@@ -198,6 +206,12 @@ public class ClientClassesTest {
         return internal.substring(1, internal.length() - 1).replace('/', '.');
     }
 
+    private static List<JavaClass> registrationClasses() {
+        return ClientClassesTest.commonClasses().stream()
+                .filter(type -> ClientClassesTest.REGISTRATION_PACKAGES.stream().anyMatch(root -> type.getPackageName().equals(root) || type.getPackageName().startsWith(root + ".")))
+                .toList();
+    }
+    
     private static List<JavaClass> commonClasses() {
         return ClientClassesTest.CLASSES.stream()
                 .filter(type -> type.getName().startsWith(ClientClassesTest.NEXUS))
@@ -213,7 +227,7 @@ public class ClientClassesTest {
             return ClientClassesTest.isClientName(element.getName());
         }
 
-        if (ClientClassesTest.packageSegments(element).contains(ClientClassesTest.CLIENT)) {
+        if (ClientClassesTest.packageSegments(element).contains(ClientClassesTest.CLIENT) && !element.getPackageName().equals(ClientClassesTest.COMMON_CLIENT_TYPES)) {
             return true;
         }
 
