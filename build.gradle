@@ -223,8 +223,8 @@ tasks.named('runServerStart', JavaExec) {
     def directory = file('runs/serverStart')
     def log = new File(directory, 'logs/latest.log')
 
-    // The library and the harness only: the samples join the nexus mod in every run, and many of them don't link on a
-    // dedicated server yet.
+    // The library, the harness and the consumer only: the samples join the nexus mod in every run, and many of them don't
+    // link on a dedicated server yet.
     def modClasses = (sourceSets.main.output.files.collect { "${mod_id}%%${it}" } +
             sourceSets.gametest.output.files.collect { "${mod_id}_gametest%%${it}" } +
             sourceSets.consumer.output.files.collect { "${mod_id}_consumer%%${it}" })
