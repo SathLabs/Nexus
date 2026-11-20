@@ -2,6 +2,7 @@ package dev.satherov.nexus.test.unit;
 
 import dev.satherov.nexus.Nexus;
 import dev.satherov.nexus.api.registry.client.ClientOnly;
+import dev.satherov.nexus.gametest.api.client.ClientTest;
 import dev.satherov.nexus.gametest.api.server.ServerTest;
 
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -148,7 +149,7 @@ public class ClientClassesTest {
         for (JavaClass type : ClientClassesTest.registrationClasses()) {
             ClassModel model = ClassFile.of().parse(ClientClassesTest.bytesOf(type));
             for (MethodModel method : model.methods()) {
-                if (method.methodName().stringValue().startsWith(ClientClassesTest.LAMBDA) && method.flags().has(AccessFlag.SYNTHETIC)) {
+                if (ClientClassesTest.isServerLambda(type, method)) {
                     offenders.addAll(ClientClassesTest.clientNamesIn(type, method));
                 }
             }
@@ -178,7 +179,8 @@ public class ClientClassesTest {
                 case FieldInstruction field -> ClientClassesTest.nameOf(field.owner().asSymbol());
                 default -> "";
             };
-            if (ClientClassesTest.isClientName(owner)) {
+            // A call into a client class of Nexus, such as ClientDispatch, resolves only when it runs, which is on the client.
+            if (!owner.startsWith(ClientClassesTest.NEXUS) && ClientClassesTest.isClientName(owner)) {
                 offenders.add(lambda + " reaches into " + owner);
             }
         }
@@ -186,6 +188,19 @@ public class ClientClassesTest {
         return offenders;
     }
 
+    private static boolean isServerLambda(JavaClass type, MethodModel method) {
+        String name = method.methodName().stringValue();
+        if (!name.startsWith(ClientClassesTest.LAMBDA) || !method.flags().has(AccessFlag.SYNTHETIC)) {
+            return false;
+        }
+        
+        // javac names a lambda after the method that creates it, and a client test creates its lambdas on the client.
+        String creator = name.substring(ClientClassesTest.LAMBDA.length(), name.lastIndexOf('$'));
+        return type.getMethods().stream()
+                .filter(candidate -> candidate.getName().equals(creator))
+                .noneMatch(candidate -> candidate.isAnnotatedWith(ClientTest.class));
+    }
+    
     private static List<ClassDesc> descriptorTypes(MethodModel method) {
         List<ClassDesc> types = new ArrayList<>(method.methodTypeSymbol().parameterList());
         types.add(method.methodTypeSymbol().returnType());
