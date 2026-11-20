@@ -6,7 +6,6 @@ plugins {
     alias(libs.plugins.moddev)
     alias(libs.plugins.modpublisher)
     alias(libs.plugins.nexus.gradle)
-    alias(libs.plugins.pitest)
 }
 
 version = "${mod_version}+${mc_version}"
@@ -236,23 +235,6 @@ tasks.named('runServerStart', JavaExec) {
             throw new GradleException("The dedicated server did not finish starting, see ${log}")
         }
     }
-}
-
-pitest {
-    pitestVersion = libs.versions.pitest.core.get()
-    junit5PluginVersion = libs.versions.pitest.junit5.get()
-
-    // -PpitestTargets=dev.satherov.nexus.internal.codec.* narrows the run to the packages a branch touched.
-    targetClasses = [providers.gradleProperty('pitestTargets').getOrElse('dev.satherov.nexus.*')]
-    excludedClasses = ['dev.satherov.nexus.mixin.*', 'dev.satherov.nexus.test.*', 'dev.satherov.nexus.gametest.*']
-    targetTests = ['dev.satherov.nexus.test.unit.*']
-    excludedTestClasses = ['dev.satherov.nexus.test.unit.gametest.RunReportTest']
-    threads = 4
-    outputFormats = ['HTML', 'XML']
-    timestampedReports = false
-
-    // The minions boot FML through its JUnit launcher, which needs what moddev gives the test task.
-    jvmArgs = providers.provider { tasks.named('test', Test).get().allJvmArgs }
 }
 
 tasks.named('runGameTestClient') {
