@@ -72,6 +72,12 @@ neoForge {
             programArgument '--nogui'
         }
 
+        // A dedicated server started with the dist cleaned, as in production, which the gametest server is not.
+        serverStart {
+            server()
+            programArgument '--nogui'
+        }
+
         data {
             clientData()
             programArguments.addAll '--mod', mod_id, '--all', '--output', file('src/generated/resources/').absolutePath, '--existing', file('src/main/resources/').absolutePath
@@ -159,25 +165,76 @@ tasks.named('test', Test) {
     }
 }
 
-tasks.register('verifyGameTestRuns', Test) {
-    description = 'Runs every gametest run and then checks their reports.'
-    group = 'verification'
-    testClassesDirs = sourceSets.test.output.classesDirs
+def verifyGameTests = { Test task, String runs ->
+    task.group = 'verification'
+    task.testClassesDirs = sourceSets.test.output.classesDirs
 
     // FML's JUnit launcher would boot the game here, and that needs the arguments moddev only gives the test task.
-    classpath = sourceSets.test.runtimeClasspath.filter { file -> !file.name.startsWith('junit-fml') }
-    useJUnitPlatform()
-    filter {
+    task.classpath = sourceSets.test.runtimeClasspath.filter { file -> !file.name.startsWith('junit-fml') }
+    task.useJUnitPlatform()
+    task.filter {
         includeTestsMatching 'dev.satherov.nexus.test.unit.gametest.RunReportTest'
     }
 
-    dependsOn 'runGameTestServer', 'runGameTestClient', 'runGameTestClientShaders'
-    doNotTrackState 'The runs rewrite the reports it checks'
-
-    systemProperty 'nexus.gametest.reports', layout.buildDirectory.dir('reports/gametest').get().asFile.absolutePath
+    task.doNotTrackState 'The runs rewrite the reports it checks'
+    task.systemProperty 'nexus.gametest.reports', layout.buildDirectory.dir('reports/gametest').get().asFile.absolutePath
+    task.systemProperty 'nexus.gametest.runs', runs
     def tests = providers.gradleProperty('tests').getOrElse('')
     if (!tests.isEmpty()) {
-        systemProperty 'nexus.gametest.tests', tests
+        task.systemProperty 'nexus.gametest.tests', tests
+    }
+}
+
+tasks.register('verifyGameTestRuns', Test) {
+    description = 'Runs every gametest run and then checks their reports.'
+    verifyGameTests(it, '')
+    dependsOn 'runGameTestServer', 'runGameTestClient', 'runGameTestClientShaders'
+}
+
+tasks.register('verifyGameTestServer', Test) {
+    description = 'Runs the server gametests and then checks their report, which needs no display and runs in CI.'
+    verifyGameTests(it, 'server')
+    dependsOn 'runGameTestServer'
+}
+
+tasks.named('runServerStart', JavaExec) {
+    description = 'Starts a dedicated server with the dist cleaned, stops it once the world is loaded, and fails on a client class.'
+    group = 'verification'
+
+    def directory = file('runs/serverStart')
+    def log = new File(directory, 'logs/latest.log')
+
+    // The library and the harness only: the samples join the nexus mod in every run, and many of them don't link on a
+    // dedicated server yet.
+    def modClasses = (sourceSets.main.output.files.collect { "${mod_id}%%${it}" } +
+            sourceSets.gametest.output.files.collect { "${mod_id}_gametest%%${it}" })
+            .join(File.pathSeparator)
+    doFirst {
+        environment 'MOD_CLASSES', modClasses
+        directory.mkdirs()
+        new File(directory, 'eula.txt').text = 'eula=true\n'
+        log.delete()
+
+        // A stop read before the world exists fails, so it is typed once the log says the server is done starting.
+        def console = new PipedOutputStream()
+        standardInput = new PipedInputStream(console)
+        Thread.ofPlatform().daemon().name('server start stopper').start {
+            def deadline = System.currentTimeMillis() + 600_000L
+            while (System.currentTimeMillis() < deadline && !(log.exists() && log.getText('UTF-8').contains('Done ('))) {
+                Thread.sleep(1_000L)
+            }
+            console.write('stop\n'.getBytes('UTF-8'))
+            console.close()
+        }
+    }
+    doLast {
+        def text = log.exists() ? log.getText('UTF-8') : ''
+        if (text.contains('Attempted to load class')) {
+            throw new GradleException("The dedicated server loaded a client class, see ${log}")
+        }
+        if (!text.contains('Done (')) {
+            throw new GradleException("The dedicated server did not finish starting, see ${log}")
+        }
     }
 }
 

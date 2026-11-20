@@ -12,6 +12,7 @@ import org.junit.jupiter.api.condition.DisabledIfSystemProperty;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
@@ -24,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 
@@ -35,18 +37,19 @@ import javax.xml.parsers.ParserConfigurationException;
 public class RunReportTest {
 
     private static final String SELECTOR_PROPERTY = "nexus.gametest.tests";
+    private static final String RUNS_PROPERTY = "nexus.gametest.runs";
     private static final String PASSED = "passed";
     private static final String BASELINE = "nexus_gametest:baseline";
     private static final String SAMPLES = DiscoverySamples.class.getName();
     private static final Path REPORTS = Path.of(Objects.requireNonNull(System.getProperty("nexus.gametest.reports"), "The system property 'nexus.gametest.reports' is not set"));
 
-    @EnumSource
+    @MethodSource("selectedRuns")
     @ParameterizedTest
     public void writesReport(Run run) {
         Assertions.assertThat(run.report()).isRegularFile();
     }
 
-    @EnumSource
+    @MethodSource("selectedRuns")
     @ParameterizedTest
     public void passesEveryRequiredCase(Run run) throws IOException, ParserConfigurationException, SAXException {
         Assertions.assertThat(run.readCases())
@@ -56,7 +59,7 @@ public class RunReportTest {
                 .isEmpty();
     }
 
-    @EnumSource
+    @MethodSource("selectedRuns")
     @ParameterizedTest
     @DisabledIfSystemProperty(named = RunReportTest.SELECTOR_PROPERTY, matches = ".*")
     public void reportsEveryCase(Run run) throws IOException, ParserConfigurationException, SAXException {
@@ -65,7 +68,7 @@ public class RunReportTest {
                 .containsAll(run.ids(false));
     }
 
-    @EnumSource
+    @MethodSource("selectedRuns")
     @ParameterizedTest
     @DisabledIfSystemProperty(named = RunReportTest.SELECTOR_PROPERTY, matches = ".*")
     public void leavesOutEveryExplicitCase(Run run) throws IOException, ParserConfigurationException, SAXException {
@@ -76,7 +79,7 @@ public class RunReportTest {
                 .isEmpty();
     }
 
-    @EnumSource
+    @MethodSource("selectedRuns")
     @ParameterizedTest
     public void endsEveryReportedCaseAsExpected(Run run) throws IOException, ParserConfigurationException, SAXException {
         for (Case reported : run.readCases()) {
@@ -94,7 +97,7 @@ public class RunReportTest {
         }
     }
 
-    @EnumSource
+    @MethodSource("selectedRuns")
     @ParameterizedTest
     public void reportsOnlyExpectedCases(Run run) throws IOException, ParserConfigurationException, SAXException {
         Assertions.assertThat(run.readCases())
@@ -104,7 +107,7 @@ public class RunReportTest {
                 .isEmpty();
     }
 
-    @EnumSource
+    @MethodSource("selectedRuns")
     @ParameterizedTest
     @DisabledIfSystemProperty(named = RunReportTest.SELECTOR_PROPERTY, matches = ".*")
     public void writesEveryMeasurement(Run run) throws IOException {
@@ -145,7 +148,7 @@ public class RunReportTest {
         }
     }
 
-    @EnumSource
+    @MethodSource("selectedRuns")
     @ParameterizedTest
     @DisabledIfSystemProperty(named = RunReportTest.SELECTOR_PROPERTY, matches = ".*")
     public void writesNoMeasurementOfUnmeasuredCases(Run run) {
@@ -155,6 +158,19 @@ public class RunReportTest {
         }
     }
 
+    ///
+    /// The runs whose reports are checked: those `nexus.gametest.runs` names by side as a comma list, or every run.
+    ///
+    private static Stream<Run> selectedRuns() {
+        String selected = System.getProperty(RunReportTest.RUNS_PROPERTY, "");
+        if (selected.isBlank()) {
+            return Stream.of(Run.values());
+        }
+        
+        List<String> sides = List.of(selected.split(","));
+        return Stream.of(Run.values()).filter(run -> sides.contains(run.side));
+    }
+    
     @RequiredArgsConstructor
     public enum Run {
         SERVER(
