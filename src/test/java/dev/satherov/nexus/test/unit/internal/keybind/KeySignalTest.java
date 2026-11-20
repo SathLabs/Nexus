@@ -14,6 +14,7 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.world.item.Items;
 
 import io.netty.buffer.Unpooled;
+import io.netty.handler.codec.DecoderException;
 
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -21,7 +22,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 ///
-/// Checks that the stream codec of key signals reads back the signals it wrote.
+/// Checks that the stream codec of key signals reads back the signals it wrote and refuses input that no signal was written as.
 ///
 public class KeySignalTest {
     
@@ -71,8 +72,39 @@ public class KeySignalTest {
         KeySignalTest.assertRoundTrips(codec, KeySignal.Up.INSTANCE);
     }
     
+    @Test
+    public void refusesAnUnknownTag() {
+        StreamCodec<RegistryFriendlyByteBuf, KeySignal> codec = KeySignal.codec(List.of(NexusCodec.INT.asStream()));
+        RegistryFriendlyByteBuf buffer = KeySignalTest.buffer();
+        buffer.writeByte(Byte.MAX_VALUE);
+        Assertions.assertThatThrownBy(() -> codec.decode(buffer)).isInstanceOf(DecoderException.class);
+    }
+    
+    @Test
+    public void refusesATruncatedFiring() {
+        StreamCodec<RegistryFriendlyByteBuf, KeySignal> codec = KeySignal.codec(List.of(NexusCodec.INT.asStream()));
+        RegistryFriendlyByteBuf buffer = KeySignalTest.buffer();
+        codec.encode(buffer, new KeySignal.Fired(List.of(7)));
+        buffer.writerIndex(buffer.writerIndex() - 2);
+        Assertions.assertThatThrownBy(() -> codec.decode(buffer)).isInstanceOf(RuntimeException.class);
+    }
+    
+    @Test
+    public void leavesBytesAfterTheSignalUnread() {
+        StreamCodec<RegistryFriendlyByteBuf, KeySignal> codec = KeySignal.codec(List.of(NexusCodec.INT.asStream()));
+        RegistryFriendlyByteBuf buffer = KeySignalTest.buffer();
+        codec.encode(buffer, KeySignal.Down.INSTANCE);
+        buffer.writeByte(Byte.MAX_VALUE);
+        Assertions.assertThat(codec.decode(buffer)).isEqualTo(KeySignal.Down.INSTANCE);
+        Assertions.assertThat(buffer.readableBytes()).as("the bytes after the signal").isEqualTo(1);
+    }
+    
+    private static RegistryFriendlyByteBuf buffer() {
+        return new RegistryFriendlyByteBuf(Unpooled.buffer(), KeySignalTest.REGISTRIES);
+    }
+    
     private static void assertRoundTrips(StreamCodec<RegistryFriendlyByteBuf, KeySignal> codec, KeySignal signal) {
-        RegistryFriendlyByteBuf buffer = new RegistryFriendlyByteBuf(Unpooled.buffer(), KeySignalTest.REGISTRIES);
+        RegistryFriendlyByteBuf buffer = KeySignalTest.buffer();
         codec.encode(buffer, signal);
         Assertions.assertThat(codec.decode(buffer)).isEqualTo(signal);
         Assertions.assertThat(buffer.readableBytes()).isZero();

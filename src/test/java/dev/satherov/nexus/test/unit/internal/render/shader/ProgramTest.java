@@ -18,9 +18,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CyclicBarrier;
@@ -171,12 +173,27 @@ public class ProgramTest {
     }
     
     @Test
-    public void throwsOnInputNameTakenByAnotherType() {
-        Assertions.assertThat(ProgramTest.parse(Base.ENTITY, "in vec3 ProgramTestTaken;").format().getElementAttributeNames()).contains("ProgramTestTaken");
-        Program fewer = ProgramTest.parse(Base.ENTITY, "in vec2 ProgramTestTaken;");
-        Program integer = ProgramTest.parse(Base.ENTITY, "in ivec3 ProgramTestTaken;");
-        Assertions.assertThatIllegalArgumentException().isThrownBy(fewer::format);
-        Assertions.assertThatIllegalArgumentException().isThrownBy(integer::format);
+    public void formatsAnInputNameWithAnotherTypeInEachProgram() {
+        VertexFormat vector = ProgramTest.parse(Base.ENTITY, "in vec3 ProgramTestTaken;").format();
+        VertexFormat fewer = ProgramTest.parse(Base.ENTITY, "in vec2 ProgramTestTaken;").format();
+        VertexFormat integer = ProgramTest.parse(Base.POSITION_COLOR, "in ivec3 ProgramTestTaken;").format();
+        Assertions.assertThat(vector.getElementMapping().get("ProgramTestTaken"))
+                .extracting(VertexFormatElement::type, VertexFormatElement::count)
+                .containsExactly(VertexFormatElement.Type.FLOAT, 3);
+        Assertions.assertThat(fewer.getElementMapping().get("ProgramTestTaken"))
+                .extracting(VertexFormatElement::type, VertexFormatElement::count)
+                .containsExactly(VertexFormatElement.Type.FLOAT, 2);
+        Assertions.assertThat(integer.getElementMapping().get("ProgramTestTaken"))
+                .extracting(VertexFormatElement::type, VertexFormatElement::count)
+                .containsExactly(VertexFormatElement.Type.INT, 3);
+    }
+    
+    @Test
+    public void sharesElementsByTypeAndCountAcrossPrograms() {
+        Map<String, VertexFormatElement> first = ProgramTest.parse(Base.POSITION_COLOR, "in vec3 ProgramTestFrom;", "in vec3 ProgramTestTo;").format().getElementMapping();
+        Map<String, VertexFormatElement> second = ProgramTest.parse(Base.ENTITY, "in vec3 ProgramTestStart;", "in vec3 ProgramTestEnd;").format().getElementMapping();
+        Assertions.assertThat(first.get("ProgramTestFrom")).isNotNull().isNotEqualTo(first.get("ProgramTestTo"));
+        Assertions.assertThat(Arrays.asList(second.get("ProgramTestStart"), second.get("ProgramTestEnd"))).containsExactly(first.get("ProgramTestFrom"), first.get("ProgramTestTo"));
     }
     
     @Test
@@ -227,6 +244,38 @@ public class ProgramTest {
             Assertions.assertThat(lines).containsOnlyOnce("#define NO_OVERLAY");
             Assertions.assertThat(lines.subList(0, lines.indexOf("#define NO_OVERLAY"))).allMatch(line -> line.equals("#version 330") || line.startsWith("#define NEXUS_"));
         }
+    }
+    
+    @ParameterizedTest
+    @EnumSource(Base.class)
+    public void keepsARedefinitionAfterAnUndefInPlace(Base base) throws IOException {
+        Program program = ProgramTest.parse(base, "#define PROGRAM_TEST_STEPS 4", "float programTestFirst;", "#undef PROGRAM_TEST_STEPS", "#define PROGRAM_TEST_STEPS 8");
+        Assertions.assertThat(program.isDefined("PROGRAM_TEST_STEPS")).isTrue();
+        for (ShaderType stage : ProgramTest.STAGES) {
+            List<String> lines = ProgramTest.lines(ProgramTest.generate(program, stage));
+            int first = lines.indexOf("float programTestFirst;");
+            Assertions.assertThat(lines).containsOnlyOnce("#define PROGRAM_TEST_STEPS 4", "#undef PROGRAM_TEST_STEPS", "#define PROGRAM_TEST_STEPS 8");
+            Assertions.assertThat(lines.subList(0, lines.indexOf("#define PROGRAM_TEST_STEPS 4"))).allMatch(line -> line.equals("#version 330") || line.startsWith("#define NEXUS_"));
+            Assertions.assertThat(lines.subList(first, first + 3)).containsExactly("float programTestFirst;", "#undef PROGRAM_TEST_STEPS", "#define PROGRAM_TEST_STEPS 8");
+        }
+    }
+    
+    @ParameterizedTest
+    @EnumSource(Base.class)
+    public void putsTheExtensionsDirectlyAfterTheVersion(Base base) throws IOException {
+        Program program = ProgramTest.parse(base, "#define PROGRAM_TEST_WIDE", "#extension GL_ARB_gpu_shader5 : require");
+        for (ShaderType stage : ProgramTest.STAGES) {
+            List<String> lines = ProgramTest.generate(program, stage).lines().toList();
+            Assertions.assertThat(lines).containsOnlyOnce("#extension GL_ARB_gpu_shader5 : require");
+            Assertions.assertThat(lines.get(1)).isEqualTo("#extension GL_ARB_gpu_shader5 : require");
+        }
+    }
+    
+    @Test
+    public void throwsOnExtensionInsideConditional() {
+        Assertions.assertThatIllegalArgumentException()
+                .isThrownBy(() -> ProgramTest.parse(Base.ENTITY, "#ifdef NEXUS_VERTEX", "#extension GL_ARB_gpu_shader5 : require", "#endif"))
+                .withMessageContaining("line '3'");
     }
     
     @ParameterizedTest

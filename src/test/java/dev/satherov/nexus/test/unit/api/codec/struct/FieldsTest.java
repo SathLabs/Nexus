@@ -166,6 +166,18 @@ public class FieldsTest {
     }
     
     @Test
+    public void fieldRefusesKeyAnotherFieldHas() {
+        Assertions.assertThatThrownBy(() -> NexusCodec.struct("clash", NexusCodec.STRING.field("item", Stack::item), NexusCodec.INT.field("item", Stack::count), Stack::new))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+    
+    @Test
+    public void inlineFieldsRefuseKeysTheyShare() {
+        Assertions.assertThatThrownBy(() -> NexusCodec.struct("trade", FieldsTest.STACK.inline(Trade::offer), FieldsTest.STACK.inline(Trade::price), Trade::new))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+    
+    @Test
     public void structFieldWithEmptyKeyNestsUnderIt() {
         StructCodec<Crate, Access.Plain> crate = NexusCodec.struct("crate", FieldsTest.STACK.field("", Crate::stack), Crate::new);
         JsonElement nested = JsonParser.parseString("{\"\":{\"item\":\"stone\",\"count\":5}}");
@@ -219,6 +231,8 @@ public class FieldsTest {
     public record Note(String item, Optional<String> label) { }
     
     public record Clash(Stack stack, int count) { }
+    
+    public record Trade(Stack offer, Stack price) { }
     
     public record Crate(Stack stack) { }
 }

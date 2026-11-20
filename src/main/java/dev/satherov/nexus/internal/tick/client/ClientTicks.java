@@ -91,7 +91,7 @@ public final class ClientTicks {
     ///
     /// Ends the scope and forgets it if there was one.
     ///
-    /// Should only ever be called from [ClientSession#onLoggedOut(ClientPlayerNetworkEvent.LoggingOut)].
+    /// Should only ever be called from [ClientSession#onLoggedOut(ClientPlayerNetworkEvent.LoggingOut)], [ClientSession#onLoggingIn(ClientPlayerNetworkEvent.LoggingIn)] and [ClientSession#onClientTick(ClientTickEvent.Pre)].
     ///
     public void endScope() {
         if (this.scope != null) {

@@ -3,6 +3,7 @@ package dev.satherov.nexus.test.unit.api.persistence.format;
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.codec.format.CodecFormat;
+import dev.satherov.nexus.api.codec.key.MapKey;
 import dev.satherov.nexus.api.codec.result.NexusCodecException;
 import dev.satherov.nexus.api.codec.struct.StructCodec;
 import dev.satherov.nexus.api.persistence.format.Format;
@@ -11,6 +12,7 @@ import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.network.codec.ByteBufCodecs;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
@@ -22,7 +24,7 @@ import java.util.Objects;
 import java.util.function.UnaryOperator;
 
 ///
-/// Checks that a format upgrades old tags step by step, refuses steps that leave a gap, nests through its codec, and stores a value flat beside its version.
+/// Checks that a format upgrades old tags step by step, refuses steps that leave a gap, nests through its codec, refuses unknown keys when strict, stores only a struct flat beside its version, and builds no data component over a codec without a JSON and NBT form.
 ///
 public class FormatTest {
     
@@ -101,6 +103,17 @@ public class FormatTest {
     }
     
     @Test
+    public void readsTheVersionsItHasTheStepsFrom() {
+        Format<Grave> current = Format.of(FormatTest.GRAVE);
+
+        Assertions.assertThat(FormatTest.FORMAT.canRead(0)).isTrue();
+        Assertions.assertThat(FormatTest.FORMAT.canRead(2)).isTrue();
+        Assertions.assertThat(FormatTest.FORMAT.canRead(3)).isFalse();
+        Assertions.assertThat(current.canRead(0)).isFalse();
+        Assertions.assertThat(current.canRead(1)).isTrue();
+    }
+    
+    @Test
     public void upgradeFromLeavesTheReceiverUnchanged() {
         Format<Grave> upgraded = FormatTest.FORMAT.upgradeFrom(2, tag -> {
             throw new IllegalStateException("corrupt");
@@ -147,6 +160,27 @@ public class FormatTest {
     }
 
     @Test
+    public void strictNbtRefusesAnUnknownKeyBesideTheVersion() {
+        CompoundTag input = FormatTest.versioned(2, FormatTest.grave("owner", "count"));
+        input.putString("extra", "unknown");
+
+        Assertions.assertThat(FormatTest.FORMAT.codec().decode(FormatTest.NBT, input)).isEqualTo(FormatTest.STEVE);
+        Assertions.assertThatThrownBy(() -> FormatTest.FORMAT.codec().decode(FormatTest.NBT.strict(), input))
+                .isInstanceOf(NexusCodecException.class)
+                .hasMessageContaining("extra");
+    }
+
+    @Test
+    public void strictJsonRefusesAnUnknownKeyBesideTheVersion() {
+        JsonElement input = JsonParser.parseString("{\"version\": 2, \"data\": {\"owner\": \"Steve\", \"count\": 3}, \"extra\": \"unknown\"}");
+
+        Assertions.assertThat(FormatTest.FORMAT.codec().decode(FormatTest.JSON, input)).isEqualTo(FormatTest.STEVE);
+        Assertions.assertThatThrownBy(() -> FormatTest.FORMAT.codec().decode(FormatTest.JSON.strict(), input))
+                .isInstanceOf(NexusCodecException.class)
+                .hasMessageContaining("extra");
+    }
+
+    @Test
     public void flatCodecWritesTheKeysOfTheValueBesideTheVersion() {
         Tag written = FormatTest.FORMAT.flatCodec().encode(FormatTest.NBT, FormatTest.STEVE);
 
@@ -172,18 +206,18 @@ public class FormatTest {
     }
 
     @Test
-    public void flatCodecRefusesAValueThatIsNotAMap() {
-        NexusCodec<Integer, Access.Registries> flat = Format.of(NexusCodec.INT).flatCodec();
-
-        Assertions.assertThatThrownBy(() -> flat.encode(FormatTest.NBT, 3)).isInstanceOf(NexusCodecException.class);
+    public void flatCodecRefusesACodecThatIsNotAStruct() {
+        Assertions.assertThatThrownBy(() -> Format.of(NexusCodec.INT).flatCodec()).isInstanceOf(IllegalArgumentException.class);
+        Assertions.assertThatThrownBy(() -> Format.of(NexusCodec.mapOf(MapKey.STRING, NexusCodec.INT)).flatCodec()).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    public void flatCodecRefusesAMapThatHasAVersion() {
+    public void flatCodecRefusesAStructThatWritesTheVersion() {
         StructCodec<Versioned, Access.Plain> versioned = NexusCodec.struct("versioned", NexusCodec.INT.field("version", Versioned::version), Versioned::new);
-        NexusCodec<Versioned, Access.Registries> flat = Format.of(versioned).flatCodec();
 
-        Assertions.assertThatThrownBy(() -> flat.encode(FormatTest.NBT, new Versioned(4))).isInstanceOf(NexusCodecException.class);
+        Assertions.assertThatThrownBy(() -> Format.of(versioned).flatCodec())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("'version'");
     }
 
     @Test
@@ -196,6 +230,20 @@ public class FormatTest {
         Assertions.assertThat(flat.decode(FormatTest.JSON, current)).isEqualTo(FormatTest.STEVE);
         Assertions.assertThatThrownBy(() -> flat.decode(FormatTest.JSON, old)).isInstanceOf(NexusCodecException.class);
         Assertions.assertThatThrownBy(() -> flat.decode(FormatTest.JSON, unversioned)).isInstanceOf(NexusCodecException.class);
+    }
+
+    @Test
+    public void asDataComponentTypeRefusesAFormatOfAStreamOnlyCodec() {
+        NexusCodec<Integer, Access.Plain> stream = NexusCodec.ofStream(ByteBufCodecs.VAR_INT);
+        StructCodec<Grave, Access.Plain> grave = NexusCodec.struct("grave", NexusCodec.STRING.field("owner", Grave::owner), stream.field("count", Grave::count), Grave::new);
+        Format<Grave> format = Format.of(grave);
+
+        Assertions.assertThatThrownBy(() -> format.codec().asDataComponentType())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("JSON and NBT");
+        Assertions.assertThatThrownBy(() -> format.flatCodec().asDataComponentType())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("JSON and NBT");
     }
 
     private static CompoundTag grave(String ownerKey, String countKey) {

@@ -58,9 +58,14 @@ public record Paint(int stroke, float lineWidth, int fill, Depth depth) {
     ///
     /// The depth test that a shape may be drawn with.
     ///
+    /// If improved transparency is on, the translucent blocks, particles, weather, and clouds in front of the opaque blocks or
+    /// the sky behind a shape will be drawn over it, unless the shape is [#VISIBLE] in a fully opaque color.
+    ///
     public enum Depth {
         ///
         /// The shape is drawn only where nothing in the level is in front of it.
+        ///
+        /// If the color is fully opaque, the shape will also write its depth, except for the outlines of its circles and spheres.
         ///
         VISIBLE,
         

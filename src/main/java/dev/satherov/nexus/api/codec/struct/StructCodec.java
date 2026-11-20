@@ -7,6 +7,7 @@ import dev.satherov.nexus.internal.codec.vanilla.VanillaAdapters;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.RegistryOps;
+import net.minecraft.util.HashOps;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeSerializer;
 
@@ -84,6 +85,7 @@ public interface StructCodec<T, A extends Access.Plain> extends NexusCodec<T, A>
     ///
     /// If this struct needs registries, only [RegistryOps] may be accepted.
     /// Fails over ops that compress maps, such as [JsonOps#COMPRESSED].
+    /// Over [HashOps], a value that could not be encoded is hashed as the entry `nexus:unencodable` instead of its fields.
     ///
     /// @return The map codec, whose keys are the keys of this struct.
     ///

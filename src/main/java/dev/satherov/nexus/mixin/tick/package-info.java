@@ -1,5 +1,6 @@
 ///
-/// The mixins that bind the tickers of block entities as they load and drop them once the block entities are removed.
+/// The mixins that bind the tickers of block entities as they load and drop them once the block entities are removed,
+/// and that hold the client level a packet handler builds from its load on.
 ///
 @NullMarked
 @CheckReturnValue

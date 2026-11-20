@@ -7,12 +7,14 @@ import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.codec.format.BufferFormat;
 import dev.satherov.nexus.api.codec.format.CodecFormat;
+import dev.satherov.nexus.api.codec.key.KeyedCodec;
 import dev.satherov.nexus.api.codec.result.CodecResult;
 import dev.satherov.nexus.api.codec.result.NexusCodecException;
 import dev.satherov.nexus.api.codec.struct.StructField;
 import dev.satherov.nexus.api.component.Comparison;
 import dev.satherov.nexus.api.component.ComponentPath;
 import dev.satherov.nexus.api.component.PathReader;
+import dev.satherov.nexus.internal.codec.format.NbtOperations;
 import dev.satherov.nexus.internal.codec.format.Operations;
 import dev.satherov.nexus.internal.codec.path.Encoding;
 import dev.satherov.nexus.internal.codec.path.TagReader;
@@ -59,10 +61,18 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     ///
     /// Writes through the operations of the format and puts this codec's name and the format on top of a failure.
     ///
+    /// Fails on a tag that vanilla's NBT reader would refuse as too deep, counting the tag as the root.
+    /// If the tag is nested inside another tag, the levels of the outer tag will not be counted.
+    ///
     @Override
     public <V> V encode(CodecFormat<V, ? extends A> format, T value) {
         try {
-            return this.write(Operations.of(format), value);
+            V encoded = this.write(Operations.of(format), value);
+            if (encoded instanceof Tag tag) {
+                NbtOperations.requireReadable(tag);
+            }
+            
+            return encoded;
         } catch (NexusCodecException failure) {
             throw CodecErrors.encodeFailure(this.name, format.name(), failure);
         }
@@ -95,11 +105,18 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     ///
     /// Encodes the value and wraps a failure into a result.
     ///
+    /// If the format is a [BufferFormat] and encoding fails, the writer index of its buffer will be back where it was before.
+    ///
     @Override
     public <V> CodecResult<V> tryEncode(CodecFormat<V, ? extends A> format, T value) {
+        int start = format instanceof BufferFormat<?, ?> buffered ? buffered.buffer().writerIndex() : 0;
         try {
             return new CodecResult.Success<>(this.encode(format, value));
         } catch (NexusCodecException failure) {
+            if (format instanceof BufferFormat<?, ?> buffered) {
+                buffered.buffer().writerIndex(start);
+            }
+            
             return new CodecResult.Failure<>(failure);
         }
     }
@@ -107,11 +124,18 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     ///
     /// Decodes the input and wraps a failure into a result.
     ///
+    /// If the format is a [BufferFormat] and decoding fails, the reader index of its buffer will be back where it was before.
+    ///
     @Override
     public <V> CodecResult<T> tryDecode(CodecFormat<V, ? extends A> format, V input) {
+        int start = format instanceof BufferFormat<?, ?> buffered ? buffered.buffer().readerIndex() : 0;
         try {
             return new CodecResult.Success<>(this.decode(format, input));
         } catch (NexusCodecException failure) {
+            if (format instanceof BufferFormat<?, ?> buffered) {
+                buffered.buffer().readerIndex(start);
+            }
+            
             return new CodecResult.Failure<>(failure);
         }
     }
@@ -134,11 +158,15 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     ///
     /// Decodes the buffer of the format and wraps a failure into a result.
     ///
+    /// If decoding fails, the reader index of the buffer will be back where it was before.
+    ///
     @Override
     public CodecResult<T> tryDecode(BufferFormat<?, ? extends A> format) {
+        int start = format.buffer().readerIndex();
         try {
             return new CodecResult.Success<>(this.decode(format));
         } catch (NexusCodecException failure) {
+            format.buffer().readerIndex(start);
             return new CodecResult.Failure<>(failure);
         }
     }
@@ -165,6 +193,14 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     @Override
     public <Z> StructField<Z, Optional<T>, A> optionalField(String name, Function<Z, Optional<T>> getter) {
         return new Structs.BoundField<>(Structs.optional(this), name, getter, Optional.empty());
+    }
+    
+    ///
+    /// Creates a keyed codec of this codec.
+    ///
+    @Override
+    public KeyedCodec<T, A> keyed(String key, T fallback) {
+        return new KeyedCodec<>(this, key, fallback);
     }
     
     ///
@@ -269,6 +305,17 @@ public abstract class Traversal<T, A extends Access.Plain> implements NexusCodec
     ///
     public PathReader<T> reader(List<ComponentPath.Step> steps, int from) {
         return new EncodedReader<>(this, new TagReader(steps.subList(from, steps.size())));
+    }
+    
+    ///
+    /// If this codec and every codec it holds can encode and decode in JSON and NBT.
+    ///
+    /// The default implementation returns `true`, for a codec that holds no other codec.
+    ///
+    /// @return `true` if this codec and every codec it holds can encode and decode in JSON and NBT.
+    ///
+    public boolean hasKeyedForm() {
+        return true;
     }
     
     ///

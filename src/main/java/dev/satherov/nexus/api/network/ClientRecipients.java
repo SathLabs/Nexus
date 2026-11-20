@@ -1,13 +1,16 @@
 package dev.satherov.nexus.api.network;
 
+import dev.satherov.nexus.api.network.context.ClientHandlerContext;
 import dev.satherov.nexus.api.network.context.ServerHandlerContext;
 import dev.satherov.nexus.api.network.payload.ClientboundPayload;
+import dev.satherov.nexus.api.network.payload.ServerboundPayload;
 
 import net.neoforged.neoforge.common.extensions.ICommonPacketListener;
 import net.neoforged.neoforge.network.event.RegisterConfigurationTasksEvent;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.common.ServerCommonPacketListener;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -144,11 +147,16 @@ public interface ClientRecipients {
     ///
     /// Meant to be used in a configuration task, with the listener of [RegisterConfigurationTasksEvent#getListener()].
     ///
+    /// If a configuration task sends an optional payload, then the task must only be registered if [ClientboundPayload#canSend(ICommonPacketListener)] is `true` for its listener,
+    /// or a task waiting for an answer would never finish.
+    ///
     /// @param listener The listener of the connection.
     ///
     /// @return The recipients of the other side of the connection.
     ///
-    static ClientRecipients listener(ICommonPacketListener listener) {
+    /// @see ServerboundPayload#reply(Object, ClientHandlerContext)
+    ///
+    static ClientRecipients listener(ServerCommonPacketListener listener) {
         return (packet, accepts) -> ClientRecipients.deliver(listener, packet, accepts);
     }
     

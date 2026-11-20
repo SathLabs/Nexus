@@ -4,7 +4,9 @@ import dev.satherov.nexus.internal.render.shape.MeshBrush;
 import dev.satherov.nexus.internal.render.shape.Primitives;
 import dev.satherov.nexus.internal.render.shape.SceneMesh;
 import dev.satherov.nexus.internal.tick.client.ClientTicks;
+import dev.satherov.zelqro.mapping.ObjectMapping;
 
+import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.world.entity.Entity;
@@ -252,15 +254,15 @@ public final class Drawing {
     ///
     /// Draws the labels of the shape.
     ///
-    /// If the drawing follows an entity, the labels will be drawn relative to its interpolated position.
+    /// If the drawing follows an entity, the labels will be drawn relative to its position as vanilla renders it.
     ///
-    /// @param pose        The pose stack of the frame, whose origin is the camera.
-    /// @param camera      The position of the camera.
-    /// @param partialTick The partial tick of the frame.
-    /// @param buffers     The buffer source the labels are drawn into.
+    /// @param pose         The pose stack of the frame, whose origin is the camera.
+    /// @param camera       The position of the camera.
+    /// @param deltaTracker The delta tracker of the frame.
+    /// @param buffers      The buffer source the labels are drawn into.
     ///
-    void drawLabels(PoseStack pose, Vec3 camera, float partialTick, MultiBufferSource.BufferSource buffers) {
-        Entity followed = this.entity;
-        this.primitives.drawLabels(pose, followed == null ? camera : camera.subtract(followed.getPosition(partialTick)), buffers);
+    void drawLabels(PoseStack pose, Vec3 camera, DeltaTracker deltaTracker, MultiBufferSource.BufferSource buffers) {
+        Vec3 origin = ObjectMapping.mapNonNullOrElse(this.entity, followed -> camera.subtract(SceneMesh.positionOf(followed, deltaTracker)), camera);
+        this.primitives.drawLabels(pose, origin, buffers);
     }
 }

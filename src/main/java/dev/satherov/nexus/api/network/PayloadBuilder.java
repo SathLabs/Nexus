@@ -14,16 +14,19 @@ import dev.satherov.nexus.internal.network.Envelope;
 import dev.satherov.nexus.internal.network.client.ClientConnection;
 
 import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.neoforge.common.extensions.ICommonPacketListener;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadHandler;
 import net.neoforged.neoforge.network.registration.HandlerThread;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
+import net.minecraft.network.ConnectionProtocol;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.player.Player;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 
@@ -76,7 +79,7 @@ public final class PayloadBuilder<VALUE> {
     /// Wraps the given server handler into a neoforge handler of envelopes.
     ///
     private static <VALUE> IPayloadHandler<Envelope<VALUE>> adaptServer(BiConsumer<VALUE, ServerHandlerContext> handler) {
-        return (envelope, context) -> handler.accept(envelope.value(), new ServerHandlerContext(context));
+        return Envelope.handler(ServerHandlerContext::new, handler);
     }
     
     ///
@@ -114,6 +117,9 @@ public final class PayloadBuilder<VALUE> {
     ///
     /// Sending the payload will skip every recipient that doesn't have it registered.
     ///
+    /// If a configuration task sends the payload, then the task must only be registered if [ClientboundPayload#canSend(ICommonPacketListener)] is `true` for its listener,
+    /// or a task waiting for an answer would never finish.
+    ///
     /// @return The builder for chaining.
     ///
     @CanIgnoreReturnValue
@@ -140,7 +146,11 @@ public final class PayloadBuilder<VALUE> {
     ///
     /// The handler will only be opened on the client, once inside the payload handlers event.
     ///
-    /// @param handler The handler of the client, called with every value the client receives.
+    /// The handler should be a method reference into a client class.
+    /// If it is a lambda, then it must never pass the player of [ClientHandlerContext#getPlayer()] or any other client value on as a common type such as [Player],
+    /// or a dedicated server would fail to load the class that declares the payload.
+    ///
+    /// @param handler The handler of the client, called with every value the client receives as long as the connection is open.
     ///
     /// @return The handle of the payload.
     ///
@@ -160,7 +170,7 @@ public final class PayloadBuilder<VALUE> {
     ///
     /// Declares the payload as sent from the client to the server, with the handler the server runs.
     ///
-    /// @param handler The handler of the server, called with every value the server receives.
+    /// @param handler The handler of the server, called with every value the server receives as long as the connection is open.
     ///
     /// @return The handle of the payload.
     ///
@@ -186,8 +196,12 @@ public final class PayloadBuilder<VALUE> {
     ///
     /// The client handler will only be opened on the client, once inside the payload handlers event.
     ///
-    /// @param clientHandler The handler of the client, called with every value the client receives.
-    /// @param serverHandler The handler of the server, called with every value the server receives.
+    /// The client handler should be a method reference into a client class.
+    /// If it is a lambda, then it must never pass the player of [ClientHandlerContext#getPlayer()] or any other client value on as a common type such as [Player],
+    /// or a dedicated server would fail to load the class that declares the payload.
+    ///
+    /// @param clientHandler The handler of the client, called with every value the client receives as long as the connection is open.
+    /// @param serverHandler The handler of the server, called with every value the server receives as long as the connection is open.
     ///
     /// @return The handle of the payload.
     ///
@@ -215,8 +229,13 @@ public final class PayloadBuilder<VALUE> {
     ///
     private Payload<VALUE> declare(Payload.Direction direction, UnaryOperator<PayloadRegistrar> registration) {
         Identifier id = this.getId();
+        ConnectionProtocol protocol = switch (this.protocol) {
+            case PayloadBuilder.Play(_) -> ConnectionProtocol.PLAY;
+            case PayloadBuilder.Configuration(_) -> ConnectionProtocol.CONFIGURATION;
+        };
+        
         this.network.declare(id, new PayloadBuilder.Declaration(this.version, this.optional, this.thread, registration));
-        return new Payload<>(id, direction, this.version, this.optional);
+        return new Payload<>(id, direction, protocol, this.version, this.optional);
     }
     
     ///

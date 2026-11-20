@@ -79,6 +79,20 @@ public class RunOptionsTest {
         Assertions.assertThat(options.selects(Identifier.fromNamespaceAndPath("other", "some/test"), false)).isFalse();
     }
     
+    @Test
+    public void matchesASelectorWithoutANamespaceInTheMinecraftNamespace() {
+        RunOptions options = RunOptionsTest.selecting("some/*");
+        Assertions.assertThat(options.selects(Identifier.withDefaultNamespace("some/test"), false)).isTrue();
+        Assertions.assertThat(options.selects(Identifier.fromNamespaceAndPath("nexus", "some/test"), false)).isFalse();
+    }
+    
+    @Test
+    public void endsTheSelectorAtTheFirstCharacterOutsideAnIdentifier() {
+        RunOptions options = RunOptionsTest.selecting("nexus:some/*,nexus:other/*");
+        Assertions.assertThat(options.selects(Identifier.fromNamespaceAndPath("nexus", "some/test"), false)).isTrue();
+        Assertions.assertThat(options.selects(Identifier.fromNamespaceAndPath("nexus", "other/test"), false)).isFalse();
+    }
+    
     private static RunOptions selecting(@Nullable String tests) {
         return new RunOptions(tests, false, false, null, false, null, RunOptions.DEFAULT_REPORT, null);
     }

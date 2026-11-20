@@ -17,6 +17,8 @@ import java.util.Map;
 ///
 /// A table that holds every translation key one mod declares.
 ///
+/// Can be used from any thread.
+///
 public final class Translations {
     
     ///
@@ -92,7 +94,7 @@ public final class Translations {
     /// @throws IllegalStateException If the key is already declared.
     ///
     @CanIgnoreReturnValue
-    public Translation defineKey(@Translatable(required = false) String key, String english) {
+    public synchronized Translation defineKey(@Translatable(required = false) String key, String english) {
         if (this.translationsByKey.containsKey(key)) {
             throw new IllegalStateException("Key '" + key + "' is already declared");
         }
@@ -107,7 +109,7 @@ public final class Translations {
     ///
     /// @return Every declared translation.
     ///
-    public @Unmodifiable Collection<Translation> getAll() {
+    public synchronized @Unmodifiable Collection<Translation> getAll() {
         return List.copyOf(this.translationsByKey.values());
     }
 }

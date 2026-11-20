@@ -20,6 +20,9 @@
 // The smallest clip w of a point that lies in front of the eye.
 #define FRONT 1.0e-4
 
+// The scale towards the eye of the depth of a ring, as vanilla's lines shrink their view, so a ring passes the depth test over the disc it outlines.
+#define RING_SHRINK (1.0 - 1.0 / 256.0)
+
 in vec3 Center;
 in vec3 Axis;
 in float Radius;
@@ -141,8 +144,8 @@ float refine(float angle, float spacing) {
     return angle;
 }
 
-// The angle of the rim point nearest to the fragment on the screen.
-float nearestRimAngle() {
+// The angle of the rim point nearest to the fragment on the screen, or of the one nearest to the eye if two rim points lie within the given band.
+float nearestRimAngle(float band) {
     float spacing = 6.28318531 / float(RIM_SAMPLES);
     float distances[RIM_SAMPLES];
     int best = 0;
@@ -164,7 +167,16 @@ float nearestRimAngle() {
 
     float first = refine(float(best) * spacing, spacing);
     float second = refine(float(other) * spacing, spacing);
-    return rimDistance(second) < rimDistance(first) ? second : first;
+    float firstDistance = rimDistance(first);
+    float secondDistance = rimDistance(second);
+    // A ring seen edge-on covers the fragment with both of its sides, and the side nearer to the eye is the one in front.
+    if (firstDistance <= band && secondDistance <= band) {
+        vec4 firstClip = rimAt(first);
+        vec4 secondClip = rimAt(second);
+        return secondClip.z / secondClip.w < firstClip.z / firstClip.w ? second : first;
+    }
+
+    return secondDistance < firstDistance ? second : first;
 }
 
 // The coverage of the fragment by the side of an edge where the given distance to it is negative, faded over one pixel.
@@ -198,11 +210,24 @@ vec4 nexus_albedo(vec4 albedo) {
         behind = reach < 0.0;
         color.rgb *= 0.5 + 0.5 * abs(dot(normalize(surface - shapeCenter), ray));
     } else {
-        vec4 rim = rimAt(nearestRimAngle());
+        float band = shapeKind == KIND_RING ? 0.5 * shapeWidth : 0.0;
+        float angle = nearestRimAngle(band);
+        vec4 rim = rimAt(angle);
         float pixels = rim.w > FRONT ? distance(pixelOf(rim), gl_FragCoord.xy) : 1.0e9;
         if (shapeKind == KIND_RING) {
-            edge = pixels - 0.5 * shapeWidth;
-            hit = rim;
+            edge = pixels - band;
+            vec3 first = perpendicular(shapeAxis) * shapeRadius;
+            vec3 point = shapeCenter + cos(angle) * first + sin(angle) * cross(shapeAxis, first);
+            vec3 toCenter = shapeCenter - shapeEye;
+            float along = dot(toCenter, ray);
+            float miss = length(toCenter - along * ray);
+            float entry = along - sqrt(max(shapeRadius * shapeRadius - miss * miss, 0.0));
+            // A rim point no farther from the eye than the center would lose against the fill of a sphere it lies on,
+            // so it takes the depth where the ray enters that sphere or passes closest to it, and the far half stays behind it.
+            bool front = point.z >= shapeCenter.z - 1.0e-3 * shapeRadius && entry > 0.0 && entry < distance(shapeEye, point);
+            vec4 near = front ? ProjMat * vec4(shapeEye + ray * entry, 1.0) : rim;
+            // Scaling a view position towards the eye maps its clip position towards the clip position of the eye.
+            hit = mix(ProjMat[3], near, RING_SHRINK);
             behind = rim.w <= FRONT;
         } else {
             float facing = dot(ray, shapeAxis);

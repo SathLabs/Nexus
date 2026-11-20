@@ -1,6 +1,7 @@
 package dev.satherov.nexus.internal.codec.vanilla;
 
 import lombok.experimental.UtilityClass;
+import lombok.extern.slf4j.Slf4j;
 
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.NexusCodec;
@@ -14,6 +15,7 @@ import dev.satherov.nexus.internal.codec.CodecErrors;
 import dev.satherov.nexus.internal.codec.HolderCodecs;
 import dev.satherov.nexus.internal.codec.Scalars;
 import dev.satherov.nexus.internal.codec.Traversal;
+import dev.satherov.nexus.internal.codec.format.NbtOperations;
 import dev.satherov.nexus.internal.codec.format.Operations;
 import dev.satherov.nexus.internal.codec.path.TagReader;
 import dev.satherov.nexus.internal.codec.struct.Structs;
@@ -48,6 +50,7 @@ import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.level.material.Fluid;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.mojang.serialization.DataResult;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
@@ -65,6 +68,7 @@ import java.util.function.Supplier;
 ///
 /// Utility for the codecs behind [VanillaCodecs] that are more than a composition of other codecs.
 ///
+@Slf4j
 @UtilityClass
 @ApiStatus.Internal
 public class VanillaTypes {
@@ -159,6 +163,10 @@ public class VanillaTypes {
                 return operations.ofVarInt(id);
             }
             
+            Identifier id = BuiltInRegistries.BLOCK.getResourceKey(value.getBlock())
+                    .map(ResourceKey::identifier)
+                    .orElseThrow(() -> CodecErrors.prefixKey(CodecErrors.unregistered(Registries.BLOCK), VanillaTypes.NAME));
+            
             V object = operations.emptyObject();
             StateDefinition<Block, BlockState> definition = value.getBlock().getStateDefinition();
             if (!definition.isSingletonState()) {
@@ -171,7 +179,7 @@ public class VanillaTypes {
                 operations.put(object, VanillaTypes.PROPERTIES, properties);
             }
             
-            return operations.put(object, VanillaTypes.NAME, Scalars.IDENTIFIER.write(operations, BuiltInRegistries.BLOCK.getKey(value.getBlock())));
+            return operations.put(object, VanillaTypes.NAME, Scalars.IDENTIFIER.write(operations, id));
         }
         
         ///
@@ -356,6 +364,14 @@ public class VanillaTypes {
                         onNetwork.read(operations, input) :
                         onKeyed.read(operations, input);
             }
+            
+            ///
+            /// Checks the codec to run in JSON and NBT.
+            ///
+            @Override
+            public boolean hasKeyedForm() {
+                return onKeyed.hasKeyedForm();
+            }
         };
     }
     
@@ -539,9 +555,12 @@ public class VanillaTypes {
         
         ///
         /// Reads every key of the given object as a set or a removed component and throws once with every error.
+        /// In NBT that isn't strict, a component that fails is logged and left out instead, or kept as its partial value if its codec returns one.
         ///
         private static <V> DataComponentPatch readObject(Operations<V> operations, V input) {
             RegistryOps<V> ops = PatchCodec.opsOf(operations);
+            // Vanilla keeps a stack from save data without the components it couldn't read, so NBT has to do the same.
+            boolean lenient = operations instanceof NbtOperations<?> && !operations.isStrict();
             DataComponentPatch.Builder builder = DataComponentPatch.builder();
             Set<DataComponentType<?>> types = new HashSet<>();
             List<CodecError> errors = new ArrayList<>();
@@ -559,10 +578,20 @@ public class VanillaTypes {
                         PatchCodec.REMOVED_VALUE.read(operations, value);
                         builder.remove(type);
                     } else {
-                        builder.set(TypedDataComponent.createUnchecked(type, type.codecOrThrow().parse(ops, value).getOrThrow(NexusCodecException::new)));
+                        DataResult<?> parsed = type.codecOrThrow().parse(ops, value);
+                        Object component = lenient ? parsed.getPartialOrThrow(NexusCodecException::new) : parsed.getOrThrow(NexusCodecException::new);
+                        if (parsed instanceof DataResult.Error<?> error) {
+                            VanillaTypes.log.warn("Could not read all of the component '{}' of a stack, only its partial value was kept: {}", key, error.message());
+                        }
+                        
+                        builder.set(TypedDataComponent.createUnchecked(type, component));
                     }
                 } catch (NexusCodecException failure) {
-                    errors.addAll(CodecErrors.prefixMapKey(failure, key).errors());
+                    if (lenient) {
+                        VanillaTypes.log.warn("Could not read the component '{}' of a stack, it was left out: {}", key, failure.getMessage());
+                    } else {
+                        errors.addAll(CodecErrors.prefixMapKey(failure, key).errors());
+                    }
                 }
             }
             
@@ -672,7 +701,7 @@ public class VanillaTypes {
         ///
         private static <V> RegistryOps<V> opsOf(Operations<V> operations) {
             //noinspection DataFlowIssue A codec that needs registries only ever runs on formats with registries.
-            return RegistryOps.create(operations.dynamicOps(), operations.lookup());
+            return VanillaAdapters.registryOps(operations.dynamicOps(), operations.lookup());
         }
         
         ///

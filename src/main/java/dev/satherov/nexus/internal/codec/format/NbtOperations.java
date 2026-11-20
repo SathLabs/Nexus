@@ -48,6 +48,66 @@ public record NbtOperations<A extends Access.Plain>(
 ) implements Operations<Tag>, CodecFormat<Tag, A> {
     
     ///
+    /// The maximum number of nested compound and list tags that vanilla's NBT reader accepts.
+    ///
+    private static final int MAX_DEPTH = 512;
+    
+    ///
+    /// Checks that vanilla's NBT reader can read the given tag back, counting the tag as the root.
+    ///
+    /// If the tag is nested inside another tag, the levels of the outer tag will not be counted.
+    ///
+    /// @param tag The tag to check.
+    ///
+    /// @throws NexusCodecException If the tag nests more than {@value NbtOperations#MAX_DEPTH} compound and list tags, counting the compounds that vanilla writes around list elements.
+    ///
+    public static void requireReadable(Tag tag) {
+        if (!NbtOperations.fits(tag, NbtOperations.MAX_DEPTH)) {
+            throw new NexusCodecException("Expected at most " + NbtOperations.MAX_DEPTH + " nested compound and list tags, found more");
+        }
+    }
+    
+    ///
+    /// Checks if the given tag nests at most the given number of compound and list tags.
+    ///
+    /// A list whose elements are all compounds or of mixed types counts one more level for every element that is not a compound already, or that is a compound vanilla takes for a wrapper.
+    ///
+    private static boolean fits(Tag tag, int levels) {
+        if (tag instanceof CompoundTag compound) {
+            if (levels <= 0) {
+                return false;
+            }
+            
+            for (Tag value : compound.values()) {
+                if (!NbtOperations.fits(value, levels - 1)) {
+                    return false;
+                }
+            }
+            
+            return true;
+        }
+        
+        if (!(tag instanceof ListTag list)) {
+            return levels >= 0;
+        }
+        
+        if (levels <= 0) {
+            return false;
+        }
+        
+        byte type = list.isEmpty() ? Tag.TAG_END : list.getFirst().getId();
+        boolean wrapping = type == Tag.TAG_COMPOUND || list.stream().anyMatch(element -> element.getId() != type);
+        for (Tag element : list) {
+            boolean wrapped = wrapping && !(element instanceof CompoundTag compound && !(compound.size() == 1 && compound.contains("")));
+            if (!NbtOperations.fits(element, wrapped ? levels - 2 : levels - 1)) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    ///
     /// Will always return `NBT`.
     ///
     @Override

@@ -4,8 +4,12 @@ import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.codec.format.CodecFormat;
 import dev.satherov.nexus.api.codec.result.CodecError;
+import dev.satherov.nexus.api.codec.result.CodecResult;
 import dev.satherov.nexus.api.codec.result.NexusCodecException;
 import dev.satherov.nexus.api.codec.struct.StructCodec;
+
+import net.neoforged.neoforge.common.conditions.ConditionalOps;
+import net.neoforged.neoforge.common.conditions.ICondition;
 
 import net.minecraft.core.Holder;
 import net.minecraft.core.RegistryAccess;
@@ -18,6 +22,8 @@ import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.resources.RegistryFixedCodec;
+import net.minecraft.resources.RegistryOps;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 
@@ -48,6 +54,14 @@ public class WrappersTest {
     
     private static final Holder<Item> STONE = BuiltInRegistries.ITEM.wrapAsHolder(Items.STONE);
     private static final Holder<Item> FIRST_ITEM = BuiltInRegistries.ITEM.get(1).orElseThrow();
+    
+    private static final ICondition.IContext CONTEXT = new ICondition.IContext() {
+        
+        @Override
+        public <T> boolean isTagLoaded(TagKey<T> key) {
+            return true;
+        }
+    };
     
     @Test
     public void dfuCodecRunsInJsonAndNbt() {
@@ -182,6 +196,40 @@ public class WrappersTest {
                 .satisfies(error -> Assertions.assertThat(error.path()).isEqualTo("[1]"));
     }
     
+    @Test
+    public void registryDfuCodecInsideADfuViewRunsOverTheOpsOfTheView() {
+        StructCodec<Conditioned, Access.Registries> conditioned = NexusCodec.struct(
+                "conditioned",
+                NexusCodec.ofDfu(ConditionalOps.retrieveContext().codec(), Access.Registries.class).field("context", Conditioned::context),
+                Conditioned::new
+        );
+        ConditionalOps<JsonElement> ops = new ConditionalOps<>(RegistryOps.create(JsonOps.INSTANCE, WrappersTest.REGISTRIES), WrappersTest.CONTEXT);
+        
+        Assertions.assertThat(conditioned.asDfu().parse(ops, JsonParser.parseString("{\"context\":{}}")).getOrThrow().context()).isSameAs(WrappersTest.CONTEXT);
+    }
+    
+    @Test
+    public void tryEncodeMovesTheWriterIndexBackIfTheSecondElementFails() {
+        NexusCodec<List<String>, Access.Plain> codec = NexusCodec.ofStream(ByteBufCodecs.stringUtf8(1)).list();
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
+        buffer.writeByte(0x7F);
+        
+        Assertions.assertThat(codec.tryEncode(CodecFormat.netty(buffer), List.of("a", "ab"))).isInstanceOf(CodecResult.Failure.class);
+        Assertions.assertThat(buffer.writerIndex()).isEqualTo(1);
+    }
+    
+    @Test
+    public void tryDecodeMovesTheReaderIndexBackIfTheSecondElementFails() {
+        NexusCodec<List<String>, Access.Plain> codec = NexusCodec.ofStream(ByteBufCodecs.stringUtf8(1)).list();
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.wrappedBuffer(WrappersTest.bytes(0x7F, 0x02, 0x01, "a", 0x02, "ab")));
+        buffer.readerIndex(1);
+        
+        Assertions.assertThat(codec.tryDecode(CodecFormat.netty(buffer))).isInstanceOf(CodecResult.Failure.class);
+        Assertions.assertThat(buffer.readerIndex()).isEqualTo(1);
+        Assertions.assertThat(codec.tryDecode(CodecFormat.netty(buffer), buffer)).isInstanceOf(CodecResult.Failure.class);
+        Assertions.assertThat(buffer.readerIndex()).isEqualTo(1);
+    }
+    
     private static <T> void assertNetty(NexusCodec<T, ? super Access.Registries> codec, T value, Object... bytes) {
         RegistryFriendlyByteBuf written = WrappersTest.writable();
         codec.encode(CodecFormat.netty(written), value);
@@ -214,4 +262,6 @@ public class WrappersTest {
     }
     
     public record Tagged(String name, int count) { }
+    
+    public record Conditioned(ICondition.IContext context) { }
 }

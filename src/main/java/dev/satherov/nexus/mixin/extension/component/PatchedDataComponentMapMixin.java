@@ -102,6 +102,7 @@ public abstract class PatchedDataComponentMapMixin implements MemoizedComponentM
     /// Tests the given filter with the stored result, or with the given evaluation if there is no stored result to use.
     ///
     /// If another filter was tested last, the given filter will be marked and evaluated without reading or writing the stored result.
+    /// The given filter is marked again after every evaluation, since a filter that the evaluation tests on this map marks itself.
     ///
     /// The number of changes to the map and the generation are read before the evaluation and stored with its result.
     ///
@@ -114,8 +115,9 @@ public abstract class PatchedDataComponentMapMixin implements MemoizedComponentM
     @Override
     public boolean nexus$test(ComponentFilter filter, DataComponentGetter holder, BiPredicate<ComponentFilter, DataComponentGetter> evaluation) {
         if (this.nexus$lastFilter != filter) {
+            boolean result = evaluation.test(filter, holder);
             this.nexus$lastFilter = filter;
-            return evaluation.test(filter, holder);
+            return result;
         }
         
         // The handle is called with the target type because the mixin class can't be loaded at runtime.
@@ -132,6 +134,7 @@ public abstract class PatchedDataComponentMapMixin implements MemoizedComponentM
         }
         
         boolean result = evaluation.test(filter, holder);
+        this.nexus$lastFilter = filter;
         if (consistent && PatchedDataComponentMapMixin.nexus$STAMP.compareAndSet(self, stamp, stamp + 1)) {
             VarHandle.storeStoreFence();
             this.nexus$storedFilter = filter;

@@ -7,11 +7,14 @@ import dev.satherov.nexus.api.render.pipeline.Shading;
 import dev.satherov.nexus.gametest.api.client.Capture;
 import dev.satherov.nexus.gametest.api.client.Client;
 import dev.satherov.nexus.gametest.api.client.ClientTest;
+import dev.satherov.nexus.internal.render.shader.Programs;
 
+import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLConstructModEvent;
 import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
 
 import net.minecraft.util.ARGB;
 import net.minecraft.world.phys.Vec3;
@@ -24,6 +27,8 @@ import org.joml.Vector2i;
 import org.jspecify.annotations.Nullable;
 
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.locks.LockSupport;
 
 ///
 /// Checks that a mod's pipeline draws through the draw hook with its bound uniform blocks, and that a program file builds one.
@@ -38,11 +43,19 @@ public class PipelineSamples {
     
     private static final int WHITE = 0xFFFFFFFF;
     
+    private static final String BROKEN_PROGRAM = "pipeline_samples_broken";
+    
+    private static final String ESCAPING_PROGRAM = "pipeline_samples_escaping";
+    
     private static final int STILL_FRAMES = 10;
     
     private static final int BROKEN_FRAMES = 3;
     
     private static final int FOG_TOLERANCE = 8;
+    
+    private static final int RELOAD_FRAMES = 3000;
+    
+    private static final long FRAME_NANOS = 1_000_000L;
     
     private static final double HEIGHT = 4.0D;
     
@@ -63,6 +76,16 @@ public class PipelineSamples {
     private static @Nullable Pipeline unbound;
     
     private static @Nullable Pipeline fog;
+    
+    private static @Nullable Pipeline entitySolid;
+    
+    private static @Nullable Pipeline emptyEntity;
+    
+    private static @Nullable Pipeline included;
+    
+    private static @Nullable Pipeline escaping;
+    
+    private static @Nullable Pipeline blank;
     
     private static @Nullable Throwable missing;
     
@@ -152,6 +175,26 @@ public class PipelineSamples {
     }
     
     @ClientTest
+    public static void entityProgramDrawsLikeItsBase(Client client) {
+        Vec3 center = PipelineSamples.enter(client);
+        Vector2i pixel = PipelineSamples.pixelOf(client, center);
+        SampleQuads.showHurtOverlay();
+        SampleQuads.showProgram(Objects.requireNonNull(PipelineSamples.entitySolid, "the vanilla entity pipeline"), center);
+        try {
+            client.tick();
+            Assertions.assertThat(SampleQuads.failure()).as("the failure of drawing the vanilla entity pipeline").isNull();
+            int vanilla = client.capture().pixel(pixel.x, pixel.y);
+            
+            SampleQuads.showProgram(Objects.requireNonNull(PipelineSamples.emptyEntity, "the empty entity program pipeline"), center);
+            client.tick();
+            Assertions.assertThat(SampleQuads.failure()).as("the failure of drawing the program").isNull();
+            client.capture().assertPixel(pixel.x, pixel.y, vanilla);
+        } finally {
+            SampleQuads.hide();
+        }
+    }
+    
+    @ClientTest
     public static void shadedProgramIsDrawnByThePack(Client client) {
         PipelineSamples.assertProgramDraws(
                 client,
@@ -181,7 +224,39 @@ public class PipelineSamples {
             SampleQuads.hide();
         }
         
-        Assertions.assertThat(SampleQuads.brokenLogs()).as("the logged failures of the broken program").hasSize(1);
+        Assertions.assertThat(SampleQuads.logsOf(PipelineSamples.BROKEN_PROGRAM)).as("the logged failures of the broken program").hasSize(SampleQuads.reloads());
+    }
+    
+    @ClientTest
+    public static void escapingIncludeBreaksItsProgram(Client client) {
+        Pipeline pipeline = Objects.requireNonNull(PipelineSamples.escaping, "the escaping program pipeline");
+        Assertions.assertThat(Programs.isBroken(pipeline.getPipeline().get().get())).as("if the program with the escaping include is broken").isTrue();
+        Assertions.assertThat(SampleQuads.logsOf(PipelineSamples.ESCAPING_PROGRAM)).as("the logged failures of the program with the escaping include").hasSize(SampleQuads.reloads());
+    }
+    
+    @ClientTest
+    public static void includedBlockReachesShader(Client client) {
+        PipelineSamples.assertProgramShowsTint(client, PipelineSamples.included, PipelineSamples.GREEN, 0);
+    }
+    
+    @ClientTest
+    public static void blankIncludeIsSkipped(Client client) {
+        PipelineSamples.assertProgramShowsTint(client, PipelineSamples.blank, PipelineSamples.GREEN, 0);
+    }
+    
+    @ClientTest(maxFrames = PipelineSamples.RELOAD_FRAMES)
+    public static void programsSurviveAResourceReload(Client client) {
+        int reloads = SampleQuads.reloads();
+        CompletableFuture<Void> reload = client.minecraft().reloadResourcePacks();
+        // The overlay of a reload waits for a second of real time before it finishes, so each frame waits a millisecond to fit that second into the frame budget.
+        client.until("the resource reload", () -> {
+            LockSupport.parkNanos(PipelineSamples.FRAME_NANOS);
+            return reload.isDone();
+        });
+        
+        Assertions.assertThat(SampleQuads.reloads()).as("the counted resource reloads").isEqualTo(reloads + 1);
+        Assertions.assertThat(SampleQuads.logsOf(PipelineSamples.BROKEN_PROGRAM)).as("the logged failures of the broken program").hasSize(SampleQuads.reloads());
+        PipelineSamples.assertProgramShowsTint(client, PipelineSamples.color, PipelineSamples.GREEN, 0);
     }
     
     @ClientTest
@@ -315,7 +390,7 @@ public class PipelineSamples {
         @SubscribeEvent
         public static void onConstruct(FMLConstructModEvent event) {
             if (FMLEnvironment.getDist().isClient()) {
-                SampleQuads.captureBrokenLogs();
+                SampleQuads.captureProgramLogs();
             }
             
             Render render = Nexus.getMod().getRender();
@@ -337,11 +412,29 @@ public class PipelineSamples {
             shaded.bind(SampleQuads.TINT_BLOCK, () -> SampleQuads::tintBlock);
             PipelineSamples.shaded = shaded;
             
-            PipelineSamples.broken = render.pipeline("pipeline_samples_broken", Shading.OWN);
+            PipelineSamples.broken = render.pipeline(PipelineSamples.BROKEN_PROGRAM, Shading.OWN);
             PipelineSamples.unbound = render.pipeline("pipeline_samples_unbound", Shading.OWN);
             PipelineSamples.fog = render.pipeline("pipeline_samples_fog", Shading.OWN);
+            PipelineSamples.entitySolid = render.pipeline(() -> SampleQuads::entitySolid, Shading.OWN);
+            PipelineSamples.emptyEntity = render.pipeline("pipeline_samples_empty_entity", Shading.OWN);
+            Pipeline included = render.pipeline("pipeline_samples_included", Shading.OWN);
+            included.bind(SampleQuads.TINT_BLOCK, () -> SampleQuads::tintBlock);
+            PipelineSamples.included = included;
+            PipelineSamples.escaping = render.pipeline(PipelineSamples.ESCAPING_PROGRAM, Shading.OWN);
+            Pipeline blank = render.pipeline("pipeline_samples_blank", Shading.OWN);
+            blank.bind(SampleQuads.TINT_BLOCK, () -> SampleQuads::tintBlock);
+            PipelineSamples.blank = blank;
             PipelineSamples.missing = Assertions.catchThrowable(() -> render.pipeline("pipeline_samples_missing", Shading.OWN));
             render.draw(() -> SampleQuads::draw);
+        }
+    }
+    
+    @EventBusSubscriber(modid = Nexus.MOD_ID, value = Dist.CLIENT)
+    public static final class Reloads {
+        
+        @SubscribeEvent
+        public static void onAddReloadListeners(AddClientReloadListenersEvent event) {
+            SampleQuads.countReloads(event);
         }
     }
 }

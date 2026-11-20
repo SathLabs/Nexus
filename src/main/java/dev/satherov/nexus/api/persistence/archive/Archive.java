@@ -3,6 +3,7 @@ package dev.satherov.nexus.api.persistence.archive;
 import dev.satherov.nexus.api.codec.result.NexusCodecException;
 import dev.satherov.nexus.internal.persistence.archive.ArchiveStore;
 
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
@@ -26,6 +27,9 @@ import java.util.function.Predicate;
 ///
 /// The files will be saved in `data/<modid>/<name>/` of the world folder, and each holds the versioned form of its value as compressed NBT.
 /// When the server starts, the folder will be walked once and the key of every file that the parser accepts will be kept in memory for listing.
+///
+/// The archive is opened by a listener of [ServerAboutToStartEvent] with the highest priority and
+/// closed by a listener of [ServerStoppedEvent] with the lowest priority.
 ///
 /// An entry is either active or retired.
 /// A retired entry can still be read but is only listed by [#listRetired(MinecraftServer, Predicate)].
@@ -54,15 +58,16 @@ public final class Archive<KEY extends ArchiveKey<KEY>, VALUE> {
     ///
     Archive(ArchiveStore.Declaration<KEY, VALUE> declaration) {
         this.declaration = declaration;
-        NeoForge.EVENT_BUS.addListener(ServerAboutToStartEvent.class, this::onServerAboutToStart);
-        NeoForge.EVENT_BUS.addListener(ServerStoppedEvent.class, this::onServerStopped);
+        NeoForge.EVENT_BUS.addListener(EventPriority.HIGHEST, ServerAboutToStartEvent.class, this::onServerAboutToStart);
+        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, ServerStoppedEvent.class, this::onServerStopped);
     }
 
     ///
-    /// Queues the given value to be written under the given key and then runs the retention of the group of the key.
+    /// Encodes the given value and queues it to be written under the given key.
     ///
     /// The queued writes of an archive run in order on an IO thread of their own, which finishes them once the server has stopped.
-    /// If the file could not be written, the failure will be logged with the key.
+    /// Once the file is written, the retention of the group of the key runs on that thread.
+    /// If the file could not be written, the failure will be logged with the key and the entry will stay as it was.
     ///
     /// If the key already has an entry, it will be replaced and become active.
     ///
@@ -70,9 +75,10 @@ public final class Archive<KEY extends ArchiveKey<KEY>, VALUE> {
     /// @param key    The key of the entry.
     /// @param value  The value to write.
     ///
-    /// @throws IllegalArgumentException If the key has no segments, if one of its segments is empty,
+    /// @throws IllegalArgumentException If the key has no segments, if one of its segments is empty or too long,
     /// or if the parser of the archive doesn't give back a key with the same segments.
     /// @throws IllegalStateException    If the archive isn't open on the server.
+    /// @throws NexusCodecException      If the value could not be encoded.
     ///
     public void write(MinecraftServer server, KEY key, VALUE value) {
         this.getStore(server).write(key, value);
@@ -83,12 +89,13 @@ public final class Archive<KEY extends ArchiveKey<KEY>, VALUE> {
     /// and then runs the retention of the group of the key.
     ///
     /// If the key already has an entry, it will be replaced and become active.
+    /// Before this returns, the file will be forced onto the disk, and its folders too where the system allows it.
     ///
     /// @param server The server that holds the entry.
     /// @param key    The key of the entry.
     /// @param value  The value to write.
     ///
-    /// @throws IllegalArgumentException If the key has no segments, if one of its segments is empty,
+    /// @throws IllegalArgumentException If the key has no segments, if one of its segments is empty or too long,
     /// or if the parser of the archive doesn't give back a key with the same segments.
     /// @throws IllegalStateException    If the archive isn't open on the server.
     /// @throws NexusCodecException      If the value could not be encoded.
@@ -101,7 +108,7 @@ public final class Archive<KEY extends ArchiveKey<KEY>, VALUE> {
     ///
     /// Reads the value of the entry of the given key, active or retired.
     ///
-    /// If a write of the key is still queued, its value will be returned.
+    /// If a write of the key is still queued, a newly decoded copy of its value will be returned.
     /// If the file of the entry could not be decoded, it will be left as it is.
     ///
     /// @param server The server that holds the entry.
@@ -161,6 +168,7 @@ public final class Archive<KEY extends ArchiveKey<KEY>, VALUE> {
     /// Runs the retention of every group and deletes the entries that it drops.
     ///
     /// The retention also runs once when the server starts and over the group of a key after every write.
+    /// An entry whose write is still queued isn't counted until its file is written.
     ///
     /// @param server The server that holds the entries.
     ///

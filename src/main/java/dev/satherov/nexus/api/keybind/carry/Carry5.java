@@ -59,8 +59,9 @@ public final class Carry5
     ///
     /// Adds one more carried value, read after the ones before it.
     ///
-    /// The reader runs on the client thread when the key fires.
+    /// The reader runs on the client thread when the key fires, and only while the client is connected to a server that has the key.
     /// If it returns `null`, nothing will be sent to the server for that firing.
+    /// If it returns a mutable value such as an item stack, then the value must be a copy or a later change to it may reach the server.
     ///
     /// @param codec  The codec of the value.
     /// @param reader The reader of the value.

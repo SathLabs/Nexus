@@ -16,6 +16,7 @@ import dev.satherov.nexus.api.registry.entity.LivingEntityBuilder;
 import dev.satherov.nexus.api.registry.entity.PlainEntityBuilder;
 import dev.satherov.nexus.api.registry.fluid.PlainFluidBuilder;
 import dev.satherov.nexus.api.registry.item.ItemBuilder;
+import dev.satherov.nexus.api.registry.item.ItemEntry;
 import dev.satherov.nexus.api.registry.menu.MenuBuilder;
 import dev.satherov.nexus.api.registry.particle.ParticleBuilder;
 import dev.satherov.nexus.api.registry.potion.PotionBuilder;
@@ -26,6 +27,7 @@ import dev.satherov.nexus.internal.registry.EntryRegister;
 import dev.satherov.nexus.internal.registry.client.ClientDispatch;
 import dev.satherov.nexus.internal.registry.tab.TabContents;
 
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.BooleanAttribute;
@@ -34,6 +36,7 @@ import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.fluids.BaseFlowingFluid;
 import net.neoforged.neoforge.fluids.FluidType;
 import net.neoforged.neoforge.network.IContainerFactory;
+import net.neoforged.neoforge.registries.RegisterEvent;
 
 import net.minecraft.core.Registry;
 import net.minecraft.core.particles.ParticleOptions;
@@ -65,8 +68,10 @@ import org.jetbrains.annotations.Unmodifiable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -93,6 +98,11 @@ public final class Registrations {
     private final List<RegistryEntry<?, ?>> entries = new ArrayList<>();
     
     ///
+    /// Every registry whose registry event already ran on the event bus of the mod.
+    ///
+    private final Set<ResourceKey<? extends Registry<?>>> firedRegistries = new HashSet<>();
+    
+    ///
     /// Creates the empty registrations of the given mod and subscribes their listeners to the event bus of the mod.
     ///
     /// Should only ever be called from [NexusMod#getRegistrations()].
@@ -103,6 +113,7 @@ public final class Registrations {
     public Registrations(NexusMod mod) {
         this.mod = mod;
         
+        mod.getEventBus().addListener(EventPriority.HIGHEST, RegisterEvent.class, event -> this.firedRegistries.add(event.getRegistryKey()));
         mod.getEventBus().addListener(BuildCreativeModeTabContentsEvent.class, new TabContents(this)::onBuildContents);
         if (FMLEnvironment.getDist().isClient()) {
             ClientDispatch.listen(mod.getEventBus(), Collections.unmodifiableMap(this.registersByKey));
@@ -118,7 +129,8 @@ public final class Registrations {
     /// @param registry The key of the registry.
     /// @param id       The identifier of the object to register.
     ///
-    /// @throws IllegalStateException If the registry event of the registry already ran, or if the identifier is already registered.
+    /// @throws IllegalArgumentException If the registry is a datapack registry.
+    /// @throws IllegalStateException    If the registry event of the registry already ran, or if the identifier is already registered.
     ///
     @ApiStatus.Internal
     public <REGISTRY> void checkAddable(ResourceKey<? extends Registry<REGISTRY>> registry, Identifier id) {
@@ -130,14 +142,16 @@ public final class Registrations {
     ///
     /// Should only ever be called from [EntryBuilder#register()].
     ///
-    /// @param entry   The still unbound entry.
-    /// @param factory The factory of the object, called once inside the registry event.
+    /// @param entry    The still unbound entry.
+    /// @param factory  The factory of the object, called once inside the registry event.
+    /// @param callback The callback, called with the object right after it is registered.
     ///
-    /// @throws IllegalStateException If the registry event of the registry already ran, or if the identifier of the entry is already registered.
+    /// @throws IllegalArgumentException If the registry is a datapack registry.
+    /// @throws IllegalStateException    If the registry event of the registry already ran, or if the identifier of the entry is already registered.
     ///
     @ApiStatus.Internal
-    public <REGISTRY, VALUE extends REGISTRY> void add(RegistryEntry<REGISTRY, VALUE> entry, Supplier<VALUE> factory) {
-        this.getRegister(entry.getKey().registryKey()).add(entry, factory);
+    public <REGISTRY, VALUE extends REGISTRY> void add(RegistryEntry<REGISTRY, VALUE> entry, Supplier<VALUE> factory, Consumer<VALUE> callback) {
+        this.getRegister(entry.getKey().registryKey()).add(entry, factory, callback);
     }
     
     ///
@@ -156,11 +170,25 @@ public final class Registrations {
     }
     
     ///
+    /// If the registry event of the given registry already ran on the event bus of the mod.
+    ///
+    /// Should only ever be called from [ItemEntry#getTabs()].
+    ///
+    /// @param registry The key of the registry.
+    ///
+    /// @return `true` if the registry event already ran.
+    ///
+    @ApiStatus.Internal
+    public boolean hasFired(ResourceKey<? extends Registry<?>> registry) {
+        return this.firedRegistries.contains(registry);
+    }
+    
+    ///
     /// The register of the given registry, created and subscribed to the event bus of the mod on the first call.
     ///
     private <REGISTRY> EntryRegister<REGISTRY> getRegister(ResourceKey<? extends Registry<REGISTRY>> registry) {
         //noinspection unchecked The register under a key is of the registry of that key.
-        return (EntryRegister<REGISTRY>) this.registersByKey.computeIfAbsent(registry, _ -> new EntryRegister<>(registry, this.mod.getEventBus(), this.entries));
+        return (EntryRegister<REGISTRY>) this.registersByKey.computeIfAbsent(registry, _ -> new EntryRegister<>(registry, this.mod.getEventBus(), this.entries, Collections.unmodifiableSet(this.firedRegistries)));
     }
     
     ///
@@ -188,7 +216,9 @@ public final class Registrations {
     }
     
     ///
-    /// Starts one object of any registry, which the given supplier creates inside the registry event.
+    /// Starts one object of any built-in registry, which the given supplier creates inside the registry event.
+    ///
+    /// If the registry is a datapack registry, registering the object will throw an [IllegalArgumentException].
     ///
     /// @param registry The key of the registry.
     /// @param name     The path of the identifier.
@@ -238,6 +268,8 @@ public final class Registrations {
     
     ///
     /// Starts an entity attribute of the given factory.
+    ///
+    /// The syncing and the sentiment the factory sets are kept unless [AttributeBuilder#synced()] or [AttributeBuilder#sentiment(Attribute.Sentiment)] is called.
     ///
     /// @param <ATTRIBUTE> The type of the attribute.
     /// @param name        The path of the identifier.
@@ -350,6 +382,8 @@ public final class Registrations {
     ///
     /// Starts a block entity type of the factory, valid for the blocks the builder is given.
     ///
+    /// A type without blocks needs [BlockEntityBuilder#noBlocks()], or registering it will throw an [IllegalStateException].
+    ///
     /// @param name    The path of the identifier.
     /// @param factory The factory of the block entity, called each time a block entity of the type is created.
     ///
@@ -366,6 +400,8 @@ public final class Registrations {
     /// @param codec The codec of the values of the component.
     ///
     /// @return The builder of the data component type.
+    ///
+    /// @throws IllegalArgumentException If the codec cannot encode in JSON and NBT.
     ///
     public <VALUE> DataComponentBuilder<VALUE, Registrations> component(String name, NexusCodec<VALUE, ?> codec) {
         return new DataComponentBuilder<>(this, name, this, codec);
@@ -387,6 +423,8 @@ public final class Registrations {
     ///
     /// Starts an entity type of the factory in the given category.
     ///
+    /// The builder gives the type no attributes, so a factory of living entities belongs in [#livingEntity(String, String, MobCategory, EntityType.EntityFactory)].
+    ///
     /// @param name     The path of the identifier.
     /// @param english  The English name.
     /// @param category The category of the entity type.
@@ -400,6 +438,8 @@ public final class Registrations {
     
     ///
     /// Starts an entity type of living entities of the factory in the given category.
+    ///
+    /// If [LivingEntityBuilder#attributes(Supplier)] is not called, registering the type will throw an [IllegalStateException].
     ///
     /// @param name     The path of the identifier.
     /// @param english  The English name.
@@ -457,6 +497,8 @@ public final class Registrations {
     /// Starts a menu type of the factory, titled with the given English name.
     ///
     /// If the server doesn't write any extra data when it opens the menu, the factory will receive `null` instead of it.
+    ///
+    /// If no screen is registered for the menu type, the factory will never be called.
     ///
     /// @param name    The path of the identifier.
     /// @param english The English title.

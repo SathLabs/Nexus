@@ -25,7 +25,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.function.Consumer;
+import java.util.function.Function;
 
 ///
 /// Measures how long the codecs take against their DFU and stream codec twins over the parity cases, and writes the
@@ -89,11 +89,13 @@ public class SpeedTest {
         }
     }
     
-    private void measure(String operation, Consumer<ParityCases.Case<?>> nexus, Consumer<ParityCases.Case<?>> twin) {
+    private void measure(String operation, Function<ParityCases.Case<?>, Runnable> nexusFor, Function<ParityCases.Case<?>, Runnable> twinFor) {
         double logRatios = 0.0D;
         for (ParityCases.Case<?> parity : ParityCases.ALL) {
-            SpeedTest.runFor(SpeedTest.WARMUP_NANOS, parity, nexus);
-            SpeedTest.runFor(SpeedTest.WARMUP_NANOS, parity, twin);
+            Runnable nexus = nexusFor.apply(parity);
+            Runnable twin = twinFor.apply(parity);
+            SpeedTest.runFor(SpeedTest.WARMUP_NANOS, nexus);
+            SpeedTest.runFor(SpeedTest.WARMUP_NANOS, twin);
             double nexusNanos = Double.MAX_VALUE;
             double twinNanos = Double.MAX_VALUE;
             for (int round = 0; round < SpeedTest.ROUNDS; round++) {
@@ -110,113 +112,139 @@ public class SpeedTest {
         Assertions.assertThat(typicalRatio).as("%s, nexus takes %.2f times as long as the twin over a typical case", operation, typicalRatio).isLessThanOrEqualTo(SpeedTest.ALLOWED_SLOWDOWN);
     }
     
-    private static double nanosPerValue(ParityCases.Case<?> parity, Consumer<ParityCases.Case<?>> operation) {
-        long runs = SpeedTest.runFor(SpeedTest.MEASURE_NANOS, parity, operation);
+    private static double nanosPerValue(ParityCases.Case<?> parity, Runnable operation) {
+        long runs = SpeedTest.runFor(SpeedTest.MEASURE_NANOS, operation);
         return (double) SpeedTest.MEASURE_NANOS / (runs * parity.values().size());
     }
     
-    private static long runFor(long nanos, ParityCases.Case<?> parity, Consumer<ParityCases.Case<?>> operation) {
+    private static long runFor(long nanos, Runnable operation) {
         long end = System.nanoTime() + nanos;
         long runs = 0L;
         do {
-            operation.accept(parity);
+            operation.run();
             runs++;
         } while (System.nanoTime() < end);
         return runs;
     }
     
-    private static <T> void encodeJson(ParityCases.Case<T> parity) {
-        for (T value : parity.values()) {
-            SpeedTest.sink += parity.codec().encode(SpeedTest.JSON, value).hashCode();
-        }
+    private static <T> Runnable encodeJson(ParityCases.Case<T> parity) {
+        return () -> {
+            for (T value : parity.values()) {
+                SpeedTest.sink += parity.codec().encode(SpeedTest.JSON, value).hashCode();
+            }
+        };
     }
     
-    private static <T> void encodeJsonDfu(ParityCases.Case<T> parity) {
-        for (T value : parity.values()) {
-            SpeedTest.sink += parity.dfu().encodeStart(SpeedTest.JSON_OPS, value).getOrThrow().hashCode();
-        }
+    private static <T> Runnable encodeJsonDfu(ParityCases.Case<T> parity) {
+        return () -> {
+            for (T value : parity.values()) {
+                SpeedTest.sink += parity.dfu().encodeStart(SpeedTest.JSON_OPS, value).getOrThrow().hashCode();
+            }
+        };
     }
     
-    private static <T> void decodeJson(ParityCases.Case<T> parity) {
-        for (T value : parity.values()) {
-            SpeedTest.sink += parity.codec().decode(SpeedTest.JSON, SpeedTest.jsonOf(parity, value)).hashCode();
-        }
+    private static <T> Runnable decodeJson(ParityCases.Case<T> parity) {
+        List<JsonElement> inputs = SpeedTest.jsonOf(parity);
+        return () -> {
+            for (JsonElement input : inputs) {
+                SpeedTest.sink += parity.codec().decode(SpeedTest.JSON, input).hashCode();
+            }
+        };
     }
     
-    private static <T> void decodeJsonDfu(ParityCases.Case<T> parity) {
-        for (T value : parity.values()) {
-            SpeedTest.sink += parity.dfu().parse(SpeedTest.JSON_OPS, SpeedTest.jsonOf(parity, value)).getOrThrow().hashCode();
-        }
+    private static <T> Runnable decodeJsonDfu(ParityCases.Case<T> parity) {
+        List<JsonElement> inputs = SpeedTest.jsonOf(parity);
+        return () -> {
+            for (JsonElement input : inputs) {
+                SpeedTest.sink += parity.dfu().parse(SpeedTest.JSON_OPS, input).getOrThrow().hashCode();
+            }
+        };
     }
     
-    private static <T> void encodeNbt(ParityCases.Case<T> parity) {
-        for (T value : parity.values()) {
-            SpeedTest.sink += parity.codec().encode(SpeedTest.NBT, value).hashCode();
-        }
+    private static <T> Runnable encodeNbt(ParityCases.Case<T> parity) {
+        return () -> {
+            for (T value : parity.values()) {
+                SpeedTest.sink += parity.codec().encode(SpeedTest.NBT, value).hashCode();
+            }
+        };
     }
     
-    private static <T> void encodeNbtDfu(ParityCases.Case<T> parity) {
-        for (T value : parity.values()) {
-            SpeedTest.sink += parity.dfu().encodeStart(SpeedTest.NBT_OPS, value).getOrThrow().hashCode();
-        }
+    private static <T> Runnable encodeNbtDfu(ParityCases.Case<T> parity) {
+        return () -> {
+            for (T value : parity.values()) {
+                SpeedTest.sink += parity.dfu().encodeStart(SpeedTest.NBT_OPS, value).getOrThrow().hashCode();
+            }
+        };
     }
     
-    private static <T> void decodeNbt(ParityCases.Case<T> parity) {
-        for (T value : parity.values()) {
-            SpeedTest.sink += parity.codec().decode(SpeedTest.NBT, SpeedTest.nbtOf(parity, value)).hashCode();
-        }
+    private static <T> Runnable decodeNbt(ParityCases.Case<T> parity) {
+        List<Tag> inputs = SpeedTest.nbtOf(parity);
+        return () -> {
+            for (Tag input : inputs) {
+                SpeedTest.sink += parity.codec().decode(SpeedTest.NBT, input).hashCode();
+            }
+        };
     }
     
-    private static <T> void decodeNbtDfu(ParityCases.Case<T> parity) {
-        for (T value : parity.values()) {
-            SpeedTest.sink += parity.dfu().parse(SpeedTest.NBT_OPS, SpeedTest.nbtOf(parity, value)).getOrThrow().hashCode();
-        }
+    private static <T> Runnable decodeNbtDfu(ParityCases.Case<T> parity) {
+        List<Tag> inputs = SpeedTest.nbtOf(parity);
+        return () -> {
+            for (Tag input : inputs) {
+                SpeedTest.sink += parity.dfu().parse(SpeedTest.NBT_OPS, input).getOrThrow().hashCode();
+            }
+        };
     }
     
-    private static <T> void encodeNetty(ParityCases.Case<T> parity) {
-        RegistryFriendlyByteBuf buffer = SpeedTest.buffer();
-        for (T value : parity.values()) {
-            parity.codec().encode(CodecFormat.netty(buffer), value);
-        }
-        
-        SpeedTest.sink += buffer.writerIndex();
-        buffer.release();
+    private static <T> Runnable encodeNetty(ParityCases.Case<T> parity) {
+        return () -> {
+            RegistryFriendlyByteBuf buffer = SpeedTest.buffer();
+            for (T value : parity.values()) {
+                parity.codec().encode(CodecFormat.netty(buffer), value);
+            }
+            
+            SpeedTest.sink += buffer.writerIndex();
+            buffer.release();
+        };
     }
     
-    private static <T> void encodeNettyStream(ParityCases.Case<T> parity) {
-        RegistryFriendlyByteBuf buffer = SpeedTest.buffer();
-        for (T value : parity.values()) {
-            parity.stream().encode(buffer, value);
-        }
-        
-        SpeedTest.sink += buffer.writerIndex();
-        buffer.release();
+    private static <T> Runnable encodeNettyStream(ParityCases.Case<T> parity) {
+        return () -> {
+            RegistryFriendlyByteBuf buffer = SpeedTest.buffer();
+            for (T value : parity.values()) {
+                parity.stream().encode(buffer, value);
+            }
+            
+            SpeedTest.sink += buffer.writerIndex();
+            buffer.release();
+        };
     }
     
-    private static <T> void decodeNetty(ParityCases.Case<T> parity) {
+    private static <T> Runnable decodeNetty(ParityCases.Case<T> parity) {
         RegistryFriendlyByteBuf buffer = SpeedTest.encoded(parity);
-        for (int i = 0; i < parity.values().size(); i++) {
-            SpeedTest.sink += parity.codec().decode(CodecFormat.netty(buffer)).hashCode();
-        }
-        
-        buffer.release();
+        return () -> {
+            buffer.readerIndex(0);
+            for (int i = 0; i < parity.values().size(); i++) {
+                SpeedTest.sink += parity.codec().decode(CodecFormat.netty(buffer)).hashCode();
+            }
+        };
     }
     
-    private static <T> void decodeNettyStream(ParityCases.Case<T> parity) {
+    private static <T> Runnable decodeNettyStream(ParityCases.Case<T> parity) {
         RegistryFriendlyByteBuf buffer = SpeedTest.encoded(parity);
-        for (int i = 0; i < parity.values().size(); i++) {
-            SpeedTest.sink += parity.stream().decode(buffer).hashCode();
-        }
-        
-        buffer.release();
+        return () -> {
+            buffer.readerIndex(0);
+            for (int i = 0; i < parity.values().size(); i++) {
+                SpeedTest.sink += parity.stream().decode(buffer).hashCode();
+            }
+        };
     }
     
-    private static <T> JsonElement jsonOf(ParityCases.Case<T> parity, T value) {
-        return parity.dfu().encodeStart(SpeedTest.JSON_OPS, value).getOrThrow();
+    private static <T> List<JsonElement> jsonOf(ParityCases.Case<T> parity) {
+        return parity.values().stream().map(value -> parity.dfu().encodeStart(SpeedTest.JSON_OPS, value).getOrThrow()).toList();
     }
     
-    private static <T> Tag nbtOf(ParityCases.Case<T> parity, T value) {
-        return parity.dfu().encodeStart(SpeedTest.NBT_OPS, value).getOrThrow();
+    private static <T> List<Tag> nbtOf(ParityCases.Case<T> parity) {
+        return parity.values().stream().map(value -> parity.dfu().encodeStart(SpeedTest.NBT_OPS, value).getOrThrow()).toList();
     }
     
     private static <T> RegistryFriendlyByteBuf encoded(ParityCases.Case<T> parity) {

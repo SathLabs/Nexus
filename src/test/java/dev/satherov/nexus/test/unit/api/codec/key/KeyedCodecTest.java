@@ -61,6 +61,16 @@ public class KeyedCodecTest {
     }
     
     @Test
+    public void readsTheSameFallbackInstanceForEveryMissingKey() {
+        List<String> fallback = new ArrayList<>();
+        KeyedCodec<List<String>, Access.Plain> owners = NexusCodec.STRING.list().keyed("owners", fallback);
+        ProblemReporter.Collector problems = new ProblemReporter.Collector();
+        
+        Assertions.assertThat(owners.read(CodecFormat.NBT, new CompoundTag())).isSameAs(fallback);
+        Assertions.assertThat(owners.read(TagValueInput.create(problems, KeyedCodecTest.REGISTRIES, new CompoundTag()))).isSameAs(fallback);
+    }
+    
+    @Test
     public void throwsTheFailureOfTheCodecOnABadValueOnATag() {
         Tag bad = StringTag.valueOf("many");
         CompoundTag tag = new CompoundTag();

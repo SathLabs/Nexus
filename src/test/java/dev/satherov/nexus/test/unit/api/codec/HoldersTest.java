@@ -4,17 +4,25 @@ import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.codec.format.CodecFormat;
 import dev.satherov.nexus.api.codec.result.CodecError;
+import dev.satherov.nexus.api.codec.result.CodecResult;
 import dev.satherov.nexus.api.codec.result.NexusCodecException;
 import dev.satherov.nexus.api.codec.struct.StructCodec;
 
+import net.neoforged.neoforge.common.NeoForgeMod;
 import net.neoforged.neoforge.network.connection.ConnectionType;
+import net.neoforged.neoforge.registries.DeferredHolder;
+import net.neoforged.neoforge.registries.NeoForgeRegistries;
 import net.neoforged.neoforge.registries.holdersets.AndHolderSet;
 import net.neoforged.neoforge.registries.holdersets.AnyHolderSet;
+import net.neoforged.neoforge.registries.holdersets.HolderSetType;
 import net.neoforged.neoforge.registries.holdersets.NotHolderSet;
 import net.neoforged.neoforge.registries.holdersets.OrHolderSet;
 
 import net.minecraft.core.Holder;
+import net.minecraft.core.HolderOwner;
 import net.minecraft.core.HolderSet;
+import net.minecraft.core.MappedRegistry;
+import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.RegistryCodecs;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -33,15 +41,16 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.tags.ItemTags;
+import net.minecraft.world.entity.schedule.Activity;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.biome.Biome;
-import net.minecraft.world.level.gameevent.GameEvent;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.JsonOps;
+import com.mojang.serialization.Lifecycle;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 
@@ -71,6 +80,7 @@ public class HoldersTest {
     private static final Holder<Item> LATER_ITEM = BuiltInRegistries.ITEM.get(200).orElseThrow();
     private static final HolderSet<Item> TOOL_MATERIALS = BuiltInRegistries.ITEM.getOrThrow(ItemTags.WOODEN_TOOL_MATERIALS);
     private static final SoundEvent BOOM = new SoundEvent(Identifier.fromNamespaceAndPath("nexus", "boom"), Optional.empty());
+    private static final Holder<Activity> IDLE = BuiltInRegistries.ACTIVITY.wrapAsHolder(Activity.IDLE);
     
     private static final NexusCodec<Holder<Item>, Access.Registries> ITEM = NexusCodec.holder(Registries.ITEM);
     private static final NexusCodec<HolderSet<Item>, Access.Registries> ITEMS = NexusCodec.holderSet(Registries.ITEM);
@@ -126,11 +136,14 @@ public class HoldersTest {
     }
     
     @Test
-    public void holderRefusesDirectHolderInJsonAndNbt() {
+    public void holderRefusesADirectHolderInEveryFormat() {
         Holder<Item> direct = Holder.direct(Items.STONE);
         
         Assertions.assertThatThrownBy(() -> HoldersTest.ITEM.encode(HoldersTest.JSON, direct)).isInstanceOf(NexusCodecException.class);
         Assertions.assertThatThrownBy(() -> HoldersTest.ITEM.encode(HoldersTest.NBT, direct)).isInstanceOf(NexusCodecException.class);
+        Assertions.assertThatThrownBy(() -> HoldersTest.ITEM.encode(CodecFormat.netty(HoldersTest.writable(ConnectionType.OTHER)), direct))
+                .isInstanceOf(NexusCodecException.class)
+                .hasMessageContainingAll("direct holder", "minecraft:item");
     }
     
     @Test
@@ -144,13 +157,33 @@ public class HoldersTest {
     
     @Test
     public void holderRefusesBuiltInRegistryThatIsNotSyncedOnNetwork() {
-        NexusCodec<Holder<GameEvent>, Access.Registries> codec = NexusCodec.holder(Registries.GAME_EVENT);
+        NexusCodec<Holder<Activity>, Access.Registries> codec = NexusCodec.holder(Registries.ACTIVITY);
         
-        Assertions.assertThatThrownBy(() -> ByteBufCodecs.holderRegistry(Registries.GAME_EVENT).encode(HoldersTest.writable(ConnectionType.OTHER), GameEvent.STEP))
-                .hasMessageContaining("minecraft:game_event");
-        Assertions.assertThatThrownBy(() -> codec.encode(CodecFormat.netty(HoldersTest.writable(ConnectionType.OTHER)), GameEvent.STEP))
+        Assertions.assertThat(BuiltInRegistries.ACTIVITY.doesSync()).isFalse();
+        Assertions.assertThatThrownBy(() -> ByteBufCodecs.holderRegistry(Registries.ACTIVITY).encode(HoldersTest.writable(ConnectionType.OTHER), HoldersTest.IDLE))
+                .hasMessageContaining("minecraft:activity");
+        Assertions.assertThatThrownBy(() -> codec.encode(CodecFormat.netty(HoldersTest.writable(ConnectionType.OTHER)), HoldersTest.IDLE))
                 .isInstanceOf(NexusCodecException.class)
-                .hasMessageContaining("minecraft:game_event");
+                .hasMessageContaining("minecraft:activity");
+    }
+    
+    @Test
+    public void holderRefusesUnregisteredValueOnNetwork() {
+        NexusCodec<Holder<SoundEvent>, Access.Registries> codec = NexusCodec.holder(Registries.SOUND_EVENT);
+        
+        Assertions.assertThatThrownBy(() -> codec.encode(CodecFormat.netty(HoldersTest.writable(ConnectionType.OTHER)), Holder.direct(HoldersTest.BOOM)))
+                .isInstanceOf(NexusCodecException.class)
+                .hasMessageContainingAll("unregistered value", "minecraft:sound_event");
+    }
+    
+    @Test
+    public void holderFailsAsResultIfUnboundOrWithoutKey() {
+        DeferredHolder<Item, Item> unbound = DeferredHolder.create(Registries.ITEM, Identifier.fromNamespaceAndPath("nexus", "missing"));
+        Holder<Item> keyless = HoldersTest.keyless();
+        
+        Assertions.assertThat(HoldersTest.ITEM.tryEncode(CodecFormat.netty(HoldersTest.writable(ConnectionType.OTHER)), unbound)).isInstanceOf(CodecResult.Failure.class);
+        Assertions.assertThat(HoldersTest.ITEM.tryEncode(HoldersTest.JSON, keyless)).isInstanceOf(CodecResult.Failure.class);
+        Assertions.assertThat(HoldersTest.ITEM.tryEncode(HoldersTest.NBT, keyless)).isInstanceOf(CodecResult.Failure.class);
     }
     
     @Test
@@ -168,6 +201,29 @@ public class HoldersTest {
     public void holderOrInlineWritesZeroBeforeDirectHolderAndIdPlusOneOnNetwork() {
         HoldersTest.assertNetty(HoldersTest.SOUND, Holder.direct(HoldersTest.BOOM), 0x00, 0x0A, "nexus:boom", 0x00);
         HoldersTest.assertNetty(HoldersTest.SOUND, BuiltInRegistries.SOUND_EVENT.get(5).orElseThrow(), 0x06);
+    }
+    
+    @Test
+    public void holderOrInlineFailsNamingUnknownIdAndRegistryOnNetwork() {
+        RegistryFriendlyByteBuf negative = HoldersTest.writable(ConnectionType.OTHER);
+        negative.writeVarInt(-1);
+        
+        Assertions.assertThatThrownBy(() -> HoldersTest.SOUND.decode(CodecFormat.netty(HoldersTest.readable(0xFF, 0xFF, 0x03))))
+                .isInstanceOf(NexusCodecException.class)
+                .hasMessageContainingAll("65534", "minecraft:sound_event");
+        Assertions.assertThatThrownBy(() -> HoldersTest.SOUND.decode(CodecFormat.netty(negative)))
+                .isInstanceOf(NexusCodecException.class)
+                .hasMessageContaining("minecraft:sound_event");
+    }
+    
+    @Test
+    public void holderOrInlineRefusesBuiltInRegistryThatIsNotSyncedOnNetwork() {
+        NexusCodec<Holder<Activity>, Access.Registries> codec = NexusCodec.holderOrInline(Registries.ACTIVITY, NexusCodec.unit(Activity.IDLE));
+        
+        Assertions.assertThat(BuiltInRegistries.ACTIVITY.doesSync()).isFalse();
+        Assertions.assertThatThrownBy(() -> codec.encode(CodecFormat.netty(HoldersTest.writable(ConnectionType.OTHER)), HoldersTest.IDLE))
+                .isInstanceOf(NexusCodecException.class)
+                .hasMessageContaining("minecraft:activity");
     }
     
     @Test
@@ -227,6 +283,33 @@ public class HoldersTest {
     }
     
     @Test
+    public void holderSetRefusesTagAndCustomSetOfOtherRegistriesInJsonAndNbt() {
+        HolderOwner<Item> stranger = new HolderOwner<>() { };
+        //noinspection deprecation The tag has to belong to another owner.
+        HolderSet<Item> tag = HolderSet.emptyNamed(stranger, ItemTags.WOODEN_TOOL_MATERIALS);
+        HolderSet<Item> custom = new NotHolderSet<>(HoldersTest.REGISTRIES.lookupOrThrow(Registries.ITEM), tag);
+        
+        List.of(tag, custom).forEach(set -> {
+            Assertions.assertThatThrownBy(() -> HoldersTest.ITEMS.encode(HoldersTest.JSON, set))
+                    .isInstanceOf(NexusCodecException.class)
+                    .hasMessageContaining("other registries");
+            Assertions.assertThatThrownBy(() -> HoldersTest.ITEMS.encode(HoldersTest.NBT, set))
+                    .isInstanceOf(NexusCodecException.class)
+                    .hasMessageContaining("other registries");
+        });
+    }
+    
+    @Test
+    public void holderSetFailsAsResultIfTagsAreNotBound() {
+        ResourceKey<Registry<String>> registry = ResourceKey.createRegistryKey(Identifier.fromNamespaceAndPath("nexus", "words"));
+        CodecFormat<JsonElement, Access.Registries> json = CodecFormat.JSON.withRegistries(new RegistryAccess.ImmutableRegistryAccess(List.of(new MappedRegistry<>(registry, Lifecycle.stable()))));
+        NexusCodec<HolderSet<String>, Access.Registries> words = NexusCodec.holderSet(registry);
+        
+        Assertions.assertThat(words.tryDecode(json, JsonParser.parseString("\"#nexus:word\""))).isInstanceOf(CodecResult.Failure.class);
+        Assertions.assertThat(words.tryDecode(json, JsonParser.parseString("{\"type\":\"neoforge:or\",\"values\":[\"#nexus:word\"]}"))).isInstanceOf(CodecResult.Failure.class);
+    }
+    
+    @Test
     public void holderSetCollectsErrorOfEveryHolderAtItsIndex() {
         JsonElement input = JsonParser.parseString("[\"nexus:first\",\"minecraft:stone\",\"nexus:third\"]");
         
@@ -267,6 +350,53 @@ public class HoldersTest {
             Assertions.assertThat(error.message()).contains("\"nexus:nope\"", "neoforge:any", "neoforge:or").doesNotContain("values");
         });
         Assertions.assertThat(malformed).extracting(CodecError::path).containsExactly("type");
+    }
+    
+    @Test
+    public void customSetRefusesUnregisteredType() {
+        HolderSet<Item> unregistered = new OrHolderSet<>(List.of(HoldersTest.set(HoldersTest.STONE))) {
+            
+            @Override
+            public HolderSetType type() {
+                return new OrHolderSet.Type();
+            }
+        };
+        
+        Assertions.assertThatThrownBy(() -> HoldersTest.ITEMS.encode(HoldersTest.JSON, unregistered))
+                .isInstanceOf(NexusCodecException.class)
+                .hasMessageContaining("registered type");
+        Assertions.assertThatThrownBy(() -> HoldersTest.ITEMS.encode(CodecFormat.netty(HoldersTest.writable(ConnectionType.NEOFORGE)), unregistered))
+                .isInstanceOf(NexusCodecException.class)
+                .hasMessageContaining("registered type");
+    }
+    
+    @Test
+    public void customSetFailsAsResultIfItsCodecThrows() {
+        HolderSet<Item> set = new OrHolderSet<>(List.of(HoldersTest.set(HoldersTest.keyless())));
+        
+        Assertions.assertThat(HoldersTest.ITEMS.tryEncode(HoldersTest.JSON, set)).isInstanceOf(CodecResult.Failure.class);
+        Assertions.assertThat(HoldersTest.ITEMS.tryEncode(HoldersTest.NBT, set)).isInstanceOf(CodecResult.Failure.class);
+    }
+    
+    @Test
+    public void customSetFailsNamingUnknownTypeIdOnNetwork() {
+        int unknown = NeoForgeRegistries.HOLDER_SET_TYPES.size();
+        RegistryFriendlyByteBuf buffer = HoldersTest.writable(ConnectionType.NEOFORGE);
+        buffer.writeVarInt(-1 - unknown);
+        
+        Assertions.assertThatThrownBy(() -> HoldersTest.ITEMS.decode(CodecFormat.netty(buffer)))
+                .isInstanceOf(NexusCodecException.class)
+                .hasMessageContainingAll("holder set type", String.valueOf(unknown));
+    }
+    
+    @Test
+    public void customSetFailsAtTruncatedContentOnNetwork() {
+        RegistryFriendlyByteBuf buffer = HoldersTest.writable(ConnectionType.NEOFORGE);
+        buffer.writeVarInt(-1 - NeoForgeRegistries.HOLDER_SET_TYPES.getId(NeoForgeMod.OR_HOLDER_SET.value()));
+        
+        Assertions.assertThat(HoldersTest.errors(() -> HoldersTest.ITEMS.decode(CodecFormat.netty(buffer))))
+                .singleElement()
+                .satisfies(error -> Assertions.assertThat(error.message()).startsWith("Could not read the custom holder set"));
     }
     
     @Test
@@ -326,6 +456,11 @@ public class HoldersTest {
                 new AndHolderSet<>(List.of(HoldersTest.set(HoldersTest.STONE, HoldersTest.DIRT), HoldersTest.set(HoldersTest.STONE))),
                 new NotHolderSet<>(HoldersTest.REGISTRIES.lookupOrThrow(Registries.ITEM), HoldersTest.set(HoldersTest.STONE))
         );
+    }
+    
+    private static Holder<Item> keyless() {
+        //noinspection deprecation The holder has to be intrusive to have no key.
+        return Holder.Reference.createIntrusive(BuiltInRegistries.ITEM, Items.STONE);
     }
     
     @SafeVarargs

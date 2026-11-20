@@ -28,6 +28,8 @@ public abstract class DataComponentTypeBuilderMixin {
     ///
     /// Keeps the codec that the builder got on the built type, before [DataComponentType.Builder#cacheEncoding()] wrapped it.
     ///
+    /// If another mod returns a type of its own from the builder, that type keeps nothing.
+    ///
     /// @param callback The callback that holds the built type.
     ///
     @Inject(
@@ -35,6 +37,8 @@ public abstract class DataComponentTypeBuilderMixin {
             at = @At("RETURN")
     )
     private void nexus$keepCodec(CallbackInfoReturnable<DataComponentType<?>> callback) {
-        ((ComponentTypeCodec) callback.getReturnValue()).nexus$setCodec(this.codec);
+        if (callback.getReturnValue() instanceof ComponentTypeCodec extension) {
+            extension.nexus$setCodec(this.codec);
+        }
     }
 }

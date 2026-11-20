@@ -43,6 +43,8 @@ public class CarrySamples {
     private static final List<List<Object>> ARRIVED = new CopyOnWriteArrayList<>();
     private static final AtomicInteger CLIENT_RUNS = new AtomicInteger();
     private static final AtomicInteger SERVER_RUNS = new AtomicInteger();
+    private static final AtomicInteger OFFLINE_RUNS = new AtomicInteger();
+    private static final AtomicInteger OFFLINE_READS = new AtomicInteger();
 
     private static @Nullable Keybind unfinished;
 
@@ -90,6 +92,18 @@ public class CarrySamples {
     }
 
     @ClientTest
+    public static void readerDoesNotRunWithoutAServerToSendTo(Client client) {
+        client.leaveWorld();
+        CarrySamples.OFFLINE_RUNS.set(0);
+        CarrySamples.OFFLINE_READS.set(0);
+        client.keyboard().press(GLFW.GLFW_KEY_KP_EQUAL);
+        client.until("the client action to run", () -> CarrySamples.OFFLINE_RUNS.get() > 0);
+        client.ticks(CarrySamples.SETTLE_TICKS);
+        Assertions.assertThat(CarrySamples.OFFLINE_RUNS.get()).as("runs of the client action").isEqualTo(1);
+        Assertions.assertThat(CarrySamples.OFFLINE_READS.get()).as("runs of the reader without a server").isZero();
+    }
+
+    @ClientTest
     public static void carryChainWithoutAServerActionLeavesTheKeyWithoutAServerHalf(Client client) {
         Keybind unfinished = Objects.requireNonNull(CarrySamples.unfinished);
         Assertions.assertThat(unfinished.hasServerAction()).as("the key has a server action").isFalse();
@@ -124,6 +138,11 @@ public class CarrySamples {
 
     private static void onItem(ServerPlayer player, Holder<Item> item) {
         CarrySamples.ARRIVED.add(List.of(item));
+    }
+
+    private static Integer readOffline() {
+        CarrySamples.OFFLINE_READS.incrementAndGet();
+        return 1;
     }
 
     @EventBusSubscriber(modid = Nexus.MOD_ID)
@@ -170,6 +189,14 @@ public class CarrySamples {
                     .onClient(() -> CarrySamples.CLIENT_RUNS::incrementAndGet)
                     .carry(NexusCodec.INT, () -> () -> null)
                     .onServer((_, _) -> CarrySamples.SERVER_RUNS.incrementAndGet())
+                    .category(category)
+                    .register();
+            keybinds.key("carry_samples_offline", "Offline")
+                    .defaultKey(GLFW.GLFW_KEY_KP_EQUAL)
+                    .context(Keybind.Context.EVERYWHERE)
+                    .onClient(() -> CarrySamples.OFFLINE_RUNS::incrementAndGet)
+                    .carry(NexusCodec.INT, () -> CarrySamples::readOffline)
+                    .onServer((_, _) -> { })
                     .category(category)
                     .register();
 

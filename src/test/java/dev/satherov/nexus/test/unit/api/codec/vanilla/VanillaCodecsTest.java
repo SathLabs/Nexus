@@ -25,6 +25,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.IntArrayTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -56,7 +57,10 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
+import com.mojang.serialization.DynamicOps;
 import com.mojang.serialization.JsonOps;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 
@@ -278,6 +282,36 @@ public class VanillaCodecsTest {
     }
     
     @Test
+    public void itemStackMapCodecReadsAnEmptyStackBesideAnotherField() {
+        Codec<Reward> codec = RecordCodecBuilder.create(instance -> instance.group(
+                VanillaCodecs.ITEM_STACK.asMapCodec().forGetter(Reward::stack),
+                Codec.INT.fieldOf("weight").forGetter(Reward::weight)
+        ).apply(instance, Reward::new));
+        ItemStack dirt = new ItemStack(Items.DIRT, 64);
+        JsonElement empty = codec.encodeStart(VanillaCodecsTest.JSON_OPS, new Reward(ItemStack.EMPTY, 3)).getOrThrow();
+        JsonElement filled = codec.encodeStart(VanillaCodecsTest.JSON_OPS, new Reward(dirt, 3)).getOrThrow();
+        Tag emptyTag = codec.encodeStart(VanillaCodecsTest.NBT_OPS, new Reward(ItemStack.EMPTY, 3)).getOrThrow();
+        
+        Assertions.assertThat(empty).hasToString("{\"weight\":3}");
+        Assertions.assertThat(filled).hasToString("{\"id\":\"minecraft:dirt\",\"count\":64,\"weight\":3}");
+        Assertions.assertThat(codec.parse(VanillaCodecsTest.JSON_OPS, empty).getOrThrow().stack().isEmpty()).isTrue();
+        Assertions.assertThat(codec.parse(VanillaCodecsTest.NBT_OPS, emptyTag).getOrThrow().stack().isEmpty()).isTrue();
+        Assertions.assertThat(new ParityCases.MatchedItem(codec.parse(VanillaCodecsTest.JSON_OPS, filled).getOrThrow().stack())).isEqualTo(new ParityCases.MatchedItem(dirt));
+    }
+    
+    @Test
+    public void stackDfuCodecFailsOnAnObjectWithNoneOfItsKeysAsVanillaDoes() {
+        JsonElement json = JsonParser.parseString("{\"foo\":1}");
+        CompoundTag tag = new CompoundTag();
+        tag.putInt("foo", 1);
+        
+        VanillaCodecsTest.assertBothFail(VanillaCodecs.ITEM_STACK.asDfu(), ItemStack.OPTIONAL_CODEC, VanillaCodecsTest.JSON_OPS, json);
+        VanillaCodecsTest.assertBothFail(VanillaCodecs.ITEM_STACK.asDfu(), ItemStack.OPTIONAL_CODEC, VanillaCodecsTest.NBT_OPS, tag);
+        VanillaCodecsTest.assertBothFail(VanillaCodecs.FLUID_STACK.asDfu(), FluidStack.OPTIONAL_CODEC, VanillaCodecsTest.JSON_OPS, json);
+        VanillaCodecsTest.assertBothFail(VanillaCodecs.FLUID_STACK.asDfu(), FluidStack.OPTIONAL_CODEC, VanillaCodecsTest.NBT_OPS, tag);
+    }
+    
+    @Test
     public void removedComponentIsWrittenUnderItsIdentifierAfterAnExclamationMark() {
         ItemStack apple = ParityCases.inedibleApple();
         
@@ -332,6 +366,56 @@ public class VanillaCodecsTest {
         Assertions.assertThat(VanillaCodecsTest.errors(() -> VanillaCodecs.ITEM_STACK.encode(VanillaCodecsTest.JSON, sword)))
                 .extracting(CodecError::path)
                 .containsExactly("components", "components['minecraft:damage']");
+    }
+    
+    @Test
+    public void itemStackLeavesOutAComponentThatCouldNotBeReadInNbt() {
+        ItemStack damaged = new ItemStack(Items.DIAMOND_SWORD);
+        damaged.set(DataComponents.DAMAGE, 3);
+        CompoundTag slotted = VanillaCodecsTest.unreadableSword();
+        slotted.putByte("Slot", (byte) 0);
+        CompoundTag diamonds = new CompoundTag();
+        diamonds.putByte("Slot", (byte) 1);
+        diamonds.putString("id", "minecraft:diamond");
+        diamonds.putInt("count", 64);
+        ListTag items = new ListTag();
+        items.add(slotted);
+        items.add(diamonds);
+        
+        Assertions.assertThat(new ParityCases.MatchedItem(VanillaCodecs.ITEM_STACK.decode(VanillaCodecsTest.NBT, VanillaCodecsTest.unreadableSword())))
+                .isEqualTo(new ParityCases.MatchedItem(damaged));
+        Assertions.assertThat(new ParityCases.MatchedItem(VanillaCodecs.ITEM_STACK.asDfu().parse(VanillaCodecsTest.NBT_OPS, VanillaCodecsTest.unreadableSword()).getOrThrow()))
+                .isEqualTo(new ParityCases.MatchedItem(damaged));
+        Assertions.assertThat(VanillaCodecs.ITEM_STACK_WITH_SLOT.list().decode(VanillaCodecsTest.NBT, items))
+                .extracting(ParityCases.MatchedSlot::new)
+                .containsExactly(
+                        new ParityCases.MatchedSlot(new ItemStackWithSlot(0, damaged)),
+                        new ParityCases.MatchedSlot(new ItemStackWithSlot(1, new ItemStack(Items.DIAMOND, 64)))
+                );
+    }
+    
+    @Test
+    public void itemStackKeepsThePartialValueOfAComponentInNbt() {
+        CompoundTag components = new CompoundTag();
+        components.putInt("nexus:test_level", -2);
+        CompoundTag stone = new CompoundTag();
+        stone.putString("id", "minecraft:stone");
+        stone.putInt("count", 1);
+        stone.put("components", components);
+        
+        Assertions.assertThat(VanillaCodecs.ITEM_STACK.decode(VanillaCodecsTest.NBT, stone).get(Levels.TYPE)).isZero();
+    }
+    
+    @Test
+    public void itemStackFailsOnAComponentThatCouldNotBeReadInJsonAndStrictNbt() {
+        JsonElement input = JsonParser.parseString("{\"id\":\"minecraft:diamond_sword\",\"count\":1,\"components\":{\"nexus:no_such\":1,\"minecraft:repair_cost\":-1,\"minecraft:damage\":3}}");
+        
+        Assertions.assertThat(VanillaCodecsTest.errors(() -> VanillaCodecs.ITEM_STACK.decode(VanillaCodecsTest.JSON, input)))
+                .extracting(CodecError::path)
+                .containsExactly("components['nexus:no_such']", "components['minecraft:repair_cost']");
+        Assertions.assertThat(VanillaCodecsTest.errors(() -> VanillaCodecs.ITEM_STACK.decode(VanillaCodecsTest.NBT.strict(), VanillaCodecsTest.unreadableSword())))
+                .extracting(CodecError::path)
+                .containsExactlyInAnyOrder("components['nexus:no_such']", "components['!nexus:no_such_either']", "components['minecraft:repair_cost']");
     }
     
     @Test
@@ -391,6 +475,11 @@ public class VanillaCodecsTest {
         Assertions.assertThat(buffer.readableBytes()).isZero();
     }
     
+    private static <T, V> void assertBothFail(Codec<T> codec, Codec<T> vanilla, DynamicOps<V> ops, V input) {
+        Assertions.assertThat(vanilla.parse(ops, input).isError()).isTrue();
+        Assertions.assertThat(codec.parse(ops, input).isError()).isTrue();
+    }
+    
     private static <T> byte[] written(NexusCodec<T, ? super Access.Registries> codec, T value) {
         RegistryFriendlyByteBuf buffer = VanillaCodecsTest.writable();
         codec.encode(CodecFormat.netty(buffer), value);
@@ -399,6 +488,19 @@ public class VanillaCodecsTest {
     
     private static List<CodecError> errors(ThrowableAssert.ThrowingCallable call) {
         return Assertions.catchThrowableOfType(NexusCodecException.class, call).errors();
+    }
+    
+    private static CompoundTag unreadableSword() {
+        CompoundTag components = new CompoundTag();
+        components.putInt("nexus:no_such", 1);
+        components.put("!nexus:no_such_either", new CompoundTag());
+        components.putInt("minecraft:repair_cost", -1);
+        components.putInt("minecraft:damage", 3);
+        CompoundTag sword = new CompoundTag();
+        sword.putString("id", "minecraft:diamond_sword");
+        sword.putInt("count", 1);
+        sword.put("components", components);
+        return sword;
     }
     
     private static RegistryFriendlyByteBuf writable() {
@@ -424,6 +526,8 @@ public class VanillaCodecsTest {
     
     public record Label(String text, int weight) { }
     
+    private record Reward(ItemStack stack, int weight) { }
+    
     @EventBusSubscriber(modid = Nexus.MOD_ID)
     public static final class Labels {
         
@@ -437,6 +541,19 @@ public class VanillaCodecsTest {
         @SubscribeEvent
         public static void onRegister(RegisterEvent event) {
             event.register(Registries.DATA_COMPONENT_TYPE, Identifier.fromNamespaceAndPath(Nexus.MOD_ID, "test_label"), () -> Labels.TYPE);
+        }
+    }
+    
+    @EventBusSubscriber(modid = Nexus.MOD_ID)
+    public static final class Levels {
+        
+        public static final DataComponentType<Integer> TYPE = DataComponentType.<Integer>builder()
+                .persistent(Codec.INT.validate(level -> level < 0 ? DataResult.error(() -> "Negative level", 0) : DataResult.success(level)))
+                .build();
+        
+        @SubscribeEvent
+        public static void onRegister(RegisterEvent event) {
+            event.register(Registries.DATA_COMPONENT_TYPE, Identifier.fromNamespaceAndPath(Nexus.MOD_ID, "test_level"), () -> Levels.TYPE);
         }
     }
 }

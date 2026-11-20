@@ -19,6 +19,8 @@ import com.google.common.base.Suppliers;
 import com.google.common.collect.Comparators;
 import com.mojang.datafixers.util.Either;
 
+import org.apache.commons.lang3.mutable.MutableBoolean;
+import org.apache.commons.lang3.mutable.MutableInt;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
 import org.jspecify.annotations.Nullable;
@@ -43,6 +45,11 @@ import java.util.stream.Stream;
 @UtilityClass
 @ApiStatus.Internal
 public class Combinators {
+    
+    ///
+    /// The maximum number of levels that a recursive codec may nest in one value.
+    ///
+    private static final int MAX_DEPTH = 512;
     
     ///
     /// Creates the codec behind [NexusCodec#either(NexusCodec, NexusCodec)].
@@ -104,6 +111,14 @@ public class Combinators {
                 
                 return new EitherReader<>(left, right);
             }
+            
+            ///
+            /// Checks both codecs.
+            ///
+            @Override
+            public boolean hasKeyedForm() {
+                return first.hasKeyedForm() && second.hasKeyedForm();
+            }
         };
     }
     
@@ -140,6 +155,14 @@ public class Combinators {
                 }
                 
                 return Combinators.readEither(operations, input, list, codec).map(Function.identity(), List::of);
+            }
+            
+            ///
+            /// Checks the codec of the elements.
+            ///
+            @Override
+            public boolean hasKeyedForm() {
+                return codec.hasKeyedForm();
             }
         };
     }
@@ -203,12 +226,61 @@ public class Combinators {
             Function<? super S, ? extends T> fromShort,
             Function<? super T, Optional<S>> toShort
     ) {
-        return Combinators.map(
+        Traversal<S, ? super A> shortCodec = (Traversal<S, ? super A>) shortForm;
+        Traversal<T, A> mapped = Combinators.map(
                 "orShort",
                 Combinators.either(shortForm, struct),
                 either -> either.map(fromShort, Function.identity()),
                 value -> toShort.apply(value).<Either<S, T>>map(Either::left).orElseGet(() -> Either.right(value))
         );
+        
+        return new Traversal<>("orShort") {
+            
+            ///
+            /// Writes the short form of the value if it has one, and the struct otherwise.
+            ///
+            @Override
+            public <V> V write(Operations<V> operations, T value) {
+                return mapped.write(operations, value);
+            }
+            
+            ///
+            /// Reads the short form or the struct.
+            ///
+            @Override
+            public <V> T read(Operations<V> operations, V input) {
+                return mapped.read(operations, input);
+            }
+            
+            ///
+            /// Reads the form that the value is written in with the reader of its codec.
+            ///
+            /// If neither codec can hold the steps, the failure of the short form is thrown and the failure of the struct is added to it as suppressed.
+            ///
+            @Override
+            public PathReader<T> reader(List<ComponentPath.Step> steps, int from) {
+                List<IllegalArgumentException> failures = new ArrayList<>();
+                PathReader<S> shortReader = Combinators.branchReader(shortCodec, steps, from, failures);
+                PathReader<T> structReader = Combinators.branchReader(struct, steps, from, failures);
+                if (shortReader == null && structReader == null) {
+                    throw Combinators.refused(failures);
+                }
+                
+                if (shortReader instanceof Traversal.EncodedReader<S> && structReader instanceof Traversal.EncodedReader<T>) {
+                    return super.reader(steps, from);
+                }
+                
+                return new ShortReader<>(toShort, shortReader, structReader);
+            }
+            
+            ///
+            /// Checks the codec of the short form and the struct.
+            ///
+            @Override
+            public boolean hasKeyedForm() {
+                return mapped.hasKeyedForm();
+            }
+        };
     }
     
     ///
@@ -231,6 +303,8 @@ public class Combinators {
     ///
     /// Creates the codec behind [NexusCodec#recursive(String, Function)].
     ///
+    /// The codec fails to write or read a value that nests it more than {@value Combinators#MAX_DEPTH} levels deep.
+    ///
     /// @param name       The name of the codec, used in the failure message.
     /// @param definition The definition of the codec, called with the codec itself.
     ///
@@ -250,11 +324,26 @@ public class Combinators {
             private final ThreadLocal<BitSet> building = ThreadLocal.withInitial(BitSet::new);
             
             ///
+            /// The number of levels of this codec that are being written or read on the current thread.
+            ///
+            private final ThreadLocal<MutableInt> depth = ThreadLocal.withInitial(MutableInt::new);
+            
+            ///
+            /// If the codec the definition returns is being checked for a keyed form on the current thread.
+            ///
+            private final ThreadLocal<MutableBoolean> checking = ThreadLocal.withInitial(MutableBoolean::new);
+            
+            ///
             /// Writes the value with the codec the definition returns.
             ///
             @Override
             public <V> V write(Operations<V> operations, T value) {
-                return this.defined.get().write(operations, value);
+                MutableInt depth = this.enter();
+                try {
+                    return this.defined.get().write(operations, value);
+                } finally {
+                    depth.decrement();
+                }
             }
             
             ///
@@ -262,7 +351,27 @@ public class Combinators {
             ///
             @Override
             public <V> T read(Operations<V> operations, V input) {
-                return this.defined.get().read(operations, input);
+                MutableInt depth = this.enter();
+                try {
+                    return this.defined.get().read(operations, input);
+                } finally {
+                    depth.decrement();
+                }
+            }
+            
+            ///
+            /// Counts one more level of this codec on the current thread and returns the count.
+            ///
+            /// Fails if there are already {@value Combinators#MAX_DEPTH} levels.
+            ///
+            private MutableInt enter() {
+                MutableInt depth = this.depth.get();
+                if (depth.intValue() == Combinators.MAX_DEPTH) {
+                    throw new NexusCodecException("Expected at most " + Combinators.MAX_DEPTH + " levels of '" + name + "', found more");
+                }
+                
+                depth.increment();
+                return depth;
             }
             
             ///
@@ -282,6 +391,24 @@ public class Combinators {
                     return this.defined.get().reader(steps, from);
                 } finally {
                     building.clear(from);
+                }
+            }
+            
+            ///
+            /// Checks the codec the definition returns, and counts this codec as having a keyed form where the definition reaches it again.
+            ///
+            @Override
+            public boolean hasKeyedForm() {
+                MutableBoolean checking = this.checking.get();
+                if (checking.isTrue()) {
+                    return true;
+                }
+                
+                checking.setTrue();
+                try {
+                    return this.defined.get().hasKeyedForm();
+                } finally {
+                    checking.setFalse();
                 }
             }
         };
@@ -383,6 +510,14 @@ public class Combinators {
             public PathReader<T> reader(List<ComponentPath.Step> steps, int from) {
                 PathReader<S> mapped = codec.reader(steps, from);
                 return mapped instanceof Traversal.EncodedReader<S> ? super.reader(steps, from) : new MappedReader<>(back, mapped);
+            }
+            
+            ///
+            /// Checks the codec of the values to map.
+            ///
+            @Override
+            public boolean hasKeyedForm() {
+                return codec.hasKeyedForm();
             }
         };
     }
@@ -593,7 +728,7 @@ public class Combinators {
                 boolean known = name.equals(this.key) || subtype.keys().contains(name);
                 if (!known && (present != null || this.keys.contains(name))) {
                     unknown = Objects.requireNonNullElseGet(unknown, ArrayList::new);
-                    unknown.add(new CodecError(name, "Unknown key"));
+                    unknown.add(CodecErrors.unknownKey(name));
                 }
             }
             
@@ -611,6 +746,14 @@ public class Combinators {
             
             //noinspection unchecked A value is only ever written by the subtype that its own identifier picks.
             return (Structs.Inlinable<T, ? super A>) subtype;
+        }
+        
+        ///
+        /// Checks the codec of every subtype.
+        ///
+        @Override
+        public boolean hasKeyedForm() {
+            return this.subtypes.values().stream().allMatch(Traversal::hasKeyedForm);
         }
     }
     
@@ -652,6 +795,55 @@ public class Combinators {
             Function<L, Boolean> left = this.left != null ? this.left.bind(comparison)::test : _ -> false;
             Function<R, Boolean> right = this.right != null ? this.right.bind(comparison)::test : _ -> false;
             return value -> value.map(left, right);
+        }
+    }
+    
+    ///
+    /// A reader of a struct with a short form, which reads a value with the reader of the form it's written in.
+    ///
+    /// @param toShort   The mapping from a struct to its short form, which is empty if the struct has none.
+    /// @param shortForm The reader of the short form, or `null` if its codec can't hold the steps.
+    /// @param struct    The reader of the struct, or `null` if its codec can't hold the steps.
+    /// @param <T>       The type of the struct.
+    /// @param <S>       The type of the short form.
+    ///
+    private record ShortReader<T, S>(Function<? super T, Optional<S>> toShort, @Nullable PathReader<S> shortForm, @Nullable PathReader<T> struct) implements PathReader<T> {
+        
+        ///
+        /// The higher of the costs of the forms.
+        ///
+        @Override
+        public PathReader.Cost getCost() {
+            PathReader.Cost shortForm = this.shortForm != null ? this.shortForm.getCost() : PathReader.Cost.DIRECT;
+            PathReader.Cost struct = this.struct != null ? this.struct.getCost() : PathReader.Cost.DIRECT;
+            return Comparators.max(shortForm, struct);
+        }
+        
+        ///
+        /// If the values of either form have an order.
+        ///
+        @Override
+        public boolean isOrdered() {
+            return (this.shortForm != null && this.shortForm.isOrdered()) || (this.struct != null && this.struct.isOrdered());
+        }
+        
+        ///
+        /// Creates the test of the form that the value is written in.
+        ///
+        /// A form without a reader reads as absent, and so does a value whose mapping to its short form throws.
+        ///
+        @Override
+        public Predicate<T> bind(Comparison comparison) {
+            Predicate<S> shortForm = this.shortForm != null ? this.shortForm.bind(comparison) : _ -> false;
+            Predicate<T> struct = this.struct != null ? this.struct.bind(comparison) : _ -> false;
+            return value -> {
+                try {
+                    Optional<S> written = this.toShort.apply(value);
+                    return written.isPresent() ? shortForm.test(written.get()) : struct.test(value);
+                } catch (RuntimeException _) {
+                    return false;
+                }
+            };
         }
     }
     

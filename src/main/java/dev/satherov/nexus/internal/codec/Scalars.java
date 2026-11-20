@@ -449,18 +449,24 @@ public class Scalars {
     ///
     /// Creates the codec behind [NexusCodec#unit(Object)].
     ///
-    /// @param value The value to decode to.
+    /// @param instance The value to decode to.
     ///
     /// @return The codec of the value.
     ///
-    public static <T> Traversal<T, Access.Plain> unit(T value) {
+    public static <T> Traversal<T, Access.Plain> unit(T instance) {
         return new Traversal<>("unit") {
             
             ///
             /// Writes an empty object, which is nothing on the network.
             ///
+            /// Fails on the network if the value is not equal to the instance, the same as vanilla.
+            ///
             @Override
             public <V> V write(Operations<V> operations, T value) {
+                if (operations.isPositional() && !value.equals(instance)) {
+                    throw CodecErrors.mismatch(CodecErrors.describe(instance), value);
+                }
+                
                 return operations.emptyObject();
             }
             
@@ -474,7 +480,7 @@ public class Scalars {
                     operations.keys(input);
                 }
                 
-                return value;
+                return instance;
             }
         };
     }

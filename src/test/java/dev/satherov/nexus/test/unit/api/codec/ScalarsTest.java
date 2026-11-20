@@ -209,6 +209,16 @@ public class ScalarsTest {
     }
     
     @Test
+    public void stringRefusesNegativeLengthOnNetty() {
+        ScalarsTest.assertRefusedOnNetty(NexusCodec.STRING, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F);
+    }
+    
+    @Test
+    public void stringWithLimitRefusesLengthAboveThreeTimesTheLimitBeforeReadingIt() {
+        ScalarsTest.assertRefusedOnNetty(NexusCodec.string(3), 0x0A);
+    }
+    
+    @Test
     public void stringWithZeroLimitAcceptsOnlyEmptyString() {
         ScalarsTest.assertJson(NexusCodec.string(0), "", "\"\"");
         ScalarsTest.assertNetty(NexusCodec.string(0), "", 0x00);
@@ -301,6 +311,11 @@ public class ScalarsTest {
     }
     
     @Test
+    public void enumOfRefusesNegativeOrdinal() {
+        ScalarsTest.assertRefusedOnNetty(NexusCodec.enumOf(ParityCases.Weight.class), 0xFF, 0xFF, 0xFF, 0xFF, 0x0F);
+    }
+    
+    @Test
     public void enumOfDecodesSharedNameToFirstConstant() {
         NexusCodec<ParityCases.Alias, Access.Plain> codec = NexusCodec.enumOf(ParityCases.Alias.class);
         
@@ -334,6 +349,15 @@ public class ScalarsTest {
                 .isInstanceOf(NexusCodecException.class);
         Assertions.assertThatThrownBy(() -> NexusCodec.unit("constant").decode(CodecFormat.NBT, IntTag.valueOf(5)))
                 .isInstanceOf(NexusCodecException.class);
+    }
+    
+    @Test
+    public void unitRefusesOtherValueOnlyOnNetty() {
+        NexusCodec<String, Access.Plain> codec = NexusCodec.unit("constant");
+        
+        Assertions.assertThatThrownBy(() -> codec.encode(CodecFormat.netty(new FriendlyByteBuf(Unpooled.buffer())), "other")).isInstanceOf(NexusCodecException.class);
+        Assertions.assertThat(codec.encode(CodecFormat.JSON, "other")).hasToString("{}");
+        Assertions.assertThat(codec.encode(CodecFormat.NBT, "other")).isEqualTo(new CompoundTag());
     }
     
     @Test
@@ -432,6 +456,13 @@ public class ScalarsTest {
         Assertions.assertThat(ByteBufUtil.getBytes(written)).isEqualTo(ScalarsTest.bytes(bytes));
         Assertions.assertThat(codec.decode(CodecFormat.netty(read))).isEqualTo(value);
         Assertions.assertThat(read.readableBytes()).isZero();
+    }
+    
+    private static void assertRefusedOnNetty(NexusCodec<?, Access.Plain> codec, int... bytes) {
+        Assertions.assertThatThrownBy(() -> codec.decode(CodecFormat.netty(ScalarsTest.buffer(bytes))))
+                .isInstanceOf(NexusCodecException.class)
+                .hasMessageNotContaining("end of the buffer");
+        Assertions.assertThat(codec.tryDecode(CodecFormat.netty(ScalarsTest.buffer(bytes)))).isInstanceOf(CodecResult.Failure.class);
     }
     
     private static FriendlyByteBuf buffer(int... bytes) {

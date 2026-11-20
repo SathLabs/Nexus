@@ -116,6 +116,22 @@ public class PostEffectSamples {
         }
     }
     
+    @ClientTest
+    public static void leavingTheWorldDeactivates(Client client) {
+        PostEffectSamples.enter(client);
+        PostEffect invert = PostEffectSamples.effect("invert");
+        try {
+            invert.activate();
+            client.tick();
+            PostEffectSamples.assertCenter(client.capture(), client.hasShaderPack() ? PostEffectSamples.YELLOW : PostEffectSamples.CYAN);
+            
+            PostEffectSamples.enter(client);
+            Assertions.assertThat(invert.isActive()).as("the effect after leaving the world").isFalse();
+        } finally {
+            invert.deactivate();
+        }
+    }
+    
     private static PostEffect effect(String name) {
         return Nexus.getMod().getRender().postEffect(name);
     }

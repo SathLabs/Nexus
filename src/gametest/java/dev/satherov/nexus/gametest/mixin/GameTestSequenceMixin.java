@@ -18,7 +18,7 @@ import java.util.Objects;
 ///
 /// Turns an [AssertionError] thrown in a sequence step into a failed vanilla assertion.
 ///
-/// Any other [Error] passes through to [GameTestInfoMixin].
+/// Anything else passes through to [GameTestInfoMixin].
 ///
 @Mixin(GameTestSequence.class)
 public abstract class GameTestSequenceMixin {
@@ -38,6 +38,8 @@ public abstract class GameTestSequenceMixin {
     /// - A step of `succeedWhen`, `succeedIf`, `failIf`, or `thenWaitUntil` is retried until it passes or the test times out.
     /// - A step of `thenExecute` fails the test at once.
     ///
+    /// Requires both of its targets, so the harness fails to load if one of them is renamed.
+    ///
     /// @param assertion The assertion of the sequence step.
     /// @param original  The wrapped `run` of the assertion.
     ///
@@ -46,7 +48,8 @@ public abstract class GameTestSequenceMixin {
             at = @At(
                     value = "INVOKE",
                     target = "Ljava/lang/Runnable;run()V"
-            )
+            ),
+            require = 2
     )
     private void failAsAssertion(Runnable assertion, Operation<Void> original) {
         try {

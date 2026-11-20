@@ -38,12 +38,19 @@ public final class ClientHandlerContext extends HandlerContext {
     ///
     /// The player of this client.
     ///
+    /// A handler on the network thread should only call this inside [#enqueue(Runnable)].
+    ///
     /// @return The player of this client.
     ///
-    /// @throws IllegalStateException If the connection is in the configuration phase, where no player exists yet.
+    /// @throws IllegalStateException If the connection is in the configuration phase, where no player exists yet,
+    /// or if the client did not handle the login packet yet.
     ///
     @Override
     public LocalPlayer getPlayer() {
-        return (LocalPlayer) super.getPlayer();
+        try {
+            return (LocalPlayer) super.getPlayer();
+        } catch (UnsupportedOperationException exception) {
+            throw new IllegalStateException("There is no player until the client handled the login packet", exception);
+        }
     }
 }

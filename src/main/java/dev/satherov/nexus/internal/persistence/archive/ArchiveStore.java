@@ -19,24 +19,30 @@ import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.ReportedNbtException;
 import net.minecraft.resources.Identifier;
 
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
+
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
 import org.jspecify.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -47,8 +53,8 @@ import java.util.stream.Stream;
 ///
 /// The keys of the files are kept in memory, and the files are written on an IO thread of the store.
 ///
-/// The keys and the files are only touched while holding the lock of this store.
-/// The IO thread encodes a value without holding the lock, so the queued writes are kept in a concurrent map.
+/// The keys and the files of the entries are only touched while holding the lock of this store.
+/// The IO thread checks the queued writes and writes a temporary file without holding the lock, so the queued writes are kept in a concurrent map.
 ///
 /// @param <KEY>   The type of the keys.
 /// @param <VALUE> The type of the values.
@@ -63,6 +69,21 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     /// The name of the file that marks the import as done, which no key can produce since no escaped segment starts with `.`.
     ///
     private static final String MARKER = ".imported";
+
+    ///
+    /// The maximum number of bytes in the name of a file or folder on the common file systems.
+    ///
+    private static final int MAX_NAME_LENGTH = 255;
+
+    ///
+    /// The number of times a temporary file is moved into place before the write fails.
+    ///
+    private static final int MOVE_ATTEMPTS = 10;
+
+    ///
+    /// The number of seconds the IO thread waits for a new operation before it ends.
+    ///
+    private static final long IDLE_SECONDS = 1L;
 
     ///
     /// The folder of the archive.
@@ -92,10 +113,18 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     ///
     /// The last queued write-action of a key by its segments until that write-action finished.
     ///
-    private final Map<List<String>, Queued<VALUE>> queuedBySegments = new ConcurrentHashMap<>();
+    private final Map<List<String>, Queued> queuedBySegments = new ConcurrentHashMap<>();
+
+    ///
+    /// The number of queued operations of a key that haven't finished yet, by its segments.
+    ///
+    private final Map<List<String>, Integer> pendingBySegments = new HashMap<>();
 
     ///
     /// The IO thread, which runs the queued write-actions, retires, and deletes in order.
+    ///
+    /// The thread isn't a daemon, so the JVM doesn't exit before the queued operations are done.
+    /// The thread ends while it has nothing to do, and a new one is started for the next operation.
     ///
     private final ExecutorService executor;
 
@@ -116,7 +145,20 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
         this.declaration = declaration;
 
         Path root = this.folder.root();
-        this.executor = Executors.newSingleThreadExecutor(Thread.ofVirtual().name("Nexus Archive " + root.getFileName()).factory());
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                1,
+                1,
+                ArchiveStore.IDLE_SECONDS,
+                TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(),
+                Thread.ofPlatform()
+                        .name("Nexus Archive " + root.getFileName())
+                        .daemon(false)
+                        .factory()
+        );
+
+        executor.allowCoreThreadTimeOut(true);
+        this.executor = executor;
         try {
             Legacy<KEY> legacy = declaration.legacy();
             if (legacy != null && Files.notExists(root.resolve(ArchiveStore.MARKER))) {
@@ -152,72 +194,115 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     }
 
     ///
-    /// Queues the write of the given value under the given key, makes the key active, and then runs the retention of its group.
+    /// Encodes the given value on the caller, queues its write under the given key, and makes the key active.
     ///
     /// @param key   The key of the entry.
     /// @param value The value to write.
     ///
-    /// @throws IllegalArgumentException If the key has no segments, if one of its segments is empty,
+    /// @throws IllegalArgumentException If the key has no segments, if one of its segments is empty or too long,
     /// or if the parser doesn't give back a key with the same segments.
+    /// @throws NexusCodecException      If the value could not be encoded.
     ///
-    public synchronized void write(KEY key, VALUE value) {
+    public void write(KEY key, VALUE value) {
         List<String> segments = this.checkedSegments(key);
-        Queued<VALUE> queued = new Queued<>(value);
-        this.queuedBySegments.put(segments, queued);
-        this.executor.execute(() -> this.writeQueued(key, segments, queued));
-        this.activate(key, segments);
-    }
-
-    ///
-    /// Encodes the value of the given queued write and writes it into its file on the IO thread.
-    ///
-    /// The queued write will be removed once it is done unless a later write of the key replaced it.
-    /// If the file could not be written, the failure will be logged with the key.
-    ///
-    /// @param key      The key of the entry, used in the failure message.
-    /// @param segments The segments of the key.
-    /// @param queued   The queued write.
-    ///
-    private void writeQueued(KEY key, List<String> segments, Queued<VALUE> queued) {
-        try {
-            CompoundTag tag = this.encode(queued.value);
-            synchronized (this) {
-                this.writeFile(segments, tag);
-            }
-        } catch (IOException | RuntimeException failure) {
-            ArchiveStore.log.error("Could not write the entry '{}' of the archive in '{}'", key, this.folder.root(), failure);
-        } finally {
-            this.queuedBySegments.remove(segments, queued);
-        }
-    }
-
-    ///
-    /// Waits until every queued operation is done, writes the given value on the caller, and then runs the retention of the group of the key.
-    ///
-    /// @param key   The key of the entry.
-    /// @param value The value to write.
-    ///
-    /// @throws IllegalArgumentException If the key has no segments, if one of its segments is empty,
-    /// or if the parser doesn't give back a key with the same segments.
-    /// @throws UncheckedIOException     If the file could not be written.
-    ///
-    public void writeNow(KEY key, VALUE value) {
-        List<String> segments = this.checkedSegments(key);
-        // Kinda stupid, but the best way to just wait until every other queued action is done.
-        CompletableFuture.runAsync(() -> { }, this.executor).join();
+        Queued queued = new Queued(this.encode(value));
         synchronized (this) {
-            try {
-                this.writeFile(segments, this.encode(value));
-            } catch (IOException failure) {
-                throw new UncheckedIOException("Could not write the entry '" + key + "' of the archive in '" + this.folder.root() + "'", failure);
-            }
-
+            this.queuedBySegments.put(segments, queued);
+            this.queue(segments, () -> this.writeQueued(key, segments, queued));
             this.activate(key, segments);
         }
     }
 
     ///
-    /// Makes the given key active under the given segments and then runs the retention of its group.
+    /// Writes the tag of the given queued write into the file of its key on the IO thread and then runs the retention of the group of the key.
+    ///
+    /// Does nothing if a later write or a deletion of the key replaced the queued write.
+    ///
+    /// If the file could not be written, the failure will be logged with the key and the key will be listed the way its files say.
+    ///
+    /// @param key      The key of the entry.
+    /// @param segments The segments of the key.
+    /// @param queued   The queued write.
+    ///
+    private void writeQueued(KEY key, List<String> segments, Queued queued) {
+        if (this.queuedBySegments.get(segments) != queued) {
+            return;
+        }
+
+        try {
+            Path temporary = this.writeTemporary(segments, queued.tag);
+            synchronized (this) {
+                // The key could have been written again or deleted while the temporary file was written.
+                if (this.queuedBySegments.get(segments) != queued) {
+                    Files.deleteIfExists(temporary);
+                    return;
+                }
+
+                this.moveIntoPlace(key, segments, temporary);
+                this.queuedBySegments.remove(segments);
+                this.retainWritten(key);
+            }
+        } catch (IOException | RuntimeException failure) {
+            ArchiveStore.log.error("Could not write the entry '{}' of the archive in '{}'", key, this.folder.root(), failure);
+            synchronized (this) {
+                this.queuedBySegments.remove(segments, queued);
+                this.reconcile(key, segments);
+            }
+        }
+    }
+
+    ///
+    /// Waits until every queued operation of the given key is done, writes the given value on the caller,
+    /// forces the folders of its file onto the disk, and then runs the retention of the group of the key.
+    ///
+    /// @param key   The key of the entry.
+    /// @param value The value to write.
+    ///
+    /// @throws IllegalArgumentException If the key has no segments, if one of its segments is empty or too long,
+    /// or if the parser doesn't give back a key with the same segments.
+    /// @throws NexusCodecException      If the value could not be encoded.
+    /// @throws UncheckedIOException     If the file could not be written.
+    ///
+    public void writeNow(KEY key, VALUE value) {
+        List<String> segments = this.checkedSegments(key);
+        CompoundTag tag = this.encode(value);
+        synchronized (this) {
+            this.awaitUntil(() -> !this.pendingBySegments.containsKey(segments));
+            try {
+                this.moveIntoPlace(key, segments, this.writeTemporary(segments, tag));
+            } catch (IOException failure) {
+                throw new UncheckedIOException("Could not write the entry '" + key + "' of the archive in '" + this.folder.root() + "'", failure);
+            }
+
+            this.syncFolders(segments);
+            this.activate(key, segments);
+            this.retainWritten(key);
+        }
+    }
+
+    ///
+    /// Forces the folders of the active file of the given segments onto the disk, up to the root of the archive,
+    /// so that a file moved into place is still there after a power loss.
+    ///
+    /// A folder that can't be opened is left to the file system.
+    ///
+    /// @param segments The segments of the key.
+    ///
+    private void syncFolders(List<String> segments) {
+        Path parent = this.folder.file(segments, ArchiveFolder.State.ACTIVE).getParent();
+        while (parent != null && parent.startsWith(this.folder.root())) {
+            try (FileChannel channel = FileChannel.open(parent, StandardOpenOption.READ)) {
+                channel.force(true);
+            } catch (IOException _) {
+                // Windows can't open a folder as a channel.
+            }
+
+            parent = parent.getParent();
+        }
+    }
+
+    ///
+    /// Makes the given key active under the given segments.
     ///
     /// @param key      The key of the entry.
     /// @param segments The segments of the key.
@@ -225,7 +310,19 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     private void activate(KEY key, List<String> segments) {
         this.retiredBySegments.remove(segments);
         this.activeBySegments.put(segments, key);
-        this.retain(key.group()::equals);
+    }
+
+    ///
+    /// Runs the retention of the group of the given key after a value of it was written.
+    ///
+    /// If the retention drops the given key itself, a warning will be logged with the key.
+    ///
+    /// @param key The key that was written.
+    ///
+    private void retainWritten(KEY key) {
+        if (this.retain(key.group()::equals).contains(key)) {
+            ArchiveStore.log.warn("The retention of the archive in '{}' dropped the entry '{}' right after it was written", this.folder.root(), key);
+        }
     }
 
     ///
@@ -235,7 +332,7 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     ///
     /// @return The segments of the key.
     ///
-    /// @throws IllegalArgumentException If the key has no segments, if one of its segments is empty,
+    /// @throws IllegalArgumentException If the key has no segments, if one of its segments is empty or too long,
     /// or if the parser doesn't give back a key with the same segments.
     ///
     private @Unmodifiable List<String> checkedSegments(KEY key) {
@@ -246,6 +343,13 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
 
         if (segments.contains("")) {
             throw new IllegalArgumentException("The key '" + key + "' has an empty segment");
+        }
+
+        // The retired file has the longest name of the files of a key, and an escaped name is ASCII, so its length is its number of bytes.
+        for (Path name : this.folder.root().relativize(this.folder.file(segments, ArchiveFolder.State.RETIRED))) {
+            if (name.toString().length() > ArchiveStore.MAX_NAME_LENGTH) {
+                throw new IllegalArgumentException("The key '" + key + "' has a segment that is too long for the file name '" + name + "'");
+            }
         }
 
         if (this.parse(segments).isEmpty()) {
@@ -273,36 +377,71 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     ///
     /// @return The versioned form of the value.
     ///
+    /// @throws NexusCodecException If the value could not be encoded.
+    ///
     private CompoundTag encode(VALUE value) {
         return (CompoundTag) this.declaration.format().write(value, this.registries);
     }
 
     ///
-    /// Writes the given tag into the active file of the given segments and deletes their retired file.
+    /// Writes the given tag into the temporary file of the given segments, creating all missing folders.
     ///
     /// @param segments The segments of the key.
     /// @param tag      The versioned form of the value.
     ///
+    /// @return The temporary file.
+    ///
     /// @throws IOException If the file could not be written.
     ///
-    private void writeFile(List<String> segments, CompoundTag tag) throws IOException {
+    private Path writeTemporary(List<String> segments, CompoundTag tag) throws IOException {
         Path file = this.folder.file(segments, ArchiveFolder.State.ACTIVE);
         // No escaped segment starts with '.', so the temporary file can't be the file of a key.
         Path temporary = file.resolveSibling("." + file.getFileName());
         Files.createDirectories(file.getParent());
         NbtIo.writeCompressed(tag, temporary);
-        Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        Files.deleteIfExists(this.folder.file(segments, ArchiveFolder.State.RETIRED));
+        return temporary;
     }
 
     ///
-    /// Reads the value of the given key from its queued write-action or its file.
+    /// Moves the given temporary file to the active file of the given segments and then deletes their retired file.
+    ///
+    /// The move will be tried up to [#MOVE_ATTEMPTS] times, since on Windows another process can hold the active file open for a moment.
+    /// If the retired file could not be deleted, the failure will be logged with the key and the entry will still be active after the next start.
+    ///
+    /// @param key       The key of the entry, used in the failure message.
+    /// @param segments  The segments of the key.
+    /// @param temporary The temporary file.
+    ///
+    /// @throws IOException If the temporary file could not be moved.
+    ///
+    private void moveIntoPlace(KEY key, List<String> segments, Path temporary) throws IOException {
+        Path file = this.folder.file(segments, ArchiveFolder.State.ACTIVE);
+        for (int attempt = 1; ; attempt++) {
+            try {
+                Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                break;
+            } catch (IOException failure) {
+                if (attempt == ArchiveStore.MOVE_ATTEMPTS) {
+                    throw failure;
+                }
+            }
+        }
+
+        try {
+            Files.deleteIfExists(this.folder.file(segments, ArchiveFolder.State.RETIRED));
+        } catch (IOException failure) {
+            ArchiveStore.log.warn("Could not delete the retired file of the entry '{}' of the archive in '{}'", key, this.folder.root(), failure);
+        }
+    }
+
+    ///
+    /// Decodes the value of the given key from its queued write-action or its file.
     ///
     /// @param key The key of the entry.
     ///
     /// @return The value, or empty if the key has no entry.
     ///
-    /// @throws NexusCodecException If the file could not be decoded.
+    /// @throws NexusCodecException If the queued write-action or the file could not be decoded.
     ///
     public synchronized Optional<VALUE> read(KEY key) {
         List<String> segments = key.segments();
@@ -311,9 +450,9 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
             return Optional.empty();
         }
 
-        Queued<VALUE> queued = this.queuedBySegments.get(segments);
+        Queued queued = this.queuedBySegments.get(segments);
         if (queued != null) {
-            return Optional.of(queued.value);
+            return Optional.of(this.declaration.format().read(queued.tag, this.registries));
         }
 
         Path retiredFile = this.folder.file(segments, ArchiveFolder.State.RETIRED);
@@ -387,13 +526,33 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     ///
     /// @param groups The filter of the groups.
     ///
-    private void retain(Predicate<Object> groups) {
+    /// @return The keys that were dropped.
+    ///
+    @CanIgnoreReturnValue
+    private List<KEY> retain(Predicate<Object> groups) {
         List<KEY> dropped = Stream.concat(
-                ArchiveStore.drops(this.activeBySegments.values(), this.declaration.active(), groups),
-                ArchiveStore.drops(this.retiredBySegments.values(), this.declaration.retired(), groups)
+                ArchiveStore.drops(this.counted(this.activeBySegments), this.declaration.active(), groups),
+                ArchiveStore.drops(this.counted(this.retiredBySegments), this.declaration.retired(), groups)
         ).toList();
 
         dropped.forEach(this::delete);
+        return dropped;
+    }
+
+    ///
+    /// Gets the keys of the given map that the retention counts.
+    ///
+    /// A key with a queued write isn't counted, so a write that fails can't push out another entry.
+    ///
+    /// @param keysBySegments The keys by their segments.
+    ///
+    /// @return The keys without a queued write.
+    ///
+    private List<KEY> counted(Map<List<String>, KEY> keysBySegments) {
+        return keysBySegments.entrySet().stream()
+                .filter(entry -> !this.queuedBySegments.containsKey(entry.getKey()))
+                .map(Map.Entry::getValue)
+                .toList();
     }
 
     ///
@@ -420,11 +579,11 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
         }
 
         this.retiredBySegments.put(segments, existing);
-        this.executor.execute(() -> this.retireQueued(existing, segments));
+        this.queue(segments, () -> this.retireQueued(existing, segments));
     }
 
     ///
-    /// Moves the active file of the given segments to their retired file on the IO thread.
+    /// Moves the active file of the given segments to their retired file on the IO thread and then lists the key the way its files say.
     ///
     /// If the file could not be moved, the failure will be logged with the key.
     ///
@@ -440,6 +599,8 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
         } catch (IOException failure) {
             ArchiveStore.log.error("Could not retire the entry '{}' of the archive in '{}'", key, this.folder.root(), failure);
         }
+
+        this.reconcile(key, segments);
     }
 
     ///
@@ -457,32 +618,101 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
         }
 
         this.queuedBySegments.remove(segments);
-        this.executor.execute(() -> this.deleteQueued(key, segments));
+        this.queue(segments, () -> this.deleteQueued(key, segments));
     }
 
     ///
-    /// Deletes the active and the retired file of the given segments on the IO thread.
+    /// Deletes the active and the retired file of the given segments on the IO thread and then lists the key the way its files say.
     ///
-    /// If a file could not be deleted, the failure will be logged with the key.
+    /// If a file could not be deleted, the failure will be logged with the key and the other file will still be deleted.
     ///
     /// @param key      The key of the entry, used in the failure message.
     /// @param segments The segments of the key.
     ///
     private synchronized void deleteQueued(KEY key, List<String> segments) {
-        try {
-            Files.deleteIfExists(this.folder.file(segments, ArchiveFolder.State.ACTIVE));
-            Files.deleteIfExists(this.folder.file(segments, ArchiveFolder.State.RETIRED));
-        } catch (IOException failure) {
-            ArchiveStore.log.error("Could not delete the entry '{}' of the archive in '{}'", key, this.folder.root(), failure);
+        for (ArchiveFolder.State state : ArchiveFolder.State.values()) {
+            try {
+                Files.deleteIfExists(this.folder.file(segments, state));
+            } catch (IOException failure) {
+                ArchiveStore.log.error("Could not delete the entry '{}' of the archive in '{}'", key, this.folder.root(), failure);
+            }
+        }
+
+        this.reconcile(key, segments);
+    }
+
+    ///
+    /// Queues the given operation on the IO thread and counts it under the given segments until it is done.
+    ///
+    /// @param segments  The segments of the key that the operation is about.
+    /// @param operation The operation to run.
+    ///
+    private void queue(List<String> segments, Runnable operation) {
+        this.pendingBySegments.merge(segments, 1, Integer::sum);
+        this.executor.execute(() -> {
+            try {
+                operation.run();
+            } finally {
+                synchronized (this) {
+                    this.pendingBySegments.computeIfPresent(segments, (_, count) -> count > 1 ? count - 1 : null);
+                    this.notifyAll();
+                }
+            }
+        });
+    }
+
+    ///
+    /// Lists the given key the way its files say once an operation of it ran, unless a later operation of it is still queued.
+    ///
+    /// The key will be active if it has an active file, retired if it only has a retired file, and gone otherwise, the same as after the next start.
+    ///
+    /// @param key      The key of the entry.
+    /// @param segments The segments of the key.
+    ///
+    private void reconcile(KEY key, List<String> segments) {
+        // The operation that calls this is still counted until it returns.
+        if (this.pendingBySegments.getOrDefault(segments, 0) > 1) {
+            return;
+        }
+
+        this.activeBySegments.remove(segments);
+        this.retiredBySegments.remove(segments);
+        if (Files.isRegularFile(this.folder.file(segments, ArchiveFolder.State.ACTIVE))) {
+            this.activeBySegments.put(segments, key);
+        } else if (Files.isRegularFile(this.folder.file(segments, ArchiveFolder.State.RETIRED))) {
+            this.retiredBySegments.put(segments, key);
         }
     }
 
     ///
-    /// Runs every queued operation and then ends the IO thread.
+    /// Waits until every queued operation is done and then ends the IO thread.
     ///
     @Override
-    public void close() {
-        this.executor.close();
+    public synchronized void close() {
+        this.awaitUntil(this.pendingBySegments::isEmpty);
+        this.executor.shutdown();
+    }
+
+    ///
+    /// Waits until the given condition is `true`, releasing the lock in the meantime.
+    ///
+    /// An interrupt doesn't stop the wait and will be set on the thread again once the condition is `true`.
+    ///
+    /// @param condition The condition to wait for.
+    ///
+    private void awaitUntil(BooleanSupplier condition) {
+        boolean interrupted = false;
+        while (!condition.getAsBoolean()) {
+            try {
+                this.wait();
+            } catch (InterruptedException _) {
+                interrupted = true;
+            }
+        }
+
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     ///
@@ -490,9 +720,10 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     ///
     /// The files in the folder of the archive are skipped, since the legacy folder can be the same as it or above it.
     /// If a file could not be moved, it will be left where it is and the failure will be logged.
+    /// The number of moved files will be logged once the walk is done.
     ///
     /// @param legacy The legacy folder, absolute and normalized.
-    /// @param reader The reader of one file, called with its path.
+    /// @param reader The reader of one file, called with its path relative to the legacy folder.
     ///
     /// @throws IOException If the legacy folder could not be walked or the marker could not be written.
     ///
@@ -505,17 +736,21 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
                         .toList();
             }
 
+            int imported = 0;
             for (Path file : files) {
-                if (reader.apply(file).orElse(null) instanceof Archive.Imported(KEY key, boolean retired)) {
+                if (reader.apply(legacy.relativize(file)).orElse(null) instanceof Archive.Imported(KEY key, boolean retired)) {
                     Path target = this.folder.file(this.checkedSegments(key), retired ? ArchiveFolder.State.RETIRED : ArchiveFolder.State.ACTIVE);
                     try {
                         Files.createDirectories(target.getParent());
                         Files.move(file, target);
+                        imported++;
                     } catch (IOException failure) {
                         ArchiveStore.log.warn("Could not import the file '{}' as the entry '{}' of the archive in '{}'", file, key, this.folder.root(), failure);
                     }
                 }
             }
+
+            ArchiveStore.log.info("Imported '{}' of the '{}' files in '{}' into the archive in '{}'", imported, files.size(), legacy, this.folder.root());
         }
 
         Files.createDirectories(this.folder.root());
@@ -560,15 +795,13 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     ///
     /// Is compared by identity, so a finished write only removes itself from the queued writes and keeps a later write of an equal value.
     ///
-    /// @param <VALUE> The type of the value.
-    ///
     @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
-    private static final class Queued<VALUE> {
+    private static final class Queued {
 
         ///
-        /// The value to write.
+        /// The versioned form of the value to write.
         ///
-        private final VALUE value;
+        private final CompoundTag tag;
     }
 
     ///
@@ -596,7 +829,7 @@ public final class ArchiveStore<KEY extends ArchiveKey<KEY>, VALUE> implements A
     /// An older layout of an archive.
     ///
     /// @param folder The folder of the older layout, relative to the world folder.
-    /// @param reader The reader of one file, called with its path.
+    /// @param reader The reader of one file, called with its path relative to the folder.
     /// @param <KEY>  The type of the keys.
     ///
     public record Legacy<KEY>(String folder, Function<Path, Optional<Archive.Imported<KEY>>> reader) { }

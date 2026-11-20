@@ -31,11 +31,6 @@ public sealed interface Next {
     /// @throws IllegalArgumentException If the ticks are below 1.
     ///
     static Next in(@Range(from = 1, to = Integer.MAX_VALUE) int ticks) {
-        //noinspection ConstantValue Yes intelliJ, technically this should never happen, but we know devs are stupid.
-        if (ticks < 1) {
-            throw new IllegalArgumentException("Tick count '" + ticks + "' is below 1");
-        }
-        
         return new In(ticks);
     }
     
@@ -44,7 +39,20 @@ public sealed interface Next {
     ///
     /// @param ticks The passes until the tick, at least 1.
     ///
-    record In(int ticks) implements Next { }
+    record In(@Range(from = 1, to = Integer.MAX_VALUE) int ticks) implements Next {
+        
+        ///
+        /// Creates a new tick in a fixed number of passes from now.
+        ///
+        /// @throws IllegalArgumentException If the ticks are below 1.
+        ///
+        public In {
+            //noinspection ConstantValue Yes intelliJ, technically this should never happen, but we know devs are stupid.
+            if (ticks < 1) {
+                throw new IllegalArgumentException("Tick count '" + ticks + "' is below 1");
+            }
+        }
+    }
     
     ///
     /// No tick until woken.

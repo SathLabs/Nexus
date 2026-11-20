@@ -114,6 +114,8 @@ public final class NexusMod {
     ///
     /// Creates the handle of the mod the given container belongs to.
     ///
+    /// If the handle could not be created, a later call for that mod will try again.
+    ///
     /// @param container The mod container.
     /// @return The handle.
     /// @throws IllegalStateException If that mod already has a handle.
@@ -122,10 +124,15 @@ public final class NexusMod {
         if (!NexusMod.TAKEN.add(container.getModId())) {
             throw new IllegalStateException("Mod '" + container.getModId() + "' already has a handle");
         }
-        
-        NexusMod mod = new NexusMod(container);
-        TooltipDispatch.listen(mod);
-        return mod;
+
+        try {
+            NexusMod mod = new NexusMod(container);
+            TooltipDispatch.listen(mod);
+            return mod;
+        } catch (RuntimeException failure) {
+            NexusMod.TAKEN.remove(container.getModId());
+            throw failure;
+        }
     }
     
     ///

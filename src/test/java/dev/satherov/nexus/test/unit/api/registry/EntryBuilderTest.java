@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Stream;
 
 ///
 /// Checks that a builder taking over another one keeps everything recorded on it and closes it.
@@ -44,6 +45,11 @@ public class EntryBuilderTest {
     private static @Nullable RegistryEntry<GameEvent, GameEvent> parentEntry;
     private static @Nullable ParentBuilder takenParent;
     private static @Nullable Throwable subRefusal;
+    private static @Nullable RegistryEntry<GameEvent, GameEvent> calledBack;
+    private static boolean boundInCallback;
+    private static @Nullable Identifier idInCallback;
+    private static @Nullable Throwable reentrantRefusal;
+    private static @Nullable Throwable pairRefusal;
     private static boolean clientCodeRan;
     
     @Test
@@ -67,6 +73,21 @@ public class EntryBuilderTest {
     public void runsTheCallbacksOfBothInCallOrder() {
         Assertions.assertThat(EntryBuilderTest.event().isBound()).isTrue();
         Assertions.assertThat(EntryBuilderTest.CALLBACKS).containsExactly("taken", "taking");
+    }
+    
+    @Test
+    public void runsTheCallbacksOnceTheObjectIsInTheRegistry() {
+        RegistryEntry<GameEvent, GameEvent> calledBack = Objects.requireNonNull(EntryBuilderTest.calledBack);
+        Assertions.assertThat(EntryBuilderTest.boundInCallback).isTrue();
+        Assertions.assertThat(EntryBuilderTest.idInCallback).isEqualTo(calledBack.getId());
+    }
+    
+    @Test
+    public void refusesARegisterFromACallbackOfTheSameRegistry() {
+        Assertions.assertThat(EntryBuilderTest.reentrantRefusal)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Could not register 'nexus:entry_builder_test_reentrant' because the registry event of 'minecraft:game_event' already ran");
+        Assertions.assertThat(Nexus.getMod().getRegistrations().getAll()).noneMatch(entry -> entry.getName().equals("entry_builder_test_reentrant"));
     }
     
     @Test
@@ -129,6 +150,15 @@ public class EntryBuilderTest {
     }
     
     @Test
+    public void registersNoSubObjectIfALaterOneIsTaken() {
+        Assertions.assertThat(EntryBuilderTest.pairRefusal)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("'nexus:entry_builder_test_pair_second' is already registered");
+        Assertions.assertThat(Nexus.getMod().getRegistrations().getAll())
+                .noneMatch(entry -> entry.getName().equals("entry_builder_test_pair") || entry.getName().equals("entry_builder_test_pair_first"));
+    }
+    
+    @Test
     public void refusesALateRegisterBeforeCreatingTheEntry() {
         LateBuilder late = new LateBuilder(Nexus.getMod().getRegistrations());
         Assertions.assertThatThrownBy(late::register)
@@ -183,6 +213,37 @@ public class EntryBuilderTest {
         protected RegistryEntry<GameEvent, GameEvent> createEntry(ResourceKey<GameEvent> key) {
             this.subEntry = EntryBuilder.registerSubObject(this.sub);
             return new TestEntry(key, this);
+        }
+    }
+    
+    private static final class PairBuilder extends EntryBuilder<GameEvent, GameEvent, RegistryEntry<GameEvent, GameEvent>, Registrations, PairBuilder> {
+        
+        private final PlainBuilder<GameEvent, GameEvent, PairBuilder> first;
+        private final PlainBuilder<GameEvent, GameEvent, PairBuilder> second;
+        
+        private PairBuilder(Registrations registrations, String name) {
+            super(registrations, Registries.GAME_EVENT, name, registrations);
+            this.first = new PlainBuilder<>(registrations, Registries.GAME_EVENT, name + "_first", this, () -> new GameEvent(16));
+            this.second = new PlainBuilder<>(registrations, Registries.GAME_EVENT, name + "_second", this, () -> new GameEvent(16));
+        }
+        
+        @Override
+        protected GameEvent create() {
+            return new GameEvent(16);
+        }
+        
+        @Override
+        protected RegistryEntry<GameEvent, GameEvent> createEntry(ResourceKey<GameEvent> key) {
+            EntryBuilder.registerSubObject(this.first);
+            EntryBuilder.registerSubObject(this.second);
+            return new TestEntry(key, this);
+        }
+        
+        @Override
+        protected List<ResourceKey<?>> getSubObjectKeys() {
+            return Stream.of(this.first, this.second)
+                    .flatMap(sub -> EntryBuilder.getAllKeys(sub).stream())
+                    .toList();
         }
     }
     
@@ -269,6 +330,25 @@ public class EntryBuilderTest {
             new Takeover<>(takenParent.sub).tag(EntryBuilderTest.SECOND_TAG);
             takenParent.register();
             EntryBuilderTest.takenParent = takenParent;
+            
+            EntryBuilderTest.calledBack = registrations
+                    .register(Registries.GAME_EVENT, "entry_builder_test_called_back", () -> new GameEvent(16))
+                    .onRegister(value -> {
+                        EntryBuilderTest.boundInCallback = Objects.requireNonNull(EntryBuilderTest.calledBack).isBound();
+                        EntryBuilderTest.idInCallback = BuiltInRegistries.GAME_EVENT.getKey(value);
+                    })
+                    .register();
+            
+            registrations
+                    .register(Registries.GAME_EVENT, "entry_builder_test_reentering", () -> new GameEvent(16))
+                    .onRegister(_ -> EntryBuilderTest.reentrantRefusal = Assertions.catchThrowable(() -> registrations
+                            .register(Registries.GAME_EVENT, "entry_builder_test_reentrant", () -> new GameEvent(16))
+                            .register()
+                    ))
+                    .register();
+            
+            registrations.register(Registries.GAME_EVENT, "entry_builder_test_pair_second", () -> new GameEvent(16)).register();
+            EntryBuilderTest.pairRefusal = Assertions.catchThrowable(new PairBuilder(registrations, "entry_builder_test_pair")::register);
         }
     }
 }

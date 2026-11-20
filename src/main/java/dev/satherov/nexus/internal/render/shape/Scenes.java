@@ -8,6 +8,7 @@ import dev.satherov.nexus.api.render.shape.Scene;
 import dev.satherov.nexus.api.tick.Ticker;
 import dev.satherov.nexus.api.tick.ticker.Next;
 
+import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.renderer.MultiBufferSource;
 
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -63,14 +64,21 @@ public enum Scenes {
     ///
     /// Draws every scene.
     ///
-    /// @param pose        The pose stack of the frame, whose origin is the camera.
-    /// @param partialTick The partial tick of the frame.
-    /// @param buffers     The buffer source the labels are drawn into.
+    /// @param pose         The pose stack of the frame, whose origin is the camera.
+    /// @param deltaTracker The delta tracker of the frame.
+    /// @param buffers      The buffer source the labels are drawn into.
     ///
-    public void draw(PoseStack pose, float partialTick, MultiBufferSource.BufferSource buffers) {
+    public void draw(PoseStack pose, DeltaTracker deltaTracker, MultiBufferSource.BufferSource buffers) {
         for (Scene scene : this.scenes) {
-            scene.draw(pose, partialTick, buffers);
+            scene.draw(pose, deltaTracker, buffers);
         }
+    }
+    
+    ///
+    /// Makes every scene rebuild its GPU buffers before its next draw.
+    ///
+    public void invalidate() {
+        this.scenes.forEach(Scene::invalidate);
     }
     
     ///

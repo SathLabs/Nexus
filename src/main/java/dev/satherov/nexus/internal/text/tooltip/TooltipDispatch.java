@@ -17,6 +17,8 @@ import net.minecraft.world.item.ItemStack;
 
 import org.jetbrains.annotations.ApiStatus;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.BiConsumer;
 
 ///
@@ -27,12 +29,26 @@ import java.util.function.BiConsumer;
 public class TooltipDispatch {
     
     ///
+    /// The item attachments of every mod, in the order the mods got [RegisterTooltipAppendersEvent].
+    ///
+    private static final List<BiConsumer<ItemStack, TooltipBuilder>> ITEM_ATTACHMENTS = new ArrayList<>();
+    
+    ///
+    /// The fluid attachments of every mod, in the order the mods got [RegisterTooltipAppendersEvent].
+    ///
+    private static final List<BiConsumer<FluidStack, TooltipBuilder>> FLUID_ATTACHMENTS = new ArrayList<>();
+    
+    ///
     /// Listens on the event bus of the given mod for [RegisterTooltipAppendersEvent], posts an [AttachTooltipsEvent] there
-    /// and then registers what it collected:
+    /// and then adds what it collected to the attachments of every mod.
+    ///
+    /// The first mod with an attachment for a side registers it once for every mod:
     /// - The item attachments as one appender, after the item's own hover text.
     /// - The fluid attachments as one listener for [FluidTooltipEvent] on the game bus.
     ///
-    /// If a side got no attachment, nothing will be registered for it.
+    /// Every tooltip gets one builder for the attachments of every mod, so the hint to hold shift is added once.
+    ///
+    /// If no mod got an attachment for a side, nothing will be registered for it.
     ///
     /// @param mod The handle of the mod.
     ///
@@ -44,18 +60,26 @@ public class TooltipDispatch {
             
             BiConsumer<ItemStack, TooltipBuilder> items = event.getItemAttachments();
             if (items != null) {
-                registration.registerAppender(TooltipLocation.POST_CUSTOM, (stack, context, _, _, flag, lines) -> items.accept(
-                        stack,
-                        new TooltipBuilder(context, flag, lines)
-                ));
+                if (TooltipDispatch.ITEM_ATTACHMENTS.isEmpty()) {
+                    registration.registerAppender(TooltipLocation.POST_CUSTOM, (stack, context, _, _, flag, lines) -> {
+                        TooltipBuilder builder = new TooltipBuilder(context, flag, lines);
+                        TooltipDispatch.ITEM_ATTACHMENTS.forEach(attachment -> attachment.accept(stack, builder));
+                    });
+                }
+                
+                TooltipDispatch.ITEM_ATTACHMENTS.add(items);
             }
             
             BiConsumer<FluidStack, TooltipBuilder> fluids = event.getFluidAttachments();
             if (fluids != null) {
-                NeoForge.EVENT_BUS.addListener(FluidTooltipEvent.class, tooltip -> fluids.accept(
-                        tooltip.getFluidStack(),
-                        new TooltipBuilder(tooltip.getContext(), tooltip.getFlags(), tooltip.getToolTip()::add)
-                ));
+                if (TooltipDispatch.FLUID_ATTACHMENTS.isEmpty()) {
+                    NeoForge.EVENT_BUS.addListener(FluidTooltipEvent.class, tooltip -> {
+                        TooltipBuilder builder = new TooltipBuilder(tooltip.getContext(), tooltip.getFlags(), tooltip.getToolTip()::add);
+                        TooltipDispatch.FLUID_ATTACHMENTS.forEach(attachment -> attachment.accept(tooltip.getFluidStack(), builder));
+                    });
+                }
+                
+                TooltipDispatch.FLUID_ATTACHMENTS.add(fluids);
             }
         });
     }

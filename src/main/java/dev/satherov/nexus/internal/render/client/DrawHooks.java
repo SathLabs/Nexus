@@ -1,5 +1,8 @@
 package dev.satherov.nexus.internal.render.client;
 
+import lombok.extern.slf4j.Slf4j;
+
+import dev.satherov.nexus.api.mod.NexusMod;
 import dev.satherov.nexus.api.render.pipeline.Pipeline;
 import dev.satherov.nexus.api.render.pipeline.Shading;
 import dev.satherov.nexus.internal.render.shader.Programs;
@@ -48,13 +51,14 @@ import java.util.function.Consumer;
 ///
 /// Runs the draw hooks of the mods and then draws what they drew, one batch per render type.
 ///
+@Slf4j
 @ApiStatus.Internal
 public final class DrawHooks {
     
     ///
     /// The draw hooks of the mods.
     ///
-    private final List<BiConsumer<PoseStack, MultiBufferSource>> hooks;
+    private final List<Hook> hooks;
     
     ///
     /// The pipelines of the mods by their render pipeline.
@@ -82,12 +86,17 @@ public final class DrawHooks {
     private final Map<RenderType, ByteBufferBuilder> memoryByType = new HashMap<>();
     
     ///
+    /// The draw hooks that were already logged for leaving a pose pushed.
+    ///
+    private final Set<Hook> leaking = new HashSet<>();
+    
+    ///
     /// Should only ever be called from [RenderDispatch].
     ///
     /// @param hooks     The draw hooks of the mods.
     /// @param pipelines The pipelines of the mods by their render pipeline.
     ///
-    public DrawHooks(List<BiConsumer<PoseStack, MultiBufferSource>> hooks, Map<RenderPipeline, Pipeline> pipelines) {
+    public DrawHooks(List<Hook> hooks, Map<RenderPipeline, Pipeline> pipelines) {
         this.hooks = hooks;
         this.pipelines = pipelines;
     }
@@ -95,15 +104,29 @@ public final class DrawHooks {
     ///
     /// Runs every draw hook and then draws the batch of every render type they drew into.
     ///
+    /// The pose stack will be reset to its pose on entry after every hook, and a hook that leaves a pose pushed will be logged the first time.
+    ///
     /// If a hook or a batch throws, every open buffer builder will be dropped and every byte buffer builder freed.
     ///
-    /// @param pose The pose stack of the frame.
+    /// @param pose The pose stack of the frame, with no pose pushed.
     ///
     public void drawInLevel(PoseStack pose) {
+        PoseStack.Pose entry = pose.last().copy();
         boolean drawn = false;
         try {
-            for (BiConsumer<PoseStack, MultiBufferSource> hook : this.hooks) {
-                hook.accept(pose, this.buffers);
+            for (Hook hook : this.hooks) {
+                hook.drawer().accept(pose, this.buffers);
+                if (!pose.isEmpty()) {
+                    if (this.leaking.add(hook)) {
+                        DrawHooks.log.error("The draw hook of '{}' left a pose pushed on the pose stack", hook.mod().getModId());
+                    }
+                    
+                    while (!pose.isEmpty()) {
+                        pose.popPose();
+                    }
+                }
+                
+                pose.last().set(entry);
             }
             
             this.builderByType.forEach(this::end);
@@ -227,6 +250,14 @@ public final class DrawHooks {
     private ByteBufferBuilder memory(RenderType type) {
         return this.memoryByType.computeIfAbsent(type, _ -> new ByteBufferBuilder(type.bufferSize()));
     }
+    
+    ///
+    /// A draw hook of a mod.
+    ///
+    /// @param mod    The mod that registered the draw hook.
+    /// @param drawer The draw hook, called with the pose stack and the buffer source.
+    ///
+    public record Hook(NexusMod mod, BiConsumer<PoseStack, MultiBufferSource> drawer) { }
     
     ///
     /// A batch of one render type, ready to draw.

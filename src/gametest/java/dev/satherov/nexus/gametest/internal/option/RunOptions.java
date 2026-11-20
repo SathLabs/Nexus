@@ -112,10 +112,32 @@ public record RunOptions(
     }
     
     ///
+    /// The pattern that vanilla reads from the given selector, so that the server and the client run select the same tests.
+    ///
+    /// The pattern ends at the first character that is neither allowed in an identifier nor a wildcard.
+    /// A pattern without a namespace is in the `minecraft` namespace.
+    ///
+    /// @param selector The selector of the run.
+    ///
+    /// @return The pattern that the identifiers of the tests are matched against.
+    ///
+    private static String pattern(String selector) {
+        long length = selector.chars()
+                .takeWhile(character -> Identifier.isAllowedInIdentifier((char) character) || character == '*' || character == '?')
+                .count();
+        String pattern = selector.substring(0, (int) length);
+        if (pattern.indexOf(Identifier.NAMESPACE_SEPARATOR) < 0) {
+            return Identifier.DEFAULT_NAMESPACE + Identifier.NAMESPACE_SEPARATOR + pattern;
+        }
+        
+        return pattern;
+    }
+    
+    ///
     /// If the run selects the test with the given identifier.
     ///
     /// If the run has no selector, it selects every test that isn't explicit.
-    /// If it has one, it selects every test whose identifier matches it.
+    /// If it has one, it selects every test whose identifier matches the pattern that vanilla reads from it.
     ///
     /// @param id       The identifier of the test.
     /// @param explicit If the test runs only in a run whose selector matches it.
@@ -123,6 +145,6 @@ public record RunOptions(
     /// @return `true` if the run selects the test.
     ///
     public boolean selects(Identifier id, boolean explicit) {
-        return ObjectMapping.mapToBooleanOrElse(this.tests, selector -> FilenameUtils.wildcardMatch(id.toString(), selector), !explicit);
+        return ObjectMapping.mapToBooleanOrElse(this.tests, selector -> FilenameUtils.wildcardMatch(id.toString(), RunOptions.pattern(selector)), !explicit);
     }
 }

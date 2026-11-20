@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 ///
 /// A builder of one object of a registry and the sub-objects that come with it.
@@ -80,7 +81,7 @@ public abstract class EntryBuilder
     private final Map<ProviderKind<?>, Object> factsByKind = new HashMap<>();
     
     ///
-    /// The callbacks that run with the object right after it is created, in call order.
+    /// The callbacks that run with the object right after it is registered, in call order.
     ///
     private final List<Consumer<VALUE>> callbacks = new ArrayList<>();
     
@@ -152,13 +153,55 @@ public abstract class EntryBuilder
     ///
     /// @return The still unbound entry of the sub-object.
     ///
-    /// @throws IllegalStateException If the sub-object was already registered, if the registry event of its registry already ran, or if its identifier is already registered in the registry.
+    /// @throws IllegalArgumentException If the registry of the sub-object is a datapack registry.
+    /// @throws IllegalStateException    If the sub-object was already registered, if the registry event of its registry already ran, or if its identifier is already registered in the registry.
     ///
     @CanIgnoreReturnValue
     protected static <SUB extends RegistryEntry<?, ?>> SUB registerSubObject(EntryBuilder<?, ?, SUB, ?, ?> builder) {
         EntryBuilder<?, ?, ? extends SUB, ?, ?> successor = builder.successor;
         //noinspection unchecked No clue why IntelliJ complains about this, this is literally the same function
         return successor == null ? builder.registerEntry() : EntryBuilder.registerSubObject(successor);
+    }
+    
+    ///
+    /// The keys of the object of the given builder and of every sub-object it registers.
+    ///
+    /// If another builder took over the given one, the keys will be those of the builder that took over last.
+    ///
+    /// Meant to be used for the sub-objects in [#getSubObjectKeys()].
+    ///
+    /// @param builder The builder of the object.
+    ///
+    /// @return The keys of the object and its sub-objects.
+    ///
+    protected static List<ResourceKey<?>> getAllKeys(EntryBuilder<?, ?, ?, ?, ?> builder) {
+        EntryBuilder<?, ?, ?, ?, ?> successor = builder.successor;
+        if (successor != null) {
+            return EntryBuilder.getAllKeys(successor);
+        }
+        
+        return Stream.concat(Stream.of(builder.key), builder.getSubObjectKeys().stream()).toList();
+    }
+    
+    ///
+    /// The translation keys of the object of the given builder and of every sub-object it registers, as far as
+    /// [#getTranslationKeys()] returns them.
+    ///
+    /// If another builder took over the given one, the keys will be those of the builder that took over last.
+    ///
+    /// Meant to be used for the sub-objects in [#getTranslationKeys()].
+    ///
+    /// @param builder The builder of the object.
+    ///
+    /// @return The translation keys of the object and its sub-objects.
+    ///
+    protected static List<String> getAllTranslationKeys(EntryBuilder<?, ?, ?, ?, ?> builder) {
+        EntryBuilder<?, ?, ?, ?, ?> successor = builder.successor;
+        if (successor != null) {
+            return EntryBuilder.getAllTranslationKeys(successor);
+        }
+        
+        return builder.getTranslationKeys();
     }
     
     ///
@@ -221,7 +264,7 @@ public abstract class EntryBuilder
     }
     
     ///
-    /// Runs the given callback with the object right after it is created inside its registry event.
+    /// Runs the given callback with the object right after it is registered inside its registry event.
     ///
     /// Called with all previous callbacks, in order, oldest first.
     ///
@@ -263,6 +306,9 @@ public abstract class EntryBuilder
     ///
     /// Meant to be used for adding a listener for any client event.
     ///
+    /// Sub-objects of a registry whose event runs later will still be unbound when the code runs,
+    /// so they have to be read inside the listeners that the code adds.
+    ///
     /// Never runs on a dedicated server.
     ///
     /// @param code The client code, called with the mod bus and the entry.
@@ -289,13 +335,16 @@ public abstract class EntryBuilder
     ///
     /// Registers the object, its sub-objects, and the defaults that no builder was opened for.
     ///
+    /// If the identifier of a sub-object is refused, nothing will be registered.
+    ///
     /// @return The still unbound entry of the object.
     ///
-    /// @throws IllegalStateException - If [#end()] returns another builder, which registers this one.
+    /// @throws IllegalArgumentException If the registry of the object or of a sub-object is a datapack registry.
+    /// @throws IllegalStateException    - If [#end()] returns another builder, which registers this one.
     /// - If this was already called.
     /// - If another builder took over this one.
-    /// - If the registry event of the registry already ran.
-    /// - If the identifier is already registered in the registry.
+    /// - If the registry event of the registry of the object or of a sub-object already ran.
+    /// - If the identifier of the object or of a sub-object is already registered in its registry.
     /// - If a translation key the object declares is already declared, such as by a name that differs only by a `/` in place of a `.`.
     ///
     @CanIgnoreReturnValue
@@ -312,18 +361,33 @@ public abstract class EntryBuilder
     ///
     private ENTRY registerEntry() {
         this.checkUnregistered();
-        // Check before creating the entry, or a late call would leave the listeners and sub-objects of the entry behind.
-        this.registrations.checkAddable(this.key.registryKey(), this.key.identifier());
+        // Check every key before creating the entry, or a refused one would leave the listeners and sub-objects of the entry behind.
+        EntryBuilder.getAllKeys(this).forEach(key -> this.registrations.checkAddable(key.registryKey(), key.identifier()));
+        this.checkUndeclared(this.getTranslationKeys());
         ENTRY entry = this.createEntry(this.key);
-        this.registrations.add(entry, () -> {
-            VALUE value = this.create();
-            this.callbacks.forEach(callback -> callback.accept(value));
-            return value;
-        });
+        this.registrations.add(entry, this::create, value -> this.callbacks.forEach(callback -> callback.accept(value)));
         
         this.registered = true;
         this.clientCode.forEach(code -> this.addClientHook(bus -> code.get().accept(bus, entry)));
         return entry;
+    }
+    
+    ///
+    /// Throws an [IllegalStateException] if any of the given translation keys is already declared in the translations of the mod.
+    ///
+    private void checkUndeclared(List<String> keys) {
+        List<String> declared = this.registrations.getMod()
+                .getTranslations()
+                .getAll()
+                .stream()
+                .map(Translation::getKey)
+                .toList();
+        
+        for (String key : keys) {
+            if (declared.contains(key)) {
+                throw new IllegalStateException("Key '" + key + "' is already declared");
+            }
+        }
     }
     
     ///
@@ -344,6 +408,8 @@ public abstract class EntryBuilder
     /// Stacks with previous calls, in the order they were written.
     ///
     /// Meant to be used for the client code of a mod's own builders.
+    ///
+    /// Sub-objects of a registry whose event runs later will still be unbound when the hook runs.
     ///
     /// Never runs on a dedicated server.
     ///
@@ -383,7 +449,21 @@ public abstract class EntryBuilder
     ///
     @CanIgnoreReturnValue
     protected Translation define(String category, String english) {
-        return this.registrations.getMod().getTranslations().defineKey(Util.makeDescriptionId(category, this.key.identifier()), english);
+        return this.registrations.getMod().getTranslations().defineKey(this.getTranslationKey(category), english);
+    }
+    
+    ///
+    /// The translation key `<category>.<modid>.<name>` that [#define(String, String)] declares for the given category.
+    /// - `<category>` is the given category.
+    /// - `<modid>` is the id of the mod.
+    /// - `<name>` is the name of this builder, with every `/` replaced by `.`.
+    ///
+    /// @param category The first part of the key.
+    ///
+    /// @return The translation key.
+    ///
+    protected String getTranslationKey(String category) {
+        return Util.makeDescriptionId(category, this.key.identifier());
     }
     
     ///
@@ -408,4 +488,30 @@ public abstract class EntryBuilder
     ///
     @ForOverride
     protected abstract ENTRY createEntry(ResourceKey<REGISTRY> key);
+    
+    ///
+    /// The keys of every sub-object that [#createEntry(ResourceKey)] registers, with the sub-objects of those.
+    ///
+    /// Every key will be checked before the entry is created.
+    /// If a key is missing, a refused sub-object will leave the sub-objects registered before it behind.
+    ///
+    /// @return The keys of the sub-objects, or an empty list if this builder doesn't register any.
+    ///
+    @ForOverride
+    protected List<ResourceKey<?>> getSubObjectKeys() {
+        return List.of();
+    }
+    
+    ///
+    /// The translation keys that [#createEntry(ResourceKey)] declares for the object and its sub-objects.
+    ///
+    /// Every key will be checked before the entry is created.
+    /// If a key is missing, a taken one will leave the translations declared before it behind.
+    ///
+    /// @return The translation keys, or an empty list if this builder doesn't declare any.
+    ///
+    @ForOverride
+    protected List<String> getTranslationKeys() {
+        return List.of();
+    }
 }

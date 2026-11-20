@@ -15,6 +15,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.tags.TagKey;
+import net.minecraft.world.damagesource.DamageType;
 import net.minecraft.world.level.gameevent.GameEvent;
 
 import org.assertj.core.api.Assertions;
@@ -42,6 +43,7 @@ public class RegistrationsTest {
     private static @Nullable RegistryEntry<SoundEvent, SoundEvent> secondSound;
     private static @Nullable RegistryEntry<GameEvent, GameEvent> gameEvent;
     private static @Nullable Throwable duplicateRefusal;
+    private static @Nullable Throwable dataPackRefusal;
     private static boolean clientCodeRan;
     
     @Test
@@ -147,6 +149,14 @@ public class RegistrationsTest {
     }
     
     @Test
+    public void refusesAnObjectOfADataPackRegistry() {
+        Assertions.assertThat(RegistrationsTest.dataPackRefusal)
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Could not register 'nexus:registrations_test_damage' because 'minecraft:damage_type' is a datapack registry");
+        Assertions.assertThat(Nexus.getMod().getRegistrations().getAll(Registries.DAMAGE_TYPE)).isEmpty();
+    }
+    
+    @Test
     public void neverRunsClientCodeOnADedicatedServer() {
         Assertions.assertThat(RegistrationsTest.sound().isBound()).isTrue();
         Assertions.assertThat(RegistrationsTest.clientCodeRan).isFalse();
@@ -205,6 +215,10 @@ public class RegistrationsTest {
             RegistrationsTest.gameEvent = registrations.register(Registries.GAME_EVENT, "registrations_test_game_event", () -> new GameEvent(16)).register();
             RegistrationsTest.duplicateRefusal = Assertions.catchThrowable(() -> registrations
                     .register(Registries.SOUND_EVENT, "registrations_test_sound", () -> SoundEvent.createVariableRangeEvent(Nexus.getMod().id("registrations_test_sound")))
+                    .register()
+            );
+            RegistrationsTest.dataPackRefusal = Assertions.catchThrowable(() -> registrations
+                    .register(Registries.DAMAGE_TYPE, "registrations_test_damage", () -> new DamageType("registrations_test_damage", 0.1F))
                     .register()
             );
         }

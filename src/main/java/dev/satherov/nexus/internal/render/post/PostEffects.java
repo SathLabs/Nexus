@@ -83,6 +83,24 @@ public enum PostEffects {
     }
     
     ///
+    /// Should only ever be called from [PostEffect#isActive()].
+    ///
+    /// @param effect The effect.
+    ///
+    /// @return `true` if the given effect is active.
+    ///
+    public boolean isActive(PostEffect effect) {
+        return this.active.contains(effect);
+    }
+    
+    ///
+    /// Deactivates every effect.
+    ///
+    public void end() {
+        this.active.clear();
+    }
+    
+    ///
     /// Runs the post-chain of every active effect over the given render target.
     ///
     /// @param target The main render target.

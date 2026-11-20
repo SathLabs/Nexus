@@ -18,17 +18,21 @@ import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.component.PatchedDataComponentMap;
 import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.ByteBufCodecs;
+import net.minecraft.util.ExtraCodecs;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import com.mojang.serialization.JsonOps;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
+import io.netty.handler.codec.DecoderException;
 
 import org.assertj.core.api.Assertions;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Objects;
 
 ///
@@ -40,6 +44,7 @@ public class DataComponentBuilderTest {
     
     private static @Nullable DataComponentEntry<Counter> counter;
     private static @Nullable DataComponentEntry<Counter> cached;
+    private static @Nullable DataComponentEntry<Integer> natural;
     
     @Test
     public void readsNothingFromAHolderWithoutTheComponent() {
@@ -67,6 +72,32 @@ public class DataComponentBuilderTest {
         counter.set(holder, new Counter(3));
         Assertions.assertThat(counter.set(holder, new Counter(4))).isEqualTo(new Counter(3));
         Assertions.assertThat(counter.get(holder)).isEqualTo(new Counter(4));
+    }
+    
+    @Test
+    public void updateSetsAnAbsentComponentAndReturnsNull() {
+        DataComponentEntry<Counter> counter = DataComponentBuilderTest.counter();
+        PatchedHolder holder = new PatchedHolder();
+        Assertions.assertThat(counter.update(holder, _ -> new Counter(1))).isNull();
+        Assertions.assertThat(counter.get(holder)).isEqualTo(new Counter(1));
+    }
+    
+    @Test
+    public void updateReturnsTheValueItReplaced() {
+        DataComponentEntry<Counter> counter = DataComponentBuilderTest.counter();
+        PatchedHolder holder = new PatchedHolder();
+        counter.set(holder, new Counter(3));
+        Assertions.assertThat(counter.update(holder, current -> new Counter(Objects.requireNonNull(current).count() + 1))).isEqualTo(new Counter(3));
+        Assertions.assertThat(counter.get(holder)).isEqualTo(new Counter(4));
+    }
+    
+    @Test
+    public void updateWithAnEqualValueReturnsNull() {
+        DataComponentEntry<Counter> counter = DataComponentBuilderTest.counter();
+        PatchedHolder holder = new PatchedHolder();
+        counter.set(holder, new Counter(3));
+        Assertions.assertThat(counter.update(holder, () -> new Counter(3))).isNull();
+        Assertions.assertThat(counter.get(holder)).isEqualTo(new Counter(3));
     }
     
     @Test
@@ -101,12 +132,45 @@ public class DataComponentBuilderTest {
         Assertions.assertThat(DataComponentBuilderTest.cached().value().ignoreSwapAnimation()).isTrue();
     }
     
+    @Test
+    public void refusesAStreamOnlyCodec() {
+        Registrations registrations = Nexus.getMod().getRegistrations();
+        NexusCodec<Integer, Access.Plain> stream = NexusCodec.ofStream(ByteBufCodecs.VAR_INT);
+        List<NexusCodec<?, ?>> codecs = List.of(
+                stream,
+                NexusCodec.struct("counter", stream.field("count", Counter::count), Counter::new),
+                stream.list(),
+                stream.xmap(Counter::new, Counter::count)
+        );
+        
+        for (NexusCodec<?, ?> codec : codecs) {
+            Assertions.assertThatThrownBy(() -> registrations.component("data_component_builder_test_stream", codec))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("JSON and NBT");
+        }
+    }
+    
+    @Test
+    public void streamDecodeRefusesAValueTheKeyedFormRefuses() {
+        DataComponentType<Integer> type = DataComponentBuilderTest.natural().value();
+        RegistryFriendlyByteBuf buffer = new RegistryFriendlyByteBuf(Unpooled.buffer(), RegistryAccess.EMPTY);
+        type.streamCodec().encode(buffer, -1);
+        
+        Assertions.assertThatThrownBy(() -> type.streamCodec().decode(buffer))
+                .isInstanceOf(DecoderException.class)
+                .hasMessageContaining("non-negative");
+    }
+    
     private static DataComponentEntry<Counter> counter() {
         return Objects.requireNonNull(DataComponentBuilderTest.counter);
     }
     
     private static DataComponentEntry<Counter> cached() {
         return Objects.requireNonNull(DataComponentBuilderTest.cached);
+    }
+    
+    private static DataComponentEntry<Integer> natural() {
+        return Objects.requireNonNull(DataComponentBuilderTest.natural);
     }
     
     private record Counter(int count) { }
@@ -152,6 +216,10 @@ public class DataComponentBuilderTest {
                     .cacheEncoding()
                     .ignoreSwapAnimation()
                     .register();
+            DataComponentBuilderTest.natural = registrations.component(
+                    "data_component_builder_test_natural",
+                    NexusCodec.ofVanilla(ExtraCodecs.NON_NEGATIVE_INT, ByteBufCodecs.VAR_INT)
+            ).register();
         }
     }
 }

@@ -17,7 +17,7 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 
 import org.jetbrains.annotations.ApiStatus;
-import org.jetbrains.annotations.UnmodifiableView;
+import org.jetbrains.annotations.Unmodifiable;
 import org.jspecify.annotations.Nullable;
 
 import java.util.Collections;
@@ -65,7 +65,7 @@ public class SlotSources {
                 SlotSource.of(Player.class, player -> SlotAccess.of(player.getInventory(), Inventory.SLOT_OFFHAND, 1))
         );
         ModLoader.postEvent(event);
-        SlotSources.registered = Collections.unmodifiableMap(sources);
+        SlotSources.registered = Collections.unmodifiableMap(new LinkedHashMap<>(sources));
     }
 
     ///
@@ -75,7 +75,7 @@ public class SlotSources {
     ///
     /// @throws IllegalStateException If [RegisterSlotSourcesEvent] wasn't posted yet.
     ///
-    public static @UnmodifiableView Map<Identifier, SlotSource<?>> getAll() {
+    public static @Unmodifiable Map<Identifier, SlotSource<?>> getAll() {
         Map<Identifier, SlotSource<?>> sources = SlotSources.registered;
         if (sources == null) {
             throw new IllegalStateException("The slot sources are not registered yet");

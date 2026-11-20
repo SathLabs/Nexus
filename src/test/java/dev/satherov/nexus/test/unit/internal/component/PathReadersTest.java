@@ -1,6 +1,8 @@
 package dev.satherov.nexus.test.unit.internal.component;
 
 import dev.satherov.nexus.Nexus;
+import dev.satherov.nexus.api.codec.Access;
+import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.component.Comparison;
 import dev.satherov.nexus.api.component.ComponentPath;
 import dev.satherov.nexus.api.component.PathReader;
@@ -12,7 +14,9 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 
 import net.minecraft.core.component.DataComponentType;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.codec.ByteBufCodecs;
+import net.minecraft.world.item.enchantment.ItemEnchantments;
 
 import com.mojang.datafixers.util.Pair;
 import com.mojang.serialization.Codec;
@@ -23,25 +27,32 @@ import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 ///
-/// Checks the order in which registered readers are asked, the codec that a type was built with, and the encoding of the whole value through the codec of the type.
+/// Checks the order in which registered readers are asked, the codecs that a type matches, and the encoding of the whole value through the codec of the type.
 ///
 public class PathReadersTest {
     
     private static final List<ComponentPath.Step> STEPS = List.of(new ComponentPath.Step.Key("level"));
+    private static final List<ComponentPath.Step> MOD_STEPS = List.of(new ComponentPath.Step.Key("nexus:path_readers_test"));
     
-    private static final PathReader<Integer> FIRST = new FixedReader();
-    private static final PathReader<Integer> SECOND = new FixedReader();
-    private static final PathReader<Integer> BY_CODEC = new FixedReader();
+    private static final PathReader<Integer> FIRST = new FixedReader<>();
+    private static final PathReader<Integer> SECOND = new FixedReader<>();
+    private static final PathReader<Integer> BY_CODEC = new FixedReader<>();
+    private static final PathReader<ItemEnchantments> BY_MOD = new FixedReader<>();
     
     private static final Codec<Integer> ORDERED_CODEC = new CountingCodec();
     private static final Codec<Integer> SHARED_CODEC = new CountingCodec();
+    private static final NexusCodec<Integer, Access.Plain> NEXUS_CODEC = NexusCodec.INT.xmap(Function.identity(), Function.identity());
     
     private static final DataComponentType<Integer> ORDERED = DataComponentType.<Integer>builder().persistent(PathReadersTest.ORDERED_CODEC).build();
     private static final DataComponentType<Integer> SHARED = DataComponentType.<Integer>builder().persistent(PathReadersTest.SHARED_CODEC).build();
     private static final DataComponentType<Integer> SHARED_CACHED = DataComponentType.<Integer>builder().persistent(PathReadersTest.SHARED_CODEC).cacheEncoding().build();
+    private static final DataComponentType<Integer> WRAPPED = DataComponentType.<Integer>builder().persistent(new CountingCodec()).cacheEncoding().build();
+    private static final DataComponentType<Integer> NEXUS_FIRST = PathReadersTest.NEXUS_CODEC.asDataComponentType();
+    private static final DataComponentType<Integer> NEXUS_SECOND = PathReadersTest.NEXUS_CODEC.asDataComponentType();
     
     @Test
     public void asksTheReadersOfAComponentInTheOrderTheyWereRegistered() {
@@ -57,6 +68,26 @@ public class PathReadersTest {
     public void matchesTheCodecThatATypeWasBuiltWith() {
         Assertions.assertThat(PathReaders.resolve(PathReadersTest.SHARED, PathReadersTest.STEPS)).isSameAs(PathReadersTest.BY_CODEC);
         Assertions.assertThat(PathReaders.resolve(PathReadersTest.SHARED_CACHED, PathReadersTest.STEPS)).isSameAs(PathReadersTest.BY_CODEC);
+    }
+    
+    @Test
+    public void matchesTheCodecThatACachedTypeReturns() {
+        Assertions.assertThat(PathReadersTest.WRAPPED.codecOrThrow()).isNotSameAs(((ComponentTypeCodec) PathReadersTest.WRAPPED).nexus$getCodec());
+        Assertions.assertThat(PathReaders.resolve(PathReadersTest.WRAPPED, PathReadersTest.STEPS)).isSameAs(PathReadersTest.BY_CODEC);
+    }
+    
+    @Test
+    public void matchesEveryDfuCodecOfOneNexusCodec() {
+        Assertions.assertThat(PathReadersTest.NEXUS_FIRST.codecOrThrow()).isNotSameAs(PathReadersTest.NEXUS_SECOND.codecOrThrow());
+        Assertions.assertThat(PathReaders.resolve(PathReadersTest.NEXUS_FIRST, PathReadersTest.STEPS)).isSameAs(PathReadersTest.BY_CODEC);
+        Assertions.assertThat(PathReaders.resolve(PathReadersTest.NEXUS_SECOND, PathReadersTest.STEPS)).isSameAs(PathReadersTest.BY_CODEC);
+    }
+    
+    @Test
+    public void asksTheReadersOfModsByCodecBeforeTheReadersOfNexusByComponent() {
+        Assertions.assertThat(PathReaders.resolve(DataComponents.ENCHANTMENTS, PathReadersTest.MOD_STEPS)).isSameAs(PathReadersTest.BY_MOD);
+        Assertions.assertThat(PathReaders.resolve(DataComponents.STORED_ENCHANTMENTS, PathReadersTest.MOD_STEPS)).isSameAs(PathReadersTest.BY_MOD);
+        Assertions.assertThat(PathReaders.resolve(DataComponents.ENCHANTMENTS, List.of(new ComponentPath.Step.Key("minecraft:sharpness")))).isNotSameAs(PathReadersTest.BY_MOD);
     }
     
     @Test
@@ -107,7 +138,7 @@ public class PathReadersTest {
         Assertions.assertThat(codec.encodes).isEqualTo(3);
     }
     
-    private static final class FixedReader implements PathReader<Integer> {
+    private static final class FixedReader<VALUE> implements PathReader<VALUE> {
         
         @Override
         public Cost getCost() {
@@ -120,7 +151,7 @@ public class PathReadersTest {
         }
         
         @Override
-        public Predicate<Integer> bind(Comparison comparison) {
+        public Predicate<VALUE> bind(Comparison comparison) {
             return _ -> true;
         }
     }
@@ -151,6 +182,9 @@ public class PathReadersTest {
             event.register(PathReadersTest.ORDERED, steps -> steps.equals(PathReadersTest.STEPS) ? PathReadersTest.SECOND : null);
             event.register(PathReadersTest.ORDERED_CODEC, _ -> PathReadersTest.BY_CODEC);
             event.register(PathReadersTest.SHARED_CODEC, steps -> steps.equals(PathReadersTest.STEPS) ? PathReadersTest.BY_CODEC : null);
+            event.register(PathReadersTest.WRAPPED.codecOrThrow(), steps -> steps.equals(PathReadersTest.STEPS) ? PathReadersTest.BY_CODEC : null);
+            event.register(PathReadersTest.NEXUS_CODEC.asDfu(), steps -> steps.equals(PathReadersTest.STEPS) ? PathReadersTest.BY_CODEC : null);
+            event.register(ItemEnchantments.CODEC, steps -> steps.equals(PathReadersTest.MOD_STEPS) ? PathReadersTest.BY_MOD : null);
         }
     }
 }

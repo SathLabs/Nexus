@@ -20,6 +20,8 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLConstructModEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.TagsUpdatedEvent;
+import net.neoforged.neoforge.transfer.fluid.FluidResource;
+import net.neoforged.neoforge.transfer.item.ItemResource;
 
 import net.minecraft.core.component.DataComponentGetter;
 import net.minecraft.core.component.DataComponentMap;
@@ -27,9 +29,13 @@ import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.component.PatchedDataComponentMap;
 import net.minecraft.core.component.TypedDataComponent;
+import net.minecraft.core.component.predicates.DataComponentPredicate;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.material.Fluids;
+
+import com.mojang.serialization.MapCodec;
 
 import org.jspecify.annotations.Nullable;
 
@@ -37,6 +43,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
@@ -52,6 +59,7 @@ public class MemoizedComponentMapSamples {
     private static final BiPredicate<ComponentFilter, DataComponentGetter> IS_DAMAGED_FILTER = (filter, _) -> filter == MemoizedComponentMapSamples.DAMAGED;
     private static final Comparison AT_LEAST_ZERO = new Comparison(Comparison.Operator.GREATER_OR_EQUAL, new Comparison.Literal.Numeric(0.0D));
     private static final Comparison AT_MOST_TEN = new Comparison(Comparison.Operator.LESS_OR_EQUAL, new Comparison.Literal.Numeric(10.0D));
+    private static final Comparison AT_MOST_TWO = new Comparison(Comparison.Operator.LESS_OR_EQUAL, new Comparison.Literal.Numeric(2.0D));
     private static final Map<String, PathReader<Integer>> READERS = Map.of(
             "direct", new CountingReader(PathReader.Cost.DIRECT),
             "scan", new CountingReader(PathReader.Cost.SCAN)
@@ -198,6 +206,25 @@ public class MemoizedComponentMapSamples {
         helper.succeed();
     }
     
+    @ServerTest
+    public static void twoThreadsGetTheResultOfTheirOwnFilter(GameTestHelper helper) {
+        ItemStack stack = new ItemStack(Items.STICK);
+        MemoizedComponentMapSamples.level().set(stack, 3);
+        ComponentFilter passing = MemoizedComponentMapSamples.compare("scan", MemoizedComponentMapSamples.AT_LEAST_ZERO);
+        ComponentFilter failing = MemoizedComponentMapSamples.compare("scan", MemoizedComponentMapSamples.AT_MOST_TWO);
+        CompletableFuture<Integer> other = CompletableFuture.supplyAsync(() -> MemoizedComponentMapSamples.wrongResults(failing, stack, false));
+        int wrong = MemoizedComponentMapSamples.wrongResults(passing, stack, true);
+        helper.assertValueEqual(wrong + other.join(), 0, "wrong results of the two threads");
+        helper.succeed();
+    }
+    
+    @ServerTest
+    public static void resultIsStoredOnDefaultItemAndFluidResources(GameTestHelper helper) {
+        MemoizedComponentMapSamples.assertTwoEvaluations(helper, "item resource", ItemResource.of(Items.STICK));
+        MemoizedComponentMapSamples.assertTwoEvaluations(helper, "fluid resource", FluidResource.of(Fluids.WATER));
+        helper.succeed();
+    }
+    
     private static PatchedDataComponentMap undamaged() {
         return new PatchedDataComponentMap(DataComponentMap.EMPTY);
     }
@@ -233,6 +260,24 @@ public class MemoizedComponentMapSamples {
         return ComponentFilter.compare(MemoizedComponentMapSamples.level().path(reader), comparison);
     }
     
+    private static int wrongResults(ComponentFilter filter, ItemStack stack, boolean expected) {
+        int wrong = 0;
+        for (int test = 0; test < 100_000; test++) {
+            if (filter.test(stack) != expected) {
+                wrong++;
+            }
+        }
+        
+        return wrong;
+    }
+    
+    private static void assertTwoEvaluations(GameTestHelper helper, String kind, DataComponentGetter holder) {
+        CountingPredicate predicate = new CountingPredicate();
+        ComponentFilter filter = ComponentFilter.matching(new DataComponentPredicate.ConcreteType<>(MapCodec.unitCodec(predicate)), predicate);
+        helper.assertValueEqual(List.of(filter.test(holder), filter.test(holder), filter.test(holder)), List.of(true, true, true), "results on the " + kind);
+        helper.assertValueEqual(predicate.evaluations, 2, "evaluations on the " + kind);
+    }
+    
     private static void assertReadsOfTheThirdTest(GameTestHelper helper, String kind, ComponentFilter filter, int expected) {
         ItemStack stack = new ItemStack(Items.STICK);
         MemoizedComponentMapSamples.level().set(stack, 3);
@@ -262,6 +307,17 @@ public class MemoizedComponentMapSamples {
         private boolean evaluate(ComponentFilter filter, DataComponentGetter holder) {
             this.evaluations++;
             return this.evaluation.test(filter, holder);
+        }
+    }
+    
+    private static final class CountingPredicate implements DataComponentPredicate {
+        
+        private int evaluations;
+        
+        @Override
+        public boolean matches(DataComponentGetter components) {
+            this.evaluations++;
+            return true;
         }
     }
     

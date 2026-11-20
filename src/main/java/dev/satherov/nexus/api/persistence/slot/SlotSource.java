@@ -10,6 +10,8 @@ import java.util.function.Function;
 ///
 /// Inside a [SlotLayout], a group under the empty name is called `<source_id>` and every other group `<source_id>/<group>`.
 ///
+/// Should never cover a slot that another source covers.
+///
 /// @param <HOLDER> The type of the holders of the slots.
 ///
 /// @see RegisterSlotSourcesEvent

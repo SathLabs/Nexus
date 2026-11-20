@@ -28,6 +28,7 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Range;
+import org.jetbrains.annotations.TestOnly;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayDeque;
@@ -49,7 +50,7 @@ import java.util.function.Consumer;
 ///
 /// - A server scope runs while the server is running and drops its work when the server stops.
 /// - A level scope only runs while the tick manager of its level runs normally and drops its work when the level unloads.
-/// - A client scope only runs while the game is not paused and drops its work when the client logs out.
+/// - A client scope only runs while the game is not paused and drops its work when the client leaves its world.
 ///
 ///  Every method throws an [IllegalStateException] if it's called from any other thread other than the scope's own, or after the scope has ended.
 ///
@@ -256,6 +257,14 @@ public final class TickScope {
                         throw this.crash(throwable, "job", category -> category.setDetail("Name", budget.getName()));
                     }
                     
+                    // If the step ended this scope, we have to stop here since the queues are cleared,
+                    // and cancel the job ourselves since it wasn't queued while it stepped.
+                    if (this.ended) {
+                        job.cancel();
+                        profiler.pop();
+                        return;
+                    }
+                    
                     if (job.isActive()) {
                         jobs.add(job);
                     }
@@ -282,6 +291,36 @@ public final class TickScope {
         
         details.accept(category);
         return new ReportedException(report);
+    }
+    
+    ///
+    /// Forgets every inactive task, ticker, and job without running a pass.
+    ///
+    /// Should only ever be called from [Ticks#onLevelTick(LevelTickEvent.Post)].
+    ///
+    /// @throws IllegalStateException If called from another thread than the scope's own, or after the scope has ended.
+    ///
+    @ApiStatus.Internal
+    public void prune() {
+        this.checkUsable();
+        this.tasks.removeIf(task -> !task.isActive());
+        this.tickers.removeIf(ticker -> !ticker.isActive());
+        this.pendingJobs.removeIf(job -> !job.isActive());
+        this.jobsByBudget.values().forEach(jobs -> jobs.removeIf(job -> !job.isActive()));
+    }
+    
+    ///
+    /// The number of tickers this scope holds, including the inactive ones it has not forgotten yet.
+    ///
+    /// @return The number of held tickers.
+    ///
+    /// @throws IllegalStateException If called from another thread than the scope's own, or after the scope has ended.
+    ///
+    @TestOnly
+    @ApiStatus.Internal
+    public int getTickerCount() {
+        this.checkUsable();
+        return this.tickers.size();
     }
     
     ///
@@ -372,7 +411,8 @@ public final class TickScope {
     /// Starts a new ticker bound to the given block entity, under the identifier of its block entity type.
     /// The ticker starts awake and will first tick on the next pass.
     ///
-    /// If the level doesn't tick blocks at the position of the block entity, a due tick is skipped and retried after the interval returned by the last tick.
+    /// If the level doesn't tick block entities at the position of the block entity, a due tick is skipped and retried after the interval returned by the last tick.
+    /// Vanilla doesn't tick them outside the world border, and on the server neither outside the block ticking range nor before the entities of their chunk have loaded.
     /// The ticker will be dropped once the block entity is removed or its chunk unloads.
     ///
     /// Can be woken up through [Scheduler#wake(BlockEntity)].

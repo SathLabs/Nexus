@@ -9,6 +9,7 @@ import net.minecraft.world.item.SpawnEggItem;
 
 import org.jetbrains.annotations.ApiStatus;
 
+import java.util.List;
 import java.util.function.Function;
 
 ///
@@ -79,5 +80,15 @@ public final class MobEntityBuilder
     protected MobEntityEntry<ENTITY, EGG> createEntry(ResourceKey<EntityType<?>> key) {
         //noinspection unchecked The builder of the entity type creates the entry with the spawn egg that this builder was opened for.
         return (MobEntityEntry<ENTITY, EGG>) this.entity.createEntry(key);
+    }
+    
+    ///
+    /// The keys of the spawn egg and its sub-objects, from the builder of the entity type.
+    ///
+    /// @return The keys of the spawn egg and its sub-objects.
+    ///
+    @Override
+    protected List<ResourceKey<?>> getSubObjectKeys() {
+        return this.entity.getSubObjectKeys();
     }
 }

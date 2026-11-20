@@ -10,23 +10,20 @@ import dev.satherov.nexus.internal.codec.path.Encoding;
 import dev.satherov.nexus.internal.component.LookupGeneration;
 import dev.satherov.nexus.internal.network.Envelope;
 
-import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import net.neoforged.neoforge.common.extensions.ICommonPacketListener;
 import net.neoforged.neoforge.network.handling.IPayloadHandler;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.core.RegistryAccess;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.function.BiConsumer;
 
 ///
-/// Utility for the play connection of the client, which sends payloads to the server and reads the listener and registries of the connection.
+/// Utility for the play connection of the client, which reads the listener and registries of the connection.
 ///
 /// Should only ever be loaded on the client, through [Payload#sendToServer(Object)], [Payload#canSendToServer()], [PayloadBuilder#toClient(ClientOnly)],
 /// [PayloadBuilder#bidirectional(ClientOnly, BiConsumer)], [Encoding], and [LookupGeneration].
@@ -34,25 +31,6 @@ import java.util.function.BiConsumer;
 @UtilityClass
 @ApiStatus.Internal
 public class ClientConnection {
-    
-    ///
-    /// Sends the given payload over the play connection of the client.
-    ///
-    /// @param payload The payload to send.
-    ///
-    /// @throws NullPointerException  If the payload is `null`.
-    /// @throws IllegalStateException If the client has no play connection open.
-    /// @see ClientPacketDistributor#sendToServer(CustomPacketPayload, CustomPacketPayload...)
-    ///
-    public static void sendToServer(CustomPacketPayload payload) {
-        Objects.requireNonNull(payload, "Cannot send null payload");
-        ClientPacketListener connection = Minecraft.getInstance().getConnection();
-        if (connection == null) {
-            throw new IllegalStateException("Could not send the payload '" + payload.type().id() + "', the client has no play connection open");
-        }
-        
-        connection.send(payload);
-    }
     
     ///
     /// The listener of the play connection of the client.
@@ -97,7 +75,6 @@ public class ClientConnection {
     /// @return The neoforge handler of the envelopes of the payload.
     ///
     public static <VALUE> IPayloadHandler<Envelope<VALUE>> adaptHandler(ClientOnly<BiConsumer<VALUE, ClientHandlerContext>> handler) {
-        BiConsumer<VALUE, ClientHandlerContext> opened = handler.get();
-        return (envelope, context) -> opened.accept(envelope.value(), new ClientHandlerContext(context));
+        return Envelope.handler(ClientHandlerContext::new, handler.get());
     }
 }

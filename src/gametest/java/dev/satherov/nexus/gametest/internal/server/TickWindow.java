@@ -6,6 +6,7 @@ import dev.satherov.nexus.gametest.api.measurement.Measured;
 import dev.satherov.nexus.gametest.internal.discovery.Discovered;
 import dev.satherov.nexus.gametest.internal.measurement.Measurement;
 import dev.satherov.nexus.gametest.internal.measurement.Measurements;
+import dev.satherov.nexus.gametest.mixin.GameTestInfoAccess;
 
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.gametest.framework.GameTestInfo;
@@ -132,6 +133,9 @@ public final class TickWindow implements Consumer<GameTestHelper> {
     ///
     /// Executes the actual test and records the nanoseconds each tick took.
     ///
+    /// The window starts once the test method returns and passes the test when it closes.
+    /// A test that leaves a sequence or a scheduled callback for a later tick fails instead, since the window would decide its outcome.
+    ///
     /// @param helper The helper that is running the test.
     ///
     @Override
@@ -141,6 +145,10 @@ public final class TickWindow implements Consumer<GameTestHelper> {
             if (helper.testInfo.hasSucceeded()) {
                 TickWindow.log.error("'{}' succeeded in its own, so no window could be recorded.", this.test.id());
                 return;
+            }
+            
+            if (!helper.testInfo.sequences.isEmpty() || !((GameTestInfoAccess) helper.testInfo).getRunAtTickTimeMap().isEmpty()) {
+                helper.fail("The measured test '" + this.test.id() + "' left a sequence or a callback for a later tick");
             }
         }
         

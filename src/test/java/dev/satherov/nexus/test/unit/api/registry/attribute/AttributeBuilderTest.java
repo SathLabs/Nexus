@@ -39,6 +39,7 @@ public class AttributeBuilderTest {
     private static @Nullable AttributeEntry<PercentageAttribute> percentage;
     private static @Nullable AttributeEntry<PercentageAttribute> scaled;
     private static @Nullable AttributeEntry<Attribute> custom;
+    private static @Nullable AttributeEntry<Attribute> inherited;
     
     @Test
     public void registersTheAttributeUnderItsName() {
@@ -105,6 +106,13 @@ public class AttributeBuilderTest {
     }
     
     @Test
+    public void keepsTheSyncAndTheSentimentOfTheFactory() {
+        Attribute attribute = AttributeBuilderTest.inherited().value();
+        Assertions.assertThat(attribute.isClientSyncable()).isTrue();
+        Assertions.assertThat(attribute.getStyle(true)).isEqualTo(ChatFormatting.RED);
+    }
+    
+    @Test
     public void refusesChangesAfterRegister() {
         AttributeBuilder<RangedAttribute, Registrations> builder = Objects.requireNonNull(AttributeBuilderTest.plainBuilder);
         Assertions.assertThatThrownBy(builder::synced).isInstanceOf(IllegalStateException.class);
@@ -142,6 +150,10 @@ public class AttributeBuilderTest {
         return Objects.requireNonNull(AttributeBuilderTest.custom);
     }
     
+    private static AttributeEntry<Attribute> inherited() {
+        return Objects.requireNonNull(AttributeBuilderTest.inherited);
+    }
+    
     @EventBusSubscriber(modid = Nexus.MOD_ID)
     public static final class Registered {
         
@@ -159,6 +171,11 @@ public class AttributeBuilderTest {
             AttributeBuilderTest.percentage = registrations.percentageAttribute("attribute_builder_test_percentage", "Percentage Sample Attribute", 1.0D, 0.0D, 2.0D).register();
             AttributeBuilderTest.scaled = registrations.percentageAttribute("attribute_builder_test_scaled", "Scaled Sample Attribute", 1.0D, 0.0D, 2.0D, 1000.0D).register();
             AttributeBuilderTest.custom = registrations.<Attribute>attribute("attribute_builder_test_custom", "Custom Sample Attribute", id -> new Attribute(id, 3.0D) { }).register();
+            AttributeBuilderTest.inherited = registrations.<Attribute>attribute(
+                    "attribute_builder_test_inherited",
+                    "Inherited Sample Attribute",
+                    id -> new RangedAttribute(id, 3.0D, 0.0D, 64.0D).setSyncable(true).setSentiment(Attribute.Sentiment.NEGATIVE)
+            ).register();
         }
     }
 }

@@ -44,6 +44,28 @@ public class RetentionTest {
     }
 
     @Test
+    public void newestDropsANewKeyBelowFutureKeys() {
+        Stamp current = new Stamp(RetentionTest.NOW);
+        Stamp tomorrow = new Stamp(RetentionTest.NOW.plus(Duration.ofDays(1)));
+        Stamp later = new Stamp(RetentionTest.NOW.plus(Duration.ofDays(2)));
+
+        Assertions.assertThat(Retention.<Stamp>newest(() -> 2).drop(List.of(current, tomorrow, later))).containsExactly(current);
+    }
+
+    @Test
+    public void newestKeepsEverythingForANegativeCount() {
+        Assertions.assertThat(Retention.<NameKey>newest(() -> -1).drop(RetentionTest.names("a", "b", "c"))).isEmpty();
+    }
+
+    @Test
+    public void maxAgeKeepsEverythingForNegativeDays() {
+        Stamp old = RetentionTest.stamp(Duration.ofDays(8));
+        Stamp recent = RetentionTest.stamp(Duration.ofHours(1));
+
+        Assertions.assertThat(Retention.<Stamp>maxAge(() -> -1).drop(List.of(old, recent))).isEmpty();
+    }
+
+    @Test
     public void maxAgeDropsTheKeysOlderThanTheDays() {
         Stamp old = RetentionTest.stamp(Duration.ofDays(8));
         Stamp recent = RetentionTest.stamp(Duration.ofDays(6));

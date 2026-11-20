@@ -1,6 +1,7 @@
 package dev.satherov.nexus.internal.tick;
 
 import dev.satherov.nexus.api.tick.TickScope;
+import dev.satherov.nexus.internal.tick.client.ClientSession;
 import dev.satherov.nexus.internal.tick.client.ClientTicks;
 
 import net.neoforged.fml.loading.FMLEnvironment;
@@ -12,6 +13,7 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 
 import org.jetbrains.annotations.ApiStatus;
@@ -29,7 +31,7 @@ import java.util.function.Supplier;
 ///
 /// Manages the level scopes for tickers per level and the server scope for the server ticker.
 ///
-/// Scopes are dropped when the level unloads or the server stops.
+/// Scopes are dropped when the level unloads or the server stops, and forgotten once another server ticks if that stop never reached them.
 ///
 /// @see ClientTicks
 ///
@@ -56,6 +58,11 @@ public final class Ticks {
     /// The server scope, or `null` if there is none.
     ///
     private @Nullable TickScope server;
+    
+    ///
+    /// The server that the server scope runs on, or `null` if there is no server scope.
+    ///
+    private @Nullable MinecraftServer serverOfScope;
     
     ///
     /// Subscribes the listeners.
@@ -91,7 +98,7 @@ public final class Ticks {
         }
         
         if (level.isClientSide()) {
-            return FMLEnvironment.getDist().isClient() && ClientTicks.isCurrentLevel(level);
+            return FMLEnvironment.getDist().isClient() && ClientSession.isHeld(level);
         }
         
         MinecraftServer server = Ticks.getRunningServer();
@@ -111,35 +118,48 @@ public final class Ticks {
     }
     
     ///
-    /// Gets the server scope, created with the given factory if there is none.
+    /// Gets the server scope of the given server, created with the given factory if there is none.
     ///
-    /// @param factory The factory of the scope, called if there is none.
+    /// Forgets the scopes of every other server first.
+    ///
+    /// @param server  The running server.
+    /// @param factory The factory of the scope, called if the server has none.
     ///
     /// @return The server scope.
     ///
-    public TickScope getServerScope(Supplier<TickScope> factory) {
+    public TickScope getServerScope(MinecraftServer server, Supplier<TickScope> factory) {
+        this.forgetStale(server);
         if (this.server == null) {
             this.server = factory.get();
+            this.serverOfScope = server;
         }
         
         return this.server;
     }
     
     ///
-    /// Passes the scope of the level if it has one and its tick rate manager runs normally.
+    /// Passes the scope of the level if it has one and its tick rate manager runs normally,
+    /// or only forgets the inactive work of the scope while the level is frozen.
     ///
     private void onLevelTick(LevelTickEvent.Post event) {
         Level level = event.getLevel();
         TickScope scope = this.scopesByLevel.get(level);
-        if (scope != null && level.tickRateManager().runsNormally()) {
+        if (scope == null) {
+            return;
+        }
+        
+        if (level.tickRateManager().runsNormally()) {
             scope.pass(event::hasTime);
+        } else {
+            scope.prune();
         }
     }
     
     ///
-    /// Passes the server scope if there is one.
+    /// Forgets the scopes of every other server, then passes the server scope if there is one.
     ///
     private void onServerTick(ServerTickEvent.Post event) {
+        this.forgetStale(event.getServer());
         if (this.server != null) {
             this.server.pass(event::hasTime);
         }
@@ -157,13 +177,58 @@ public final class Ticks {
     }
     
     ///
-    /// Marks the level as unloaded, ends and removes its scope if it has one, and then drops its bindings.
+    /// Forgets the level that was unloaded.
     ///
     private void onLevelUnload(LevelEvent.Unload event) {
         if (!(event.getLevel() instanceof Level level)) {
             return;
         }
         
+        this.forget(level);
+    }
+    
+    ///
+    /// Forgets the scopes of every other server, then ends and forgets the server scope if there is one, and then every scope of a server level that is still left.
+    ///
+    private void onServerStopped(ServerStoppedEvent event) {
+        this.forgetStale(event.getServer());
+        if (this.server != null) {
+            this.server.end();
+            this.server = null;
+            this.serverOfScope = null;
+        }
+        
+        // If a listener of the shutdown threw before the levels unloaded, their scopes and bindings would stay around forever.
+        for (Level level : this.scopesByLevel.keySet()) {
+            if (!level.isClientSide()) {
+                this.forget(level);
+            }
+        }
+    }
+    
+    ///
+    /// Forgets the server scope and every server level scope that belong to another server than the given one, without ending them.
+    ///
+    private void forgetStale(MinecraftServer running) {
+        // Their server stopped without our stop listener running, so their thread is gone and they cannot be ended anymore.
+        if (this.server != null && this.serverOfScope != running) {
+            this.server = null;
+            this.serverOfScope = null;
+        }
+        
+        for (Level level : this.scopesByLevel.keySet()) {
+            if (level instanceof ServerLevel serverLevel && serverLevel.getServer() != running) {
+                Ticks.UNLOADED_LEVELS.add(level);
+                this.scopesByLevel.remove(level);
+                Bindings.drop(level);
+            }
+        }
+    }
+    
+    ///
+    /// Marks the level as unloaded, ends and removes its scope if it has one, and then drops its bindings.
+    ///
+    private void forget(Level level) {
         Ticks.UNLOADED_LEVELS.add(level);
         TickScope scope = this.scopesByLevel.remove(level);
         if (scope != null) {
@@ -171,15 +236,5 @@ public final class Ticks {
         }
         
         Bindings.drop(level);
-    }
-    
-    ///
-    /// Ends and forgets the server scope if there is one.
-    ///
-    private void onServerStopped(ServerStoppedEvent event) {
-        if (this.server != null) {
-            this.server.end();
-            this.server = null;
-        }
     }
 }

@@ -3,6 +3,7 @@ package dev.satherov.nexus.test.unit.api.keybind;
 import dev.satherov.nexus.Nexus;
 import dev.satherov.nexus.api.keybind.Keybind;
 import dev.satherov.nexus.api.keybind.Keybinds;
+import dev.satherov.nexus.api.network.payload.Payload;
 import dev.satherov.nexus.api.text.Translation;
 
 import net.neoforged.bus.api.SubscribeEvent;
@@ -21,7 +22,7 @@ import java.util.List;
 import java.util.Objects;
 
 ///
-/// Checks the keys and categories a mod declares, their translations, their payloads and the order the keys are kept in.
+/// Checks the keys and categories a mod declares, their translations, their payloads and their versions, and the order the keys are kept in.
 ///
 public class KeybindsTest {
     
@@ -37,6 +38,9 @@ public class KeybindsTest {
     private static @Nullable Keybind unsynced;
     private static @Nullable Keybind existing;
     private static @Nullable Throwable payloadClashRefusal;
+    private static @Nullable Keybind versioned;
+    private static @Nullable Throwable undeclaredCategoryRefusal;
+    private static @Nullable Keybind vanillaCategorized;
     
     private static ListAssert<String> assertEnglishOf(String key) {
         return Assertions.assertThat(Nexus.getMod().getTranslations().getAll()
@@ -130,6 +134,33 @@ public class KeybindsTest {
     }
     
     @Test
+    public void negotiatesTheKeyPayloadWithTheVersionItWasGiven() {
+        Payload<?> versioned = (Payload<?>) Objects.requireNonNull(Objects.requireNonNull(KeybindsTest.versioned).getPayload());
+        Payload<?> unversioned = (Payload<?>) Objects.requireNonNull(Objects.requireNonNull(KeybindsTest.unsynced).getPayload());
+        Assertions.assertThat(versioned.getVersion()).as("the version of the versioned key").isEqualTo("2");
+        Assertions.assertThat(unversioned.getVersion()).as("the version of a key without one").isEqualTo("1");
+    }
+    
+    @Test
+    public void refusesABlankVersion() {
+        Assertions.assertThatThrownBy(() -> KeybindsTest.KEYBINDS.key("keybinds_test_blank_version", "Blank").version(" ")).isInstanceOf(IllegalArgumentException.class);
+    }
+    
+    @Test
+    public void refusesAKeyInACategoryOfTheModThatItDidNotDeclare() {
+        Assertions.assertThat(KeybindsTest.undeclaredCategoryRefusal)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("nexus:keybinds_test_undeclared");
+        Assertions.assertThat(KeybindsTest.isTranslated("key.nexus.keybinds_test_undeclared")).isFalse();
+    }
+    
+    @Test
+    public void takesAKeyInAVanillaCategory() {
+        Assertions.assertThat(Objects.requireNonNull(KeybindsTest.vanillaCategorized).getName()).isEqualTo("key.nexus.keybinds_test_vanilla");
+        KeybindsTest.assertEnglishOf("key.nexus.keybinds_test_vanilla").containsExactly("Vanilla");
+    }
+    
+    @Test
     public void refusesAKeyAndACategoryAfterThePayloadHandlersEvent() {
         Identifier tools = Objects.requireNonNull(KeybindsTest.tools);
         
@@ -169,6 +200,12 @@ public class KeybindsTest {
             KeybindsTest.existing = keybinds.existing("key.keybinds_test_existing").onServer(_ -> { }).register();
             keybinds.existing("key.keybinds_test_Clash").onServer(_ -> { }).register();
             KeybindsTest.payloadClashRefusal = Assertions.catchThrowable(() -> keybinds.existing("key.keybinds_test_clash").syncHeld().register());
+            
+            KeybindsTest.versioned = keybinds.key("keybinds_test_versioned", "Versioned").category(tools).version("2").onServer(_ -> { }).register();
+            KeybindsTest.undeclaredCategoryRefusal = Assertions.catchThrowable(() -> keybinds.key("keybinds_test_undeclared", "Undeclared")
+                    .category(Nexus.getMod().id("keybinds_test_undeclared"))
+                    .register());
+            KeybindsTest.vanillaCategorized = keybinds.key("keybinds_test_vanilla", "Vanilla").category(Identifier.withDefaultNamespace("misc")).register();
         }
     }
 }

@@ -5,6 +5,9 @@ import dev.satherov.nexus.api.render.pipeline.Pipeline;
 import dev.satherov.nexus.internal.render.shader.Programs;
 import dev.satherov.nexus.internal.render.shader.VanillaSampler;
 
+import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
+import net.neoforged.neoforge.client.resources.VanillaClientListeners;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -12,6 +15,7 @@ import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.Identifier;
+import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
 import net.minecraft.util.ARGB;
 import net.minecraft.util.LightCoordsUtil;
 import net.minecraft.world.phys.Vec3;
@@ -41,6 +45,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 
 ///
 /// The sample pipelines and the draw hook that draws a quad in the shown one.
@@ -55,7 +60,7 @@ public final class SampleQuads {
     
     private static final int TINT_SIZE = 16;
     
-    private static final String BROKEN_PROGRAM = "pipeline_samples_broken";
+    private static final Identifier RELOAD_COUNTER = Identifier.fromNamespaceAndPath(Nexus.MOD_ID, "pipeline_samples_reloads");
     
     private static final Identifier TEXTURE = Identifier.withDefaultNamespace("textures/block/white_concrete.png");
     
@@ -78,6 +83,11 @@ public final class SampleQuads {
             .withCull(false)
             .build();
     
+    private static final RenderPipeline ENTITY_SOLID = RenderPipeline.builder(RenderPipelines.ENTITY_SNIPPET)
+            .withLocation(Identifier.fromNamespaceAndPath(Nexus.MOD_ID, "pipeline/pipeline_samples_entity_solid"))
+            .withSampler(VanillaSampler.OVERLAY.getGlslName())
+            .build();
+    
     private static final RenderPipeline.Snippet TEXTURED_STATE = RenderPipeline.builder().withCull(false).buildSnippet();
     
     private static final RenderType SOLID_TYPE = RenderType.create("nexus_pipeline_samples_solid", RenderSetup.builder(SampleQuads.SOLID).createRenderSetup());
@@ -88,7 +98,9 @@ public final class SampleQuads {
     
     private static final Map<RenderPipeline, RenderType> PROGRAM_TYPES = new HashMap<>();
     
-    private static final List<String> BROKEN_LOGS = new CopyOnWriteArrayList<>();
+    private static final List<String> PROGRAM_LOGS = new CopyOnWriteArrayList<>();
+    
+    private static final AtomicInteger RELOADS = new AtomicInteger();
     
     private static @Nullable RenderType shown;
     
@@ -99,6 +111,8 @@ public final class SampleQuads {
     private static Vec3 center = Vec3.ZERO;
     
     private static int tint = SampleQuads.WHITE;
+    
+    private static int overlay = OverlayTexture.NO_OVERLAY;
     
     private SampleQuads() { }
     
@@ -128,7 +142,7 @@ public final class SampleQuads {
         VertexConsumer vertex = buffer.addVertex(matrix, x, y, z)
                 .setColor(SampleQuads.WHITE)
                 .setUv(0.0F, 0.0F)
-                .setOverlay(OverlayTexture.NO_OVERLAY)
+                .setOverlay(SampleQuads.overlay)
                 .setLight(LightCoordsUtil.FULL_BRIGHT)
                 .setNormal(0.0F, 0.0F, -1.0F);
         
@@ -147,6 +161,10 @@ public final class SampleQuads {
     
     public static RenderPipeline tinted() {
         return SampleQuads.TINTED;
+    }
+    
+    public static RenderPipeline entitySolid() {
+        return SampleQuads.ENTITY_SOLID;
     }
     
     public static RenderPipeline.Snippet texturedState() {
@@ -184,6 +202,10 @@ public final class SampleQuads {
         SampleQuads.center = center;
     }
     
+    public static void showHurtOverlay() {
+        SampleQuads.overlay = OverlayTexture.pack(OverlayTexture.NO_WHITE_U, OverlayTexture.RED_OVERLAY_V);
+    }
+    
     public static void throwMidVertex() {
         SampleQuads.throwMidVertex = true;
     }
@@ -191,25 +213,35 @@ public final class SampleQuads {
     public static void hide() {
         SampleQuads.shown = null;
         SampleQuads.failure = null;
+        SampleQuads.overlay = OverlayTexture.NO_OVERLAY;
     }
     
     public static @Nullable RuntimeException failure() {
         return SampleQuads.failure;
     }
     
-    public static List<String> brokenLogs() {
-        return SampleQuads.BROKEN_LOGS;
+    public static List<String> logsOf(String program) {
+        return SampleQuads.PROGRAM_LOGS.stream()
+                .filter(message -> message.contains(program))
+                .toList();
     }
     
-    public static void captureBrokenLogs() {
+    public static int reloads() {
+        return SampleQuads.RELOADS.get();
+    }
+    
+    public static void countReloads(AddClientReloadListenersEvent event) {
+        event.addListener(SampleQuads.RELOAD_COUNTER, (ResourceManagerReloadListener) _ -> SampleQuads.RELOADS.incrementAndGet());
+        // The sound manager reloads after the programs, so every counted reload has compiled them.
+        event.addDependency(VanillaClientListeners.SOUNDS, SampleQuads.RELOAD_COUNTER);
+    }
+    
+    public static void captureProgramLogs() {
         Appender appender = new AbstractAppender("nexus_pipeline_samples", null, null, true, Property.EMPTY_ARRAY) {
             
             @Override
             public void append(LogEvent event) {
-                String message = event.getMessage().getFormattedMessage();
-                if (message.contains(SampleQuads.BROKEN_PROGRAM)) {
-                    SampleQuads.BROKEN_LOGS.add(message);
-                }
+                SampleQuads.PROGRAM_LOGS.add(event.getMessage().getFormattedMessage());
             }
         };
         appender.start();

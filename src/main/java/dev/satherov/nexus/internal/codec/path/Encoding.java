@@ -4,14 +4,20 @@ import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.UtilityClass;
 
+import dev.satherov.nexus.Nexus;
 import dev.satherov.nexus.api.codec.Access;
 import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.codec.format.CodecFormat;
+import dev.satherov.nexus.api.codec.result.NexusCodecException;
 import dev.satherov.nexus.internal.codec.format.NbtOperations;
 import dev.satherov.nexus.internal.network.client.ClientConnection;
 
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.CommonHooks;
+import net.neoforged.neoforge.event.level.LevelEvent;
+import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import net.minecraft.core.HolderLookup;
@@ -23,6 +29,8 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
+
+import com.google.common.annotations.VisibleForTesting;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
@@ -39,6 +47,7 @@ import java.util.concurrent.ConcurrentHashMap;
 ///
 @UtilityClass
 @ApiStatus.Internal
+@EventBusSubscriber(modid = Nexus.MOD_ID)
 public class Encoding {
     
     ///
@@ -47,9 +56,33 @@ public class Encoding {
     private static final SideRegistries UNCONNECTED = new SideRegistries(null);
     
     ///
-    /// The registries that were used last, or `null` if none were used yet.
+    /// The registries that were used last, or `null` if none were used yet or they were dropped.
     ///
     private static volatile @Nullable SideRegistries lastRegistries;
+    
+    ///
+    /// Drops the registries that were used last once the server stopped.
+    ///
+    /// @param event The event of the stopped server.
+    ///
+    @SubscribeEvent
+    private static void onServerStopped(ServerStoppedEvent event) {
+        Encoding.lastRegistries = null;
+    }
+    
+    ///
+    /// Drops the registries that were used last if the level that unloaded is the client level.
+    ///
+    /// The client level unloads when the client disconnects or changes its dimension.
+    ///
+    /// @param event The event of the unloaded level.
+    ///
+    @SubscribeEvent
+    private static void onLevelUnload(LevelEvent.Unload event) {
+        if (event.getLevel().isClientSide()) {
+            Encoding.lastRegistries = null;
+        }
+    }
     
     ///
     /// Encodes the given value with the given codec to NBT.
@@ -65,10 +98,31 @@ public class Encoding {
         //noinspection unchecked Every access is a supertype of Access.Registries, the last of the sealed accesses.
         NexusCodec<T, ? super Access.Registries> viewed = (NexusCodec<T, ? super Access.Registries>) codec;
         try {
-            return viewed.encode(Encoding.current().format, value);
+            return viewed.encode(Encoding.format(Encoding.sourceOfRegistries()), value);
         } catch (RuntimeException failure) {
             return null;
         }
+    }
+    
+    ///
+    /// Checks that the given codec can encode the given value to NBT, with the registries of the running server or of the client's play connection.
+    ///
+    /// Does nothing if neither exists, since a value that holds a holder of a registry that only a world loads could not be encoded then.
+    ///
+    /// @param codec The codec of the value.
+    /// @param value The value to check.
+    ///
+    /// @throws NexusCodecException If the value could not be encoded.
+    ///
+    public static <T> void requireEncodable(NexusCodec<T, ?> codec, T value) {
+        RegistryAccess source = Encoding.sourceOfRegistries();
+        if (source == null) {
+            return;
+        }
+        
+        //noinspection unchecked Every access is a supertype of Access.Registries, the last of the sealed accesses.
+        NexusCodec<T, ? super Access.Registries> viewed = (NexusCodec<T, ? super Access.Registries>) codec;
+        viewed.encode(Encoding.format(source), value);
     }
     
     ///
@@ -82,15 +136,28 @@ public class Encoding {
     /// @return The owner of the registry, or `null` if the registries don't have it.
     ///
     public static <T> @Nullable HolderOwner<T> owner(ResourceKey<? extends Registry<T>> registry) {
-        return Encoding.current().find(registry);
+        return Encoding.registries(Encoding.sourceOfRegistries()).find(registry);
     }
     
     ///
-    /// Gets the registries of the current side and creates new ones only if their source changed.
+    /// Gets the NBT format over the registries of the given source and creates new registries only if the source changed.
     ///
-    private static SideRegistries current() {
-        RegistryAccess source = Encoding.sourceOfRegistries();
+    /// @param source The registry access of the running server or of the client's play connection, or `null` if neither exists.
+    ///
+    /// @return The NBT format over the registries.
+    ///
+    @VisibleForTesting
+    public static CodecFormat<Tag, Access.Registries> format(@Nullable RegistryAccess source) {
+        return Encoding.registries(source).format;
+    }
+    
+    ///
+    /// Gets the registries of the given source and creates new ones only if the source changed.
+    ///
+    private static SideRegistries registries(@Nullable RegistryAccess source) {
         if (source == null) {
+            // A call between the stopped event of a server and its removal can still pick up its registries, so we drop them here as well.
+            Encoding.lastRegistries = null;
             return Encoding.UNCONNECTED;
         }
         

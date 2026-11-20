@@ -15,12 +15,16 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLConstructModEvent;
 
 import net.minecraft.core.Direction;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.flag.FeatureFlags;
 import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.Rarity;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.RotatedPillarBlock;
@@ -32,6 +36,8 @@ import org.jspecify.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 ///
 /// Checks the blocks and block items that block builders register, with their states, stacks, and translations.
@@ -39,13 +45,23 @@ import java.util.Objects;
 public class BlockBuilderSamples {
     
     private static final List<Block> CALLBACKS = new ArrayList<>();
+    private static final AtomicInteger SHARED_CALLS = new AtomicInteger();
+    private static final Supplier<BlockBehaviour.Properties> SHARED = () -> {
+        BlockBuilderSamples.SHARED_CALLS.incrementAndGet();
+        return BlockBehaviour.Properties.of().strength(3.5F);
+    };
     
     private static @Nullable PlainBlockEntry<Block> plain;
     private static @Nullable BlockEntry<Block, BlockItem> withItem;
     private static @Nullable BlockEntry<RotatedPillarBlock, BlockItem> pillar;
     private static @Nullable BlockEntry<Block, BlockItem> editedItem;
+    private static @Nullable BlockEntry<Block, BlockItem> replacedItem;
+    private static @Nullable PlainBlockEntry<Block> sharedLit;
+    private static @Nullable PlainBlockEntry<Block> sharedDark;
     private static @Nullable PlainBlockBuilder<Block, Registrations> takenOver;
+    private static @Nullable PlainBlockBuilder<Block, Registrations> unregistered;
     private static @Nullable Throwable itemRefusal;
+    private static @Nullable Throwable takenItemRefusal;
     private static boolean tintsRequested;
     
     @ServerTest
@@ -141,6 +157,41 @@ public class BlockBuilderSamples {
     }
     
     @ServerTest
+    public static void keepsTheBlocksFeaturesOnAnItemWhosePropertiesWereReplaced(GameTestHelper helper) {
+        BlockEntry<Block, BlockItem> replacedItem = Objects.requireNonNull(BlockBuilderSamples.replacedItem);
+        helper.assertTrue(replacedItem.asItem().requiredFeatures().contains(FeatureFlags.REDSTONE_EXPERIMENTS), "The item lost the features of the block with its properties");
+        helper.assertValueEqual(replacedItem.stack().get(DataComponents.RARITY), Rarity.RARE, "rarity");
+        helper.succeed();
+    }
+    
+    @ServerTest
+    public static void keepsTheEditsOfSharedPropertiesToTheirOwnBlock(GameTestHelper helper) {
+        helper.assertValueEqual(BlockBuilderSamples.SHARED_CALLS.get(), 2, "calls of the shared supplier, one for each block");
+        helper.assertValueEqual(Objects.requireNonNull(BlockBuilderSamples.sharedLit).getDefaultState().getLightEmission(), 15, "light emission of the edited block");
+        helper.assertValueEqual(Objects.requireNonNull(BlockBuilderSamples.sharedDark).getDefaultState().getLightEmission(), 0, "light emission of the other block");
+        helper.assertValueEqual(Objects.requireNonNull(BlockBuilderSamples.sharedDark).value().defaultDestroyTime(), 3.5F, "destroy time of the other block");
+        helper.succeed();
+    }
+    
+    @ServerTest
+    public static void declaresNoTranslationForABlockThatWasNotRegistered(GameTestHelper helper) {
+        List<String> keys = Nexus.getMod().getTranslations().getAll().stream().map(Translation::getKey).toList();
+        helper.assertFalse(keys.contains("block.nexus." + Objects.requireNonNull(BlockBuilderSamples.unregistered).getName()), "The block that was not registered declared its translation");
+        helper.succeed();
+    }
+    
+    @ServerTest
+    public static void refusesABlockWhoseItemIsTakenBeforeDeclaringAnything(GameTestHelper helper) {
+        Throwable refusal = BlockBuilderSamples.takenItemRefusal;
+        List<String> keys = Nexus.getMod().getTranslations().getAll().stream().map(Translation::getKey).toList();
+        helper.assertTrue(refusal instanceof IllegalStateException, "The block with a taken item was registered");
+        helper.assertValueEqual(Objects.requireNonNull(refusal).getMessage(), "'nexus:block_builder_samples_taken' is already registered", "message");
+        helper.assertFalse(BuiltInRegistries.BLOCK.containsKey(Nexus.getMod().id("block_builder_samples_taken")), "The block with a taken item is in the registry");
+        helper.assertFalse(keys.contains("block.nexus.block_builder_samples_taken"), "The block with a taken item declared its translation");
+        helper.succeed();
+    }
+    
+    @ServerTest
     public static void keepsWhatWasRecordedBeforeTheItem(GameTestHelper helper) {
         BlockEntry<Block, BlockItem> withItem = BlockBuilderSamples.withItem();
         helper.assertValueEqual(List.copyOf(withItem.getTags()), List.of(BlockTags.MINEABLE_WITH_PICKAXE, BlockTags.NEEDS_STONE_TOOL), "tags");
@@ -151,7 +202,7 @@ public class BlockBuilderSamples {
     @ServerTest
     public static void refusesChangesToTheBlockBuilderAfterTheItem(GameTestHelper helper) {
         PlainBlockBuilder<Block, Registrations> builder = BlockBuilderSamples.takenOver();
-        helper.assertTrue(Assertions.catchThrowable(() -> builder.properties(BlockBehaviour.Properties.of())) instanceof IllegalStateException, "The properties were replaced");
+        helper.assertTrue(Assertions.catchThrowable(() -> builder.properties(BlockBehaviour.Properties::of)) instanceof IllegalStateException, "The properties were replaced");
         helper.assertTrue(Assertions.catchThrowable(() -> builder.properties(properties -> properties)) instanceof IllegalStateException, "The properties were edited");
         helper.assertTrue(Assertions.catchThrowable(() -> builder.tint(List::of)) instanceof IllegalStateException, "The tint sources were replaced");
         helper.assertTrue(Assertions.catchThrowable(builder::item) instanceof IllegalStateException, "A second item was opened");
@@ -201,7 +252,7 @@ public class BlockBuilderSamples {
             Registrations registrations = Nexus.getMod().getRegistrations();
             BlockBuilderSamples.plain = registrations.block("block_builder_samples_plain", "Plain Sample Block")
                     .properties(properties -> properties.strength(9.0F))
-                    .properties(BlockBehaviour.Properties.of().strength(3.0F))
+                    .properties(() -> BlockBehaviour.Properties.of().strength(3.0F))
                     .properties(properties -> properties.friction(0.5F))
                     .tint(() -> {
                         BlockBuilderSamples.tintsRequested = true;
@@ -232,6 +283,30 @@ public class BlockBuilderSamples {
                     .properties(properties -> properties.requiredFeatures(FeatureFlags.MINECART_IMPROVEMENTS))
                     .end()
                     .register();
+            
+            BlockBuilderSamples.replacedItem = registrations.block("block_builder_samples_replaced_item", "Sample Block With Replaced Item")
+                    .properties(properties -> properties.requiredFeatures(FeatureFlags.REDSTONE_EXPERIMENTS))
+                    .item()
+                    .properties(() -> new Item.Properties().rarity(Rarity.RARE))
+                    .end()
+                    .register();
+            
+            BlockBuilderSamples.sharedLit = registrations.block("block_builder_samples_shared_lit", "Lit Shared Sample Block")
+                    .properties(BlockBuilderSamples.SHARED)
+                    .properties(properties -> properties.lightLevel(_ -> 15))
+                    .register();
+            BlockBuilderSamples.sharedDark = registrations.block("block_builder_samples_shared_dark", "Dark Shared Sample Block")
+                    .properties(BlockBuilderSamples.SHARED)
+                    .register();
+            
+            BlockBuilderSamples.unregistered = registrations.block("block_builder_samples_unregistered", "Unregistered Sample Block");
+            
+            registrations.item("block_builder_samples_taken", "Taken Sample Item").noTab().register();
+            BlockBuilderSamples.takenItemRefusal = Assertions.catchThrowable(() -> registrations.block("block_builder_samples_taken", "Sample Block With Taken Item")
+                    .item()
+                    .end()
+                    .register()
+            );
         }
     }
 }

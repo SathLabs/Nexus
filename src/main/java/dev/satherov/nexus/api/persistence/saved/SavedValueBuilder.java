@@ -9,7 +9,6 @@ import dev.satherov.nexus.api.network.PayloadBuilder;
 import dev.satherov.nexus.api.persistence.Persistence;
 import dev.satherov.nexus.api.persistence.format.Format;
 import dev.satherov.nexus.internal.persistence.saved.SavedScope;
-import dev.satherov.nexus.internal.persistence.saved.SavedValueData;
 
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
@@ -101,7 +100,7 @@ public final class SavedValueBuilder<SCOPE, VALUE> {
     /// Syncs the value to the players in its scope with the given codec.
     ///
     /// Whenever the value is set or updated, the whole value will be sent to every player in the scope.
-    /// A player will get the value of the server on login, and the value of a level whenever it enters that level.
+    /// A player will get the value of the server on login and on respawn, and the value of a level whenever it logs in, changes to that level, or respawns in it.
     ///
     /// The payload will be declared on the network of the mod as `<modid>:saved/<name>`.
     /// It is optional, so a player whose connection lacks the payload will not be sent the value.
@@ -122,13 +121,15 @@ public final class SavedValueBuilder<SCOPE, VALUE> {
     ///
     /// @return The handle of the value.
     ///
-    /// @throws IllegalStateException If a server already started, if the mod already declared a server or level value with the same name,
-    /// or if the value is synced and the payload handler event already ran.
+    /// @throws IllegalStateException - If a server already started.
+    /// - If the mod already declared a saved value or an archive with the same name.
+    /// - If the name lies inside the folder of a name the mod already declared, or the reverse.
+    /// - If the value is synced and the payload handler event already ran.
     ///
     public SavedValue<SCOPE, VALUE> register() {
         Identifier id = this.persistence.declare(this.name);
         PayloadBuilder<VALUE> sync = this.makePayloadBuilder();
-        return new SavedValue<>(this.scope, SavedValueData.type(id, this.format, this.initial), this.initial, sync);
+        return new SavedValue<>(this.scope, id, this.format, this.initial, this.codec, sync);
     }
     
     ///

@@ -423,6 +423,20 @@ public class TraversalReaderTest {
                     "minecraft:dirt"
             );
             
+            Assertions.assertThat(TraversalReaderTest.passes(
+                    TraversalReaderTest.ITEMS,
+                    TraversalReaderTest.ROOT,
+                    HolderSet.direct(TraversalReaderTest.STONE),
+                    Comparison.Operator.EQUAL,
+                    "minecraft:stone"
+            )).isTrue();
+            Assertions.assertThat(TraversalReaderTest.passes(
+                    TraversalReaderTest.ITEMS,
+                    TraversalReaderTest.path(1),
+                    HolderSet.direct(TraversalReaderTest.STONE, TraversalReaderTest.DIRT),
+                    Comparison.Operator.EQUAL,
+                    "minecraft:dirt"
+            )).isTrue();
             Assertions.assertThat(TraversalReaderTest.reader(TraversalReaderTest.ITEMS, TraversalReaderTest.ROOT)).isInstanceOf(Traversal.EncodedReader.class);
         }
     }
@@ -821,6 +835,11 @@ public class TraversalReaderTest {
                 TraversalReaderTest.assertParity(numbers, TraversalReaderTest.path(1), value, 6);
                 TraversalReaderTest.assertParity(numbers, TraversalReaderTest.path(TraversalReaderTest.ANY), value, 5);
             }
+            
+            Assertions.assertThat(TraversalReaderTest.passes(numbers, TraversalReaderTest.ROOT, List.of(5), Comparison.Operator.EQUAL, 5)).isTrue();
+            Assertions.assertThat(TraversalReaderTest.passes(numbers, TraversalReaderTest.path(1), List.of(5, 6), Comparison.Operator.EQUAL, 6)).isTrue();
+            Assertions.assertThat(TraversalReaderTest.passes(numbers, TraversalReaderTest.path(1), List.of(5, 6), Comparison.Operator.EQUAL, 7)).isFalse();
+            Assertions.assertThat(TraversalReaderTest.reader(numbers, TraversalReaderTest.ROOT)).isInstanceOf(Traversal.EncodedReader.class);
         }
     }
     
@@ -838,6 +857,8 @@ public class TraversalReaderTest {
             Assertions.assertThat(TraversalReaderTest.reader(TraversalReaderTest.WORDS, TraversalReaderTest.path(0)).getCost()).isEqualTo(PathReader.Cost.SCAN);
             Assertions.assertThat(TraversalReaderTest.reader(TraversalReaderTest.NUMBERS, any).getCost()).isEqualTo(PathReader.Cost.SCAN);
             Assertions.assertThat(TraversalReaderTest.reader(TraversalReaderTest.COUNTS, TraversalReaderTest.path("a")).getCost()).isEqualTo(PathReader.Cost.SCAN);
+            Assertions.assertThat(TraversalReaderTest.reader(TraversalReaderTest.SHORT_LISTING, TraversalReaderTest.ROOT).getCost()).isEqualTo(PathReader.Cost.DIRECT);
+            Assertions.assertThat(TraversalReaderTest.reader(TraversalReaderTest.SHORT_LISTING, TraversalReaderTest.path("count")).getCost()).isEqualTo(PathReader.Cost.DIRECT);
             Assertions.assertThat(TraversalReaderTest.reader(NexusCodec.UUID, TraversalReaderTest.ROOT).getCost()).isEqualTo(PathReader.Cost.ENCODE);
             Assertions.assertThat(TraversalReaderTest.reader(NexusCodec.UUID.list(), TraversalReaderTest.path(0)).getCost()).isEqualTo(PathReader.Cost.ENCODE);
             Assertions.assertThat(TraversalReaderTest.reader(NexusCodec.UUID.list(), any).getCost()).isEqualTo(PathReader.Cost.ENCODE);
@@ -859,6 +880,7 @@ public class TraversalReaderTest {
         public void aDirectReadAllocatesNothing() {
             Listing listing = new Listing("stone", 5, Optional.empty());
             Circle circle = new Circle("red", 5);
+            NexusCodec<Listing, Access.Plain> shortLabel = TraversalReaderTest.LISTING.orShort(NexusCodec.STRING, label -> new Listing(label, 1, Optional.of(label)), Listing::label);
             
             Assertions.assertThat(TraversalReaderTest.allocatedBy(NexusCodec.BOOL, TraversalReaderTest.ROOT, true, true)).isLessThan(1_024);
             Assertions.assertThat(TraversalReaderTest.allocatedBy(
@@ -882,6 +904,8 @@ public class TraversalReaderTest {
                     5
             )).isLessThan(1_024);
             Assertions.assertThat(TraversalReaderTest.allocatedBy(TraversalReaderTest.SHAPE, TraversalReaderTest.path("type"), circle, "nexus:circle")).isLessThan(1_024);
+            Assertions.assertThat(TraversalReaderTest.allocatedBy(TraversalReaderTest.SHORT_LISTING, TraversalReaderTest.path("count"), listing, 5)).isLessThan(1_024);
+            Assertions.assertThat(TraversalReaderTest.allocatedBy(shortLabel, TraversalReaderTest.ROOT, new Listing("stone", 5, Optional.of("Stone")), "Stone")).isLessThan(1_024);
         }
     }
     

@@ -9,6 +9,7 @@ import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.registries.DataPackRegistriesHooks;
 import net.neoforged.neoforge.registries.RegisterEvent;
 
 import net.minecraft.core.Registry;
@@ -20,7 +21,6 @@ import org.jetbrains.annotations.ApiStatus;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -54,16 +54,23 @@ public final class EntryRegister<REGISTRY> {
     private final List<RegistryEntry<?, ?>> entries;
     
     ///
+    /// A view of every registry whose registry event already ran on the event bus of the mod.
+    ///
+    /// @see Registrations#firedRegistries
+    ///
+    private final Set<ResourceKey<? extends Registry<?>>> firedRegistries;
+    
+    ///
     /// The identifiers of the entries of this register.
     ///
     private final Set<Identifier> ids = new HashSet<>();
     
     ///
-    /// All entries of this register with their factories, in registration order.
+    /// The registrations of the entries of this register, called with the registry event in registration order.
     ///
     /// Emptied once the registry event has run.
     ///
-    private final List<Map.Entry<RegistryEntry<REGISTRY, ?>, Supplier<REGISTRY>>> factories = new ArrayList<>();
+    private final List<Consumer<RegisterEvent>> pending = new ArrayList<>();
     
     ///
     /// The client hooks of the entries of this register.
@@ -75,13 +82,20 @@ public final class EntryRegister<REGISTRY> {
     ///
     /// Creates the empty register of the given registry and subscribes it to the given event bus.
     ///
-    /// @param registryKey The key of the registry.
-    /// @param bus         The event bus of the mod.
-    /// @param entries     A reference to the list of all entries of the mod, which this register adds its entries to.
+    /// @param registryKey     The key of the registry.
+    /// @param bus             The event bus of the mod.
+    /// @param entries         A reference to the list of all entries of the mod, which this register adds its entries to.
+    /// @param firedRegistries A view of every registry whose registry event already ran on the event bus of the mod.
     ///
-    public EntryRegister(ResourceKey<? extends Registry<REGISTRY>> registryKey, IEventBus bus, List<RegistryEntry<?, ?>> entries) {
+    public EntryRegister(
+            ResourceKey<? extends Registry<REGISTRY>> registryKey,
+            IEventBus bus,
+            List<RegistryEntry<?, ?>> entries,
+            Set<ResourceKey<? extends Registry<?>>> firedRegistries
+    ) {
         this.registryKey = registryKey;
         this.entries = entries;
+        this.firedRegistries = firedRegistries;
         
         bus.addListener(RegisterEvent.class, this::onRegisterObjects);
     }
@@ -104,9 +118,14 @@ public final class EntryRegister<REGISTRY> {
     ///
     /// @param id The identifier of the object to register.
     ///
-    /// @throws IllegalStateException If the registry event of the registry already ran, or if the identifier is already registered.
+    /// @throws IllegalArgumentException If the registry is a datapack registry.
+    /// @throws IllegalStateException    If the registry event of the registry already ran, or if the identifier is already registered.
     ///
     public void checkAddable(Identifier id) {
+        if (DataPackRegistriesHooks.getDataPackRegistriesWithDimensions().anyMatch(data -> data.key().equals(this.registryKey))) {
+            throw new IllegalArgumentException("Could not register '" + id + "' because '" + this.registryKey.identifier() + "' is a datapack registry");
+        }
+        
         if (this.hasFired()) {
             throw new IllegalStateException("Could not register '" + id + "' because the registry event of '" + this.registryKey.identifier() + "' already ran");
         }
@@ -119,18 +138,24 @@ public final class EntryRegister<REGISTRY> {
     ///
     /// Adds the given entry, whose object the given factory creates inside the registry event.
     ///
-    /// Should only ever be called from [Registrations#add(RegistryEntry, Supplier)].
+    /// Should only ever be called from [Registrations#add(RegistryEntry, Supplier, Consumer)].
     ///
-    /// @param entry   The still unbound entry.
-    /// @param factory The factory of the object.
+    /// @param entry    The still unbound entry.
+    /// @param factory  The factory of the object.
+    /// @param callback The callback, called with the object right after it is registered.
     ///
-    /// @throws IllegalStateException If the registry event of the registry already ran, or if the identifier of the entry is already registered.
+    /// @throws IllegalArgumentException If the registry is a datapack registry.
+    /// @throws IllegalStateException    If the registry event of the registry already ran, or if the identifier of the entry is already registered.
     ///
-    public <VALUE extends REGISTRY> void add(RegistryEntry<REGISTRY, VALUE> entry, Supplier<VALUE> factory) {
+    public <VALUE extends REGISTRY> void add(RegistryEntry<REGISTRY, VALUE> entry, Supplier<VALUE> factory, Consumer<VALUE> callback) {
         Identifier id = entry.getId();
         this.checkAddable(id);
         this.ids.add(id);
-        this.factories.add(Map.entry(entry, factory::get));
+        this.pending.add(event -> {
+            VALUE value = factory.get();
+            event.register(this.registryKey, id, () -> value);
+            callback.accept(value);
+        });
         this.entries.add(entry);
     }
     
@@ -153,7 +178,7 @@ public final class EntryRegister<REGISTRY> {
     /// If the registry event of the registry already ran.
     ///
     private boolean hasFired() {
-        return EntryRegister.FIRED_REGISTRIES.contains(this.registryKey);
+        return this.firedRegistries.contains(this.registryKey) || EntryRegister.FIRED_REGISTRIES.contains(this.registryKey);
     }
     
     ///
@@ -168,7 +193,7 @@ public final class EntryRegister<REGISTRY> {
     
     ///
     /// Registers the objects of the entries of this register in registration order if the given event is the one of its registry,
-    /// and then drops the factories.
+    /// and then drops the registrations.
     ///
     /// Runs at the normal priority, so before [ClientDispatch] runs the client hooks at the lowest.
     ///
@@ -177,7 +202,7 @@ public final class EntryRegister<REGISTRY> {
             return;
         }
         
-        this.factories.forEach(entry -> event.register(this.registryKey, entry.getKey().getId(), entry.getValue()));
-        this.factories.clear();
+        this.pending.forEach(registration -> registration.accept(event));
+        this.pending.clear();
     }
 }

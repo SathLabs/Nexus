@@ -41,6 +41,7 @@ public class KeyEventSamples {
     private static @Nullable Keybind cancelledActivation;
     private static @Nullable Keybind passed;
     private static @Nullable Keybind cancelledArrival;
+    private static @Nullable Keybind cancelledHeld;
 
     @ClientTest
     public static void cancelledActivationSkipsTheClientActionAndTheSend(Client client) {
@@ -100,6 +101,22 @@ public class KeyEventSamples {
         client.leaveWorld();
     }
 
+    @ClientTest
+    public static void cancelledActivationStillSendsTheHeldState(Client client) {
+        Keybind cancelledHeld = Objects.requireNonNull(KeyEventSamples.cancelledHeld);
+        Keyboard keyboard = client.keyboard();
+        KeyEventSamples.enterLevel(client);
+        ServerPlayer player = KeyEventSamples.getPlayer(client);
+        KeyEventSamples.reset();
+        keyboard.hold(GLFW.GLFW_KEY_END);
+        client.until("the server to read the key down", () -> cancelledHeld.isDown(player));
+        Assertions.assertThat(KeyEventSamples.CANCELLED_ACTIVATIONS.get()).as("cancelled activations of the key").isPositive();
+
+        keyboard.release(GLFW.GLFW_KEY_END);
+        client.until("the server to read the key up", () -> !cancelledHeld.isDown(player));
+        client.leaveWorld();
+    }
+
     private static void enterLevel(Client client) {
         client.joinWorld();
         client.until("the level to show", () -> client.screen() == null);
@@ -119,7 +136,10 @@ public class KeyEventSamples {
     }
 
     private static boolean isSampleKey(Keybind keybind) {
-        return keybind == KeyEventSamples.cancelledActivation || keybind == KeyEventSamples.passed || keybind == KeyEventSamples.cancelledArrival;
+        return keybind == KeyEventSamples.cancelledActivation ||
+                keybind == KeyEventSamples.passed ||
+                keybind == KeyEventSamples.cancelledArrival ||
+                keybind == KeyEventSamples.cancelledHeld;
     }
 
     @EventBusSubscriber(modid = Nexus.MOD_ID)
@@ -147,6 +167,11 @@ public class KeyEventSamples {
                     .onServer(_ -> KeyEventSamples.SERVER_RUNS.incrementAndGet())
                     .category(category)
                     .register();
+            KeyEventSamples.cancelledHeld = keybinds.key("key_event_samples_cancelled_held", "Cancelled Held")
+                    .defaultKey(GLFW.GLFW_KEY_END)
+                    .syncHeld()
+                    .category(category)
+                    .register();
         }
 
         @SubscribeEvent
@@ -156,7 +181,7 @@ public class KeyEventSamples {
                 return;
             }
 
-            if (keybind == KeyEventSamples.cancelledActivation) {
+            if (keybind == KeyEventSamples.cancelledActivation || keybind == KeyEventSamples.cancelledHeld) {
                 event.setCanceled(true);
                 KeyEventSamples.CANCELLED_ACTIVATIONS.incrementAndGet();
                 return;

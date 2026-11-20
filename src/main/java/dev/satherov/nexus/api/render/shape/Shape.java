@@ -39,17 +39,20 @@ public interface Shape {
     ///
     /// Creates the twelve edges and six faces of the given box.
     ///
+    /// If the box has no size along an axis, coinciding edges and faces will be drawn once and the ones without length or area will not be drawn.
+    ///
     /// @param box The box to draw.
     ///
     /// @return The box.
     ///
     static Shape box(AABB box) {
+        int flat = Shape.flatAxes(box);
         return brush -> {
             Paint paint = brush.getPaint();
             if (paint.stroke() != 0) {
                 for (int corner = 0; corner < 8; corner++) {
                     for (int axis = 1; axis < 8; axis <<= 1) {
-                        if ((corner & axis) == 0) {
+                        if ((corner & axis) == 0 && ((corner | axis) & flat) == 0) {
                             brush.line(Shape.corner(box, corner), Shape.corner(box, corner | axis), paint.stroke());
                         }
                     }
@@ -58,7 +61,10 @@ public interface Shape {
             
             if (paint.fill() != 0) {
                 for (Direction side : Direction.values()) {
-                    brush.quad(Quad.of(box, side), paint.fill());
+                    int normal = 1 << side.getAxis().ordinal();
+                    if ((flat & ~normal) == 0 && ((flat & normal) == 0 || side.getAxisDirection() == Direction.AxisDirection.POSITIVE)) {
+                        brush.quad(Quad.of(box, side), paint.fill());
+                    }
                 }
             }
         };
@@ -251,6 +257,24 @@ public interface Shape {
                 (index & 2) == 0 ? box.minY : box.maxY,
                 (index & 4) == 0 ? box.minZ : box.maxZ
         );
+    }
+    
+    ///
+    /// Gets the axes along which the given box has no size.
+    ///
+    /// @param box The box to check.
+    ///
+    /// @return The axes, with the bits `1`, `2`, and `4` set for x, y, and z.
+    ///
+    private static int flatAxes(AABB box) {
+        int flat = 0;
+        for (Direction.Axis axis : Direction.Axis.values()) {
+            if (box.min(axis) == box.max(axis)) {
+                flat |= 1 << axis.ordinal();
+            }
+        }
+        
+        return flat;
     }
     
     ///

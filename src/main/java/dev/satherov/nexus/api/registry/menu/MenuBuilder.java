@@ -63,6 +63,9 @@ public final class MenuBuilder<MENU extends AbstractContainerMenu, PARENT>
     /// - `<modid>` is the id of the mod of the given registrations.
     /// - `<name>` is the given name.
     ///
+    /// If no screen is registered for the menu type, the factory will never be called.
+    /// Call [#screen(ClientOnly)] to register one.
+    ///
     /// @param registrations The registrations to register through.
     /// @param name          The path of the identifier.
     /// @param english       The English title.

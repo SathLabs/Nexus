@@ -1,5 +1,5 @@
 ///
-/// The client listeners that track the login of the client and pass and end the client scope of each scheduler.
+/// The client listeners that track the login and the levels of the client, and pass and end the client scope of each scheduler.
 ///
 @NullMarked
 @CheckReturnValue

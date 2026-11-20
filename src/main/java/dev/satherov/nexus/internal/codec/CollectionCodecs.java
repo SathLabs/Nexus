@@ -402,6 +402,14 @@ public class CollectionCodecs {
                 case ComponentPath.Step.Key key -> throw CodecErrors.unexpectedStep("an index or a wildcard", key);
             };
         }
+        
+        ///
+        /// Checks the codec of the elements.
+        ///
+        @Override
+        public boolean hasKeyedForm() {
+            return this.codec.hasKeyedForm();
+        }
     }
     
     ///
@@ -567,6 +575,14 @@ public class CollectionCodecs {
             } catch (NexusCodecException _) {
                 return null;
             }
+        }
+        
+        ///
+        /// Checks the codec of the values, since a key is written as its string form in JSON and NBT.
+        ///
+        @Override
+        public boolean hasKeyedForm() {
+            return this.value.hasKeyedForm();
         }
     }
     

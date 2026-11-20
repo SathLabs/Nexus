@@ -90,9 +90,21 @@ public final class TabBuilder<PARENT>
     }
     
     ///
+    /// The first stack the tab of the given key shows, or an empty stack if it shows nothing.
+    ///
+    private static ItemStack getFirstItem(ResourceKey<CreativeModeTab> key) {
+        return BuiltInRegistries.CREATIVE_MODE_TAB.getValueOrThrow(key)
+                .getDisplayItems()
+                .stream()
+                .findFirst()
+                .orElse(ItemStack.EMPTY);
+    }
+    
+    ///
     /// Shows the given item as the icon.
     ///
     /// If the tab has no icon, it will show its first item.
+    /// The first item will be taken once, when the icon is first shown, and kept from then on.
     ///
     /// @param icon The item of the icon.
     ///
@@ -201,25 +213,15 @@ public final class TabBuilder<PARENT>
     ///
     @Override
     protected CreativeModeTab create() {
+        ResourceKey<CreativeModeTab> key = this.getKey();
         CreativeModeTab.Builder builder = CreativeModeTab.builder()
                 .title(this.translation.get().component())
-                .icon(Objects.requireNonNullElse(this.icon, this::getFirstItem));
+                .icon(Objects.requireNonNullElse(this.icon, () -> TabBuilder.getFirstItem(key)));
         for (UnaryOperator<CreativeModeTab.Builder> edit : this.edits) {
             builder = edit.apply(builder);
         }
         
         return builder.build();
-    }
-    
-    ///
-    /// The first stack the tab shows, or an empty stack if it shows nothing.
-    ///
-    private ItemStack getFirstItem() {
-        return BuiltInRegistries.CREATIVE_MODE_TAB.getValueOrThrow(this.getKey())
-                .getDisplayItems()
-                .stream()
-                .findFirst()
-                .orElse(ItemStack.EMPTY);
     }
     
     ///

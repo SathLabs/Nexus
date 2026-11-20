@@ -1,25 +1,38 @@
 package dev.satherov.nexus.test.game.api.tick;
 
 import dev.satherov.nexus.Nexus;
+import dev.satherov.nexus.api.tick.Job;
+import dev.satherov.nexus.api.tick.Scheduler;
 import dev.satherov.nexus.api.tick.Task;
 import dev.satherov.nexus.api.tick.TickScope;
 import dev.satherov.nexus.api.tick.Ticker;
+import dev.satherov.nexus.api.tick.budget.Budget;
 import dev.satherov.nexus.api.tick.ticker.Next;
 import dev.satherov.nexus.gametest.api.server.ServerTest;
 
+import net.neoforged.fml.LogicalSide;
+import net.neoforged.neoforge.common.util.Lazy;
+
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.server.level.ServerLevel;
 
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 ///
 /// Checks the passes on which the tasks and tickers of a level scope and of the server scope run.
 ///
 public class TickScopeSamples {
+    
+    private static final Lazy<Budget> ENDING = Lazy.of(() -> Nexus.getMod().getScheduler().budget("tick_scope_samples_ending", 1, 1));
+    private static final Lazy<Budget> AFTER_THE_END = Lazy.of(() -> Nexus.getMod().getScheduler().budget("tick_scope_samples_after_the_end", 1, 1));
     
     @ServerTest
     public static void delayedTaskRunsOnItsPassInLevel(GameTestHelper helper) {
@@ -101,6 +114,35 @@ public class TickScopeSamples {
             helper.assertValueEqual(runs.get(), 1, "runs of the task after one pass");
             helper.succeed();
         });
+    }
+    
+    @ServerTest
+    public static void scopeEndedInsideAJobStepStopsThePass(GameTestHelper helper) {
+        TickScope scope = new TickScope(Nexus.getMod().getScheduler(), LogicalSide.SERVER);
+        AtomicInteger steps = new AtomicInteger();
+        Job ending = scope.job(TickScopeSamples.ENDING.get(), () -> {
+            scope.end();
+            return true;
+        });
+        scope.job(TickScopeSamples.AFTER_THE_END.get(), () -> steps.incrementAndGet() > 0);
+        scope.pass(() -> true);
+        helper.assertValueEqual(steps.get(), 0, "steps of the job of the second budget after the scope ended");
+        helper.assertFalse(ending.isActive(), "The job that ended its scope is still active");
+        helper.succeed();
+    }
+    
+    @ServerTest
+    public static void scopesRequestedFromAnotherThreadThrow(GameTestHelper helper) {
+        Scheduler scheduler = Nexus.getMod().getScheduler();
+        ServerLevel level = helper.getLevel();
+        helper.assertTrue(TickScopeSamples.throwsOnAnotherThread(scheduler::server), "The server scope was handed to another thread");
+        helper.assertTrue(TickScopeSamples.throwsOnAnotherThread(() -> scheduler.in(level)), "The level scope was handed to another thread");
+        helper.succeed();
+    }
+    
+    private static boolean throwsOnAnotherThread(Supplier<TickScope> request) {
+        Throwable failure = CompletableFuture.supplyAsync(request).handle((_, thrown) -> thrown).join();
+        return failure instanceof CompletionException && failure.getCause() instanceof IllegalStateException;
     }
     
     private static void delayedTaskRunsOnItsPass(GameTestHelper helper, TickScope scope) {

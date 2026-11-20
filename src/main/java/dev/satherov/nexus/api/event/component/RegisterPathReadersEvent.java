@@ -1,7 +1,9 @@
 package dev.satherov.nexus.api.event.component;
 
+import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.api.component.ComponentPath;
 import dev.satherov.nexus.api.component.PathReader;
+import dev.satherov.nexus.internal.component.PathReaders;
 
 import net.neoforged.bus.api.Event;
 import net.neoforged.fml.event.IModBusEvent;
@@ -35,9 +37,9 @@ public final class RegisterPathReadersEvent extends Event implements IModBusEven
     private final Map<DataComponentType<?>, List<Function<List<ComponentPath.Step>, ? extends @Nullable PathReader<?>>>> componentReaders;
     
     ///
-    /// The functions registered by codec, which compares its keys by identity.
+    /// The functions registered by codec, under the key that [PathReaders#keyOf(Codec)] gets for the codec, which compares its keys by identity.
     ///
-    private final Map<Codec<?>, List<Function<List<ComponentPath.Step>, ? extends @Nullable PathReader<?>>>> codecReaders;
+    private final Map<Object, List<Function<List<ComponentPath.Step>, ? extends @Nullable PathReader<?>>>> codecReaders;
     
     ///
     /// Should only ever be called by Nexus itself.
@@ -48,7 +50,7 @@ public final class RegisterPathReadersEvent extends Event implements IModBusEven
     @ApiStatus.Internal
     public RegisterPathReadersEvent(
             Map<DataComponentType<?>, List<Function<List<ComponentPath.Step>, ? extends @Nullable PathReader<?>>>> componentReaders,
-            Map<Codec<?>, List<Function<List<ComponentPath.Step>, ? extends @Nullable PathReader<?>>>> codecReaders
+            Map<Object, List<Function<List<ComponentPath.Step>, ? extends @Nullable PathReader<?>>>> codecReaders
     ) {
         this.componentReaders = componentReaders;
         this.codecReaders = codecReaders;
@@ -71,6 +73,8 @@ public final class RegisterPathReadersEvent extends Event implements IModBusEven
     /// Registers a function that creates the readers of the paths on every component with the given codec.
     ///
     /// A component has the codec if the codec was given to its builder or [DataComponentType#codec()] returns it.
+    /// Every DFU codec that [NexusCodec#asDfu()] creates from one codec counts as the same codec.
+    /// A struct is the exception, since its DFU codec is a new codec on every call, so a reader for its components is registered by component.
     ///
     /// The function is called with the steps of every path that is created on such a component.
     /// If it returns `null`, the next function will be asked.
@@ -79,6 +83,6 @@ public final class RegisterPathReadersEvent extends Event implements IModBusEven
     /// @param readers The function that creates the reader of a path from its steps.
     ///
     public <VALUE> void register(Codec<VALUE> codec, Function<List<ComponentPath.Step>, @Nullable PathReader<VALUE>> readers) {
-        this.codecReaders.computeIfAbsent(codec, _ -> new ArrayList<>()).add(readers);
+        this.codecReaders.computeIfAbsent(PathReaders.keyOf(codec), _ -> new ArrayList<>()).add(readers);
     }
 }

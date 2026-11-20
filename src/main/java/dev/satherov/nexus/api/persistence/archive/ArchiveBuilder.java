@@ -78,6 +78,7 @@ public final class ArchiveBuilder<KEY extends ArchiveKey<KEY>, VALUE> {
     /// Sets the retention of the active entries and keeps every retired entry.
     ///
     /// The retention runs once when a server starts, over the group of a key after every write-action, and over every group when the archive is pruned.
+    /// After a queued write, it runs on the IO thread of the archive once the file is written.
     ///
     /// @param active The retention of the active entries.
     ///
@@ -92,6 +93,7 @@ public final class ArchiveBuilder<KEY extends ArchiveKey<KEY>, VALUE> {
     /// Sets the retention of the active and the retired entries.
     ///
     /// The retention runs once when a server starts, over the group of a key after every write, and over every group when the archive is pruned.
+    /// After a queued write, it runs on the IO thread of the archive once the file is written.
     ///
     /// @param active  The retention of the active entries.
     /// @param retired The retention of the retired entries.
@@ -108,18 +110,20 @@ public final class ArchiveBuilder<KEY extends ArchiveKey<KEY>, VALUE> {
     ///
     /// Imports the files of an older layout into the archive once per world.
     ///
-    /// When a server starts, the given reader will be called with every file below the given folder that isn't in the folder of the archive.
+    /// When a server starts, the given reader will be called with every file below the given folder that isn't in the folder of the archive,
+    /// as a path relative to the given folder.
     /// If the reader returns an entry, the file will be moved unchanged to the file of its key.
     /// If the reader returns empty, the file will be left where it is.
     ///
     /// A marker file will then be written into the folder of the archive, and the import won't run again while it exists.
-    /// A moved file that only holds a bare tag will be read as version `0` of the format.
+    /// A moved file that only holds a bare tag will be read as version `0` of the format,
+    /// so the format has to read version `0` or [#register()] will throw.
     ///
     /// If a file could not be moved, it will stay where it is and the failure will be logged.
     /// If the reader returns a key that can't be written, an [IllegalArgumentException] will be thrown once the server starts.
     ///
     /// @param folder The folder of the older layout, relative to the world folder.
-    /// @param reader The reader of one file, called with its path.
+    /// @param reader The reader of one file, called with its path relative to the folder.
     ///
     /// @return The builder for chaining.
     ///
@@ -136,9 +140,16 @@ public final class ArchiveBuilder<KEY extends ArchiveKey<KEY>, VALUE> {
     ///
     /// @return The new archive.
     ///
-    /// @throws IllegalStateException If a server already started, or if the mod already declared a saved value or an archive with the same name.
+    /// @throws IllegalStateException - If a server already started.
+    /// - If the mod already declared a saved value or an archive with the same name.
+    /// - If the name lies inside the folder of a name the mod already declared, or the reverse.
+    /// - If the archive imports an older layout and its format doesn't read version `0`.
     ///
     public Archive<KEY, VALUE> register() {
+        if (this.legacy != null && !this.format.canRead(0)) {
+            throw new IllegalStateException("Could not register '" + this.persistence.getMod().id(this.name) + "' because it imports an older layout and its format doesn't read version '0'");
+        }
+
         return new Archive<>(new ArchiveStore.Declaration<>(this.persistence.declare(this.name), this.keys, this.format, this.active, this.retired, this.legacy));
     }
 }

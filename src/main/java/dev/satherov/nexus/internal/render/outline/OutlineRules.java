@@ -3,6 +3,7 @@ package dev.satherov.nexus.internal.render.outline;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
+import dev.satherov.nexus.Nexus;
 import dev.satherov.nexus.api.render.outline.Outline;
 import dev.satherov.nexus.api.render.outline.OutlineRule;
 import dev.satherov.nexus.api.render.outline.Outlines;
@@ -13,11 +14,15 @@ import dev.satherov.nexus.internal.render.shape.MeshBrush;
 import dev.satherov.nexus.internal.render.shape.Primitives;
 
 import net.neoforged.neoforge.client.CustomBlockOutlineRenderer;
+import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
+import net.neoforged.neoforge.client.resources.VanillaClientListeners;
 
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.state.level.BlockOutlineRenderState;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
 import net.minecraft.world.phys.Vec3;
 
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -25,12 +30,10 @@ import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexFormat;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.Nullable;
 
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -52,9 +55,9 @@ public final class OutlineRules implements CustomBlockOutlineRenderer {
     public static final OutlineRules INSTANCE = new OutlineRules();
     
     ///
-    /// The order the render types are drawn in, lines last.
+    /// The key of the reload listener that drops the kept primitives.
     ///
-    private static final Comparator<RenderType> DRAW_ORDER = Comparator.comparing(type -> type.mode() == VertexFormat.Mode.LINES);
+    private static final Identifier KEY = Identifier.fromNamespaceAndPath(Nexus.MOD_ID, "outline_rules");
     
     ///
     /// Every replacing rule.
@@ -77,6 +80,11 @@ public final class OutlineRules implements CustomBlockOutlineRenderer {
     private @Nullable TargetedBlock target;
     
     ///
+    /// The number of rules there were when the kept primitives were recorded.
+    ///
+    private int recordedRules;
+    
+    ///
     /// The primitives of every outline the rules returned for the targeted block, the replacement first.
     ///
     private List<Primitives> primitives = List.of();
@@ -97,6 +105,16 @@ public final class OutlineRules implements CustomBlockOutlineRenderer {
         MeshBrush brush = new MeshBrush(outline.paint());
         outline.shape().draw(brush);
         return brush.finish();
+    }
+    
+    ///
+    /// Registers the reload listener that drops the kept primitives to run after the atlases are stitched.
+    ///
+    /// @param event The registration event of the client reload listeners.
+    ///
+    public static void register(AddClientReloadListenersEvent event) {
+        event.addListener(OutlineRules.KEY, (ResourceManagerReloadListener) _ -> OutlineRules.INSTANCE.end());
+        event.addDependency(VanillaClientListeners.ATLASES, OutlineRules.KEY);
     }
     
     ///
@@ -124,14 +142,15 @@ public final class OutlineRules implements CustomBlockOutlineRenderer {
     ///
     /// Collects the outlines every rule returns for the given targeted block and records their primitives.
     ///
-    /// If the targeted block equals the one of the last call, the kept primitives will be reused.
+    /// If the targeted block equals the one of the last call and no rule was added since, the kept primitives will be reused.
     ///
     /// @param target The targeted block.
     ///
     /// @return `true` if any rule returned an outline for the targeted block.
     ///
     public boolean update(TargetedBlock target) {
-        if (target.equals(this.target)) {
+        int rules = this.replacing.size() + this.adding.size();
+        if (target.equals(this.target) && rules == this.recordedRules) {
             return !this.primitives.isEmpty();
         }
         
@@ -146,6 +165,7 @@ public final class OutlineRules implements CustomBlockOutlineRenderer {
                 .toList();
         
         this.target = target;
+        this.recordedRules = rules;
         this.replaced = replacement.isPresent();
         this.primitives = Stream.concat(replacement.stream(), additions.stream()).map(OutlineRules::primitivesOf).toList();
         return !this.primitives.isEmpty();
@@ -187,16 +207,15 @@ public final class OutlineRules implements CustomBlockOutlineRenderer {
     }
     
     ///
-    /// Writes the kept primitives into one buffer per render type, relative to the given origin, and then draws every buffer, lines last.
+    /// Writes the kept primitives into one buffer per render type, relative to the given origin, and then draws every buffer in the order of [ShapePipelines#getAllRenderTypes()].
     ///
     /// If the program of a render type could not be compiled, its buffer will be dropped.
     ///
     /// @param origin The position of the camera, in the coordinates of the outlines.
     ///
     private void draw(Vec3 origin) {
-        List<RenderType> types = ShapePipelines.getAllRenderTypes().stream().sorted(OutlineRules.DRAW_ORDER).toList();
         Map<RenderType, BufferBuilder> builders = new LinkedHashMap<>();
-        for (RenderType type : types) {
+        for (RenderType type : ShapePipelines.getAllRenderTypes()) {
             builders.put(type, new BufferBuilder(this.memory(type), type.mode(), type.format()));
         }
         

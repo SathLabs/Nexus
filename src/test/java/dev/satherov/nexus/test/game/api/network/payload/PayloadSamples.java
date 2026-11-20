@@ -18,9 +18,12 @@ import net.neoforged.neoforge.network.configuration.ICustomConfigurationTask;
 import net.neoforged.neoforge.network.event.RegisterConfigurationTasksEvent;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.ConnectionProtocol;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.network.protocol.configuration.ServerConfigurationPacketListener;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ConfigurationTask;
@@ -47,6 +50,23 @@ public class PayloadSamples {
     private static final Set<String> RECEIVED = ConcurrentHashMap.newKeySet();
     private static final Map<String, ServerPlayer> SENDERS_BY_VALUE = new ConcurrentHashMap<>();
     private static final Set<String> ANSWERS = ConcurrentHashMap.newKeySet();
+    private static final String HANDLER = "handler";
+    private static final String ENQUEUED = "enqueued";
+    private static final Map<String, Boolean> SERVER_THREAD_BY_STEP = new ConcurrentHashMap<>();
+    private static final Payload<String> UNREGISTERED = new Payload<>(
+            Identifier.fromNamespaceAndPath(Nexus.MOD_ID, "payload_samples_unregistered"),
+            Payload.Direction.SERVERBOUND,
+            ConnectionProtocol.PLAY,
+            "1",
+            true
+    );
+    private static final Payload<String> UNREGISTERED_ANSWER = new Payload<>(
+            Identifier.fromNamespaceAndPath(Nexus.MOD_ID, "payload_samples_unregistered_answer"),
+            Payload.Direction.SERVERBOUND,
+            ConnectionProtocol.CONFIGURATION,
+            "1",
+            true
+    );
     
     private static @Nullable ClientboundPayload<String> clientbound;
     private static @Nullable ServerboundPayload<String> serverbound;
@@ -54,7 +74,9 @@ public class PayloadSamples {
     private static @Nullable Payload<String> optional;
     private static @Nullable ClientboundPayload<String> question;
     private static @Nullable ServerboundPayload<String> answer;
+    private static @Nullable ServerboundPayload<String> networkThread;
     private static @Nullable Throwable playerFailure;
+    private static @Nullable Throwable unregisteredReplyFailure;
     
     @ClientTest
     public static void sendToServerReachesTheServerAndTheReplyTheClient(Client client) {
@@ -89,6 +111,54 @@ public class PayloadSamples {
         Assertions.assertThat(optional.isOptional()).isTrue();
         Assertions.assertThat(optional.canSend(PayloadSamples.getPlayer(client))).isTrue();
         Assertions.assertThat(optional.canSendToServer()).isTrue();
+        client.leaveWorld();
+    }
+    
+    @ClientTest
+    public static void optionalPayloadSkipsAServerWithoutIt(Client client) {
+        client.joinWorld();
+        Assertions.assertThat(PayloadSamples.UNREGISTERED.canSendToServer()).isFalse();
+        Assertions.assertThatNoException().isThrownBy(() -> PayloadSamples.UNREGISTERED.sendToServer("unregistered to the server"));
+        client.leaveWorld();
+    }
+    
+    @ClientTest
+    public static void optionalReplySkipsAServerWithoutIt(Client client) {
+        PayloadSamples.unregisteredReplyFailure = null;
+        PayloadSamples.ANSWERS.clear();
+        client.joinWorld();
+        Assertions.assertThat(PayloadSamples.ANSWERS).containsExactly(PayloadSamples.ASKED);
+        Assertions.assertThat(PayloadSamples.unregisteredReplyFailure).isNull();
+        client.leaveWorld();
+    }
+    
+    @ClientTest
+    public static void canSendToServerRefusesWithoutAConnection(Client client) {
+        ServerboundPayload<String> serverbound = Objects.requireNonNull(PayloadSamples.serverbound);
+        Payload<String> optional = Objects.requireNonNull(PayloadSamples.optional);
+        Assertions.assertThatIllegalStateException().isThrownBy(serverbound::canSendToServer);
+        Assertions.assertThatIllegalStateException().isThrownBy(optional::canSendToServer);
+    }
+    
+    @ClientTest
+    public static void configurationPayloadRefusesAPlayConnection(Client client) {
+        client.joinWorld();
+        ServerPlayer player = PayloadSamples.getPlayer(client);
+        ClientboundPayload<String> question = Objects.requireNonNull(PayloadSamples.question);
+        Assertions.assertThat(question.canSend(player)).isFalse();
+        Assertions.assertThatIllegalStateException().isThrownBy(() -> question.send("question in play", ClientRecipients.player(player)));
+        client.leaveWorld();
+    }
+    
+    @ClientTest
+    public static void networkThreadHandlerRunsOffTheMainThreadAndEnqueuesOntoIt(Client client) {
+        PayloadSamples.SERVER_THREAD_BY_STEP.clear();
+        client.joinWorld();
+        Objects.requireNonNull(PayloadSamples.networkThread).sendToServer("network thread");
+        client.until("the enqueued task to run", () -> PayloadSamples.SERVER_THREAD_BY_STEP.containsKey(PayloadSamples.ENQUEUED));
+        Assertions.assertThat(PayloadSamples.SERVER_THREAD_BY_STEP)
+                .containsEntry(PayloadSamples.HANDLER, false)
+                .containsEntry(PayloadSamples.ENQUEUED, true);
         client.leaveWorld();
     }
     
@@ -240,11 +310,16 @@ public class PayloadSamples {
                     .bidirectional(() -> PayloadSamples.ClientHandlers::onClientValue, PayloadSamples.Registered::record);
             PayloadSamples.question = network.configuration("payload_samples_question", ByteBufCodecs.STRING_UTF8).toClient(() -> PayloadSamples.ClientHandlers::onQuestion);
             PayloadSamples.answer = network.configuration("payload_samples_answer", ByteBufCodecs.STRING_UTF8).toServer(PayloadSamples.Registered::onAnswer);
+            PayloadSamples.networkThread = network.play("payload_samples_network_thread", ByteBufCodecs.STRING_UTF8)
+                    .onNetworkThread()
+                    .toServer(PayloadSamples.Registered::onNetworkThread);
         }
         
         @SubscribeEvent
         public static void onRegisterConfigurationTasks(RegisterConfigurationTasksEvent event) {
-            event.register(new PayloadSamples.QuestionTask(event.getListener()));
+            if (Objects.requireNonNull(PayloadSamples.question).canSend(event.getListener())) {
+                event.register(new PayloadSamples.QuestionTask(event.getListener()));
+            }
         }
         
         private static void record(String value, ServerHandlerContext context) {
@@ -260,6 +335,14 @@ public class PayloadSamples {
             PayloadSamples.ANSWERS.add(value);
             context.finishCurrentTask(PayloadSamples.QuestionTask.TYPE);
         }
+        
+        private static void onNetworkThread(String value, ServerHandlerContext context) {
+            MinecraftServer server = context.getPlayer().level().getServer();
+            PayloadSamples.SERVER_THREAD_BY_STEP.put(PayloadSamples.HANDLER, server.isSameThread());
+            context.enqueue(() -> {
+                PayloadSamples.SERVER_THREAD_BY_STEP.put(PayloadSamples.ENQUEUED, server.isSameThread());
+            });
+        }
     }
     
     private static final class ClientHandlers {
@@ -270,6 +353,7 @@ public class PayloadSamples {
         
         private static void onQuestion(String value, ClientHandlerContext context) {
             PayloadSamples.playerFailure = Assertions.catchThrowable(context::getPlayer);
+            PayloadSamples.unregisteredReplyFailure = Assertions.catchThrowable(() -> PayloadSamples.UNREGISTERED_ANSWER.reply(value, context));
             Objects.requireNonNull(PayloadSamples.answer).reply(value, context);
         }
     }

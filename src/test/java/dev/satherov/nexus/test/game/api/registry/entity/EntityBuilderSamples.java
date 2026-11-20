@@ -6,6 +6,9 @@ import dev.satherov.nexus.api.registry.entity.EntityEntry;
 import dev.satherov.nexus.api.registry.entity.LivingEntityBuilder;
 import dev.satherov.nexus.api.registry.entity.MobEntityEntry;
 import dev.satherov.nexus.api.registry.item.ItemEntry;
+import dev.satherov.nexus.api.text.Translation;
+import dev.satherov.nexus.gametest.api.client.Client;
+import dev.satherov.nexus.gametest.api.client.ClientTest;
 import dev.satherov.nexus.gametest.api.server.ServerTest;
 
 import net.neoforged.bus.api.SubscribeEvent;
@@ -13,11 +16,14 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLConstructModEvent;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
 
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.NoopRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
@@ -45,6 +51,7 @@ import net.minecraft.world.level.storage.ValueOutput;
 import org.assertj.core.api.Assertions;
 import org.jspecify.annotations.Nullable;
 
+import java.util.List;
 import java.util.Objects;
 
 ///
@@ -57,8 +64,12 @@ public class EntityBuilderSamples {
     private static @Nullable EntityEntry<SampleEntity> refused;
     private static @Nullable MobEntityEntry<SampleMob, SpawnEggItem> mob;
     private static @Nullable MobEntityEntry<SampleMob, SampleEgg> custom;
+    private static @Nullable MobEntityEntry<SampleMob, SpawnEggItem> experimental;
+    private static @Nullable MobEntityEntry<SampleChild, SpawnEggItem> child;
     private static @Nullable LivingEntityBuilder<SampleMob, Registrations> takenOver;
-    private static boolean clientRequested;
+    private static @Nullable Throwable attributesRefusal;
+    private static @Nullable Throwable takenEggRefusal;
+    private static boolean clientCodeRan;
     
     @ServerTest
     public static void registersTheTypeUnderItsName(GameTestHelper helper) {
@@ -115,9 +126,9 @@ public class EntityBuilderSamples {
         BlockPos pos = helper.absolutePos(new BlockPos(1, 1, 1));
         SampleEntity spawned = Objects.requireNonNull(plain.spawn(helper.getLevel(), pos, EntitySpawnReason.COMMAND));
         helper.assertValueEqual(spawned.getType(), plain.value(), "type of the spawned entity");
-        helper.assertValueEqual(helper.getLevel().getEntity(spawned.getUUID()), spawned, "entity in the level");
         helper.assertValueEqual(spawned.blockPosition(), pos, "position of the spawned entity");
-        helper.succeed();
+        // The level only looks the entity up once the section it was added to is accessible, which may take a tick.
+        helper.succeedWhen(() -> helper.assertTrue(helper.getLevel().getEntity(spawned.getUUID()) == spawned, "The spawned entity is not in the level"));
     }
     
     @ServerTest
@@ -192,6 +203,26 @@ public class EntityBuilderSamples {
     }
     
     @ServerTest
+    public static void theEggSpawnsAnEntityWithTheDefaultData(GameTestHelper helper) {
+        MobEntityEntry<SampleChild, SpawnEggItem> child = EntityBuilderSamples.child();
+        BlockPos clicked = new BlockPos(1, 1, 1);
+        Player player = helper.makeMockPlayer(GameType.CREATIVE);
+        helper.setBlock(clicked, Blocks.STONE);
+        player.setItemInHand(InteractionHand.MAIN_HAND, child.getEgg().stack());
+        helper.useBlock(clicked, player);
+        List<SampleChild> spawned = helper.getEntities(child.value(), clicked, 2.0D);
+        helper.assertValueEqual(spawned.size(), 1, "number of spawned mobs");
+        helper.assertTrue(spawned.getFirst().isNoAi(), "The spawned mob does not have the default data of the egg");
+        helper.succeed();
+    }
+    
+    @ServerTest
+    public static void keepsTheFeaturesOfTheTypeOnAnEggWhosePropertiesWereReplaced(GameTestHelper helper) {
+        helper.assertTrue(EntityBuilderSamples.experimental().getEgg().value().requiredFeatures().contains(FeatureFlags.REDSTONE_EXPERIMENTS), "The spawn egg lost the features of the type with its properties");
+        helper.succeed();
+    }
+    
+    @ServerTest
     public static void appliesTheEggEditsAfterTheFeaturesOfTheType(GameTestHelper helper) {
         helper.assertTrue(EntityBuilderSamples.custom().getEgg().value().requiredFeatures().contains(FeatureFlags.TRADE_REBALANCE), "The features of the type replaced the features of the edit");
         helper.succeed();
@@ -221,9 +252,37 @@ public class EntityBuilderSamples {
     }
     
     @ServerTest
-    public static void neverRequestsTheRendererOnADedicatedServer(GameTestHelper helper) {
-        helper.assertFalse(EntityBuilderSamples.clientRequested, "A renderer was requested on a dedicated server");
+    public static void refusesALivingTypeWithoutAttributes(GameTestHelper helper) {
+        Throwable refusal = EntityBuilderSamples.attributesRefusal;
+        List<String> keys = Nexus.getMod().getTranslations().getAll().stream().map(Translation::getKey).toList();
+        helper.assertTrue(refusal instanceof IllegalStateException, "The living type without attributes was registered");
+        helper.assertValueEqual(Objects.requireNonNull(refusal).getMessage(), "Could not register 'nexus:entity_builder_samples_attributeless' because it has no attributes", "message");
+        helper.assertFalse(BuiltInRegistries.ENTITY_TYPE.containsKey(Nexus.getMod().id("entity_builder_samples_attributeless")), "The living type without attributes is in the registry");
+        helper.assertFalse(keys.contains("entity.nexus.entity_builder_samples_attributeless"), "The living type without attributes declared its translation");
         helper.succeed();
+    }
+    
+    @ServerTest
+    public static void refusesATypeWhoseEggIsTakenBeforeDeclaringAnything(GameTestHelper helper) {
+        Throwable refusal = EntityBuilderSamples.takenEggRefusal;
+        List<String> keys = Nexus.getMod().getTranslations().getAll().stream().map(Translation::getKey).toList();
+        helper.assertTrue(refusal instanceof IllegalStateException, "The type with a taken spawn egg was registered");
+        helper.assertValueEqual(Objects.requireNonNull(refusal).getMessage(), "'nexus:entity_builder_samples_taken_spawn_egg' is already registered", "message");
+        helper.assertFalse(BuiltInRegistries.ENTITY_TYPE.containsKey(Nexus.getMod().id("entity_builder_samples_taken")), "The type with a taken spawn egg is in the registry");
+        helper.assertFalse(keys.contains("entity.nexus.entity_builder_samples_taken"), "The type with a taken spawn egg declared its translation");
+        helper.succeed();
+    }
+    
+    @ServerTest
+    public static void neverRunsTheClientCodeOnADedicatedServer(GameTestHelper helper) {
+        helper.assertFalse(EntityBuilderSamples.clientCodeRan, "The client code of an entity type ran on a dedicated server");
+        helper.succeed();
+    }
+    
+    @ClientTest
+    public static void rendersASubclassWithTheRendererOfItsSuperclass(Client client) {
+        client.joinWorld();
+        Assertions.assertThat(SampleClient.rendererOf(client, EntityBuilderSamples.child())).as("renderer of the subclass").isInstanceOf(NoopRenderer.class);
     }
     
     private static EntityEntry<SampleEntity> plain() {
@@ -244,6 +303,14 @@ public class EntityBuilderSamples {
     
     private static MobEntityEntry<SampleMob, SampleEgg> custom() {
         return Objects.requireNonNull(EntityBuilderSamples.custom);
+    }
+    
+    private static MobEntityEntry<SampleMob, SpawnEggItem> experimental() {
+        return Objects.requireNonNull(EntityBuilderSamples.experimental);
+    }
+    
+    private static MobEntityEntry<SampleChild, SpawnEggItem> child() {
+        return Objects.requireNonNull(EntityBuilderSamples.child);
     }
     
     private static LivingEntityBuilder<SampleMob, Registrations> takenOver() {
@@ -271,9 +338,16 @@ public class EntityBuilderSamples {
         protected void addAdditionalSaveData(ValueOutput output) { }
     }
     
-    private static final class SampleMob extends Mob {
+    private static class SampleMob extends Mob {
         
         private SampleMob(EntityType<? extends Mob> type, Level level) {
+            super(type, level);
+        }
+    }
+    
+    private static final class SampleChild extends SampleMob {
+        
+        private SampleChild(EntityType<? extends Mob> type, Level level) {
             super(type, level);
         }
     }
@@ -290,6 +364,16 @@ public class EntityBuilderSamples {
         private static <ENTITY extends Entity> NoopRenderer<ENTITY> renderer(EntityRendererProvider.Context context) {
             return new NoopRenderer<>(context);
         }
+        
+        private static NoopRenderer<SampleMob> mobRenderer(EntityRendererProvider.Context context) {
+            return new NoopRenderer<>(context);
+        }
+        
+        private static @Nullable EntityRenderer<?, ?> rendererOf(Client client, EntityEntry<?> entry) {
+            Minecraft minecraft = client.minecraft();
+            Entity entity = Objects.requireNonNull(entry.create(Objects.requireNonNull(minecraft.level), EntitySpawnReason.COMMAND));
+            return minecraft.getEntityRenderDispatcher().getRenderer(entity);
+        }
     }
     
     @EventBusSubscriber(modid = Nexus.MOD_ID)
@@ -302,10 +386,8 @@ public class EntityBuilderSamples {
                     .type(builder -> builder.eyeHeight(0.5F))
                     .size(2.0F, 3.0F)
                     .type(EntityType.Builder::fireImmune)
-                    .renderer(() -> {
-                        EntityBuilderSamples.clientRequested = true;
-                        return SampleClient::renderer;
-                    })
+                    .renderer(() -> SampleClient::renderer)
+                    .client(() -> (_, _) -> EntityBuilderSamples.clientCodeRan = true)
                     .register();
             
             EntityBuilderSamples.slashed = registrations.entity("entity_builder_samples/slashed", "Slashed Sample Entity", MobCategory.MISC, SampleEntity::new).register();
@@ -314,27 +396,54 @@ public class EntityBuilderSamples {
             LivingEntityBuilder<SampleMob, Registrations> builder = registrations.livingEntity("entity_builder_samples_mob", "Sample Mob", MobCategory.CREATURE, SampleMob::new)
                     .attributes(() -> Mob.createMobAttributes().add(Attributes.MAX_HEALTH, 42.0D))
                     .spawnPlacement(SpawnPlacementTypes.ON_GROUND, Heightmap.Types.OCEAN_FLOOR, (_, _, _, _, _) -> false)
-                    .renderer(() -> {
-                        EntityBuilderSamples.clientRequested = true;
-                        return SampleClient::renderer;
-                    });
+                    .renderer(() -> SampleClient::renderer);
             EntityBuilderSamples.mob = builder.egg()
-                    .properties(new Item.Properties())
+                    .properties(Item.Properties::new)
                     .end()
                     .register();
             EntityBuilderSamples.takenOver = builder;
             
             EntityBuilderSamples.custom = registrations.livingEntity("entity_builder_samples_custom", "Custom Sample Mob", MobCategory.CREATURE, SampleMob::new)
                     .attributes(Mob::createMobAttributes)
-                    .renderer(() -> {
-                        EntityBuilderSamples.clientRequested = true;
-                        return SampleClient::renderer;
-                    })
+                    .renderer(() -> SampleClient::renderer)
                     .egg(SampleEgg::new)
                     .properties(properties -> properties.requiredFeatures(FeatureFlags.TRADE_REBALANCE))
                     .noTab()
                     .end()
                     .register();
+            
+            EntityBuilderSamples.experimental = registrations.livingEntity("entity_builder_samples_experimental", "Experimental Sample Mob", MobCategory.CREATURE, SampleMob::new)
+                    .attributes(Mob::createMobAttributes)
+                    .type(type -> type.requiredFeatures(FeatureFlags.REDSTONE_EXPERIMENTS))
+                    .egg()
+                    .properties(Item.Properties::new)
+                    .noTab()
+                    .end()
+                    .register();
+            
+            CompoundTag still = new CompoundTag();
+            still.putBoolean(Mob.TAG_NO_AI, true);
+            EntityBuilderSamples.child = registrations.livingEntity("entity_builder_samples_child", "Child Sample Mob", MobCategory.CREATURE, SampleChild::new)
+                    .attributes(Mob::createMobAttributes)
+                    .renderer(() -> SampleClient::mobRenderer)
+                    .egg(SpawnEggItem::new, still)
+                    .noTab()
+                    .end()
+                    .register();
+            
+            EntityBuilderSamples.attributesRefusal = Assertions.catchThrowable(() -> registrations
+                    .livingEntity("entity_builder_samples_attributeless", "Attributeless Sample Mob", MobCategory.CREATURE, SampleMob::new)
+                    .register()
+            );
+            
+            registrations.item("entity_builder_samples_taken_spawn_egg", "Taken Sample Spawn Egg").noTab().register();
+            EntityBuilderSamples.takenEggRefusal = Assertions.catchThrowable(() -> registrations
+                    .livingEntity("entity_builder_samples_taken", "Taken Sample Mob", MobCategory.CREATURE, SampleMob::new)
+                    .attributes(Mob::createMobAttributes)
+                    .egg()
+                    .end()
+                    .register()
+            );
         }
         
         @SubscribeEvent

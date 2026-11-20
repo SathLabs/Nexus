@@ -2,6 +2,7 @@ package dev.satherov.nexus.test.game.api.event.text.tooltip;
 
 import dev.satherov.nexus.Nexus;
 import dev.satherov.nexus.api.event.text.tooltip.AttachTooltipsEvent;
+import dev.satherov.nexus.api.text.tooltip.TooltipBuilder;
 import dev.satherov.nexus.gametest.api.server.ServerTest;
 
 import net.neoforged.bus.api.SubscribeEvent;
@@ -12,6 +13,7 @@ import net.neoforged.neoforge.fluids.FluidType;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.world.item.DiscFragmentItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -70,6 +72,16 @@ public class AttachTooltipsEventSamples {
         helper.succeed();
     }
     
+    @ServerTest
+    public static void hintsAtShiftOnceForSeveralAttachments(GameTestHelper helper) {
+        List<Component> lines = new ItemStack(Items.ECHO_SHARD).getTooltipLines(Item.TooltipContext.of(helper.getLevel()), null, TooltipFlag.NORMAL);
+        long hints = lines.stream()
+                .filter(line -> line.getContents() instanceof TranslatableContents contents && contents.getKey().equals("tooltip.nexus.hold_shift"))
+                .count();
+        helper.assertValueEqual(hints, 1L, "shift hints");
+        helper.succeed();
+    }
+    
     private static List<String> lines(ItemStack stack, GameTestHelper helper) {
         return stack.getTooltipLines(Item.TooltipContext.of(helper.getLevel()), null, TooltipFlag.NORMAL).stream().map(Component::getString).toList();
     }
@@ -85,6 +97,8 @@ public class AttachTooltipsEventSamples {
         public static void onAttach(AttachTooltipsEvent event) {
             event.item(Items.DISC_FRAGMENT_5, (_, builder) -> builder.line(Component.literal(AttachTooltipsEventSamples.FIRST)));
             event.items(stack -> stack.is(Items.DISC_FRAGMENT_5), (_, builder) -> builder.line(Component.literal(AttachTooltipsEventSamples.SECOND)));
+            event.item(Items.ECHO_SHARD, (_, builder) -> builder.onShift(TooltipBuilder::blank));
+            event.items(stack -> stack.is(Items.ECHO_SHARD), (_, builder) -> builder.onShift(TooltipBuilder::blank));
             event.fluid(Fluids.WATER, (_, builder) -> builder.line(Component.literal(AttachTooltipsEventSamples.FLUID)));
         }
     }

@@ -31,6 +31,11 @@ import javax.xml.transform.stream.StreamResult;
 public final class TestReport {
     
     ///
+    /// The largest exit code that the system keeps, since it only keeps the lowest eight bits of it.
+    ///
+    private static final int MAX_EXIT_CODE = 255;
+    
+    ///
     /// The file the report is written to.
     ///
     private final Path file;
@@ -50,6 +55,11 @@ public final class TestReport {
     /// The suite's time is measured from it.
     ///
     private final long started = System.nanoTime();
+    
+    ///
+    /// How many tests marked as required were recorded as failed.
+    ///
+    private int requiredFailures;
     
     ///
     /// Opens an empty report over the file, which nothing writes until [#write()].
@@ -94,6 +104,20 @@ public final class TestReport {
         Element result = this.document.createElement(required ? "failure" : "skipped");
         result.setAttribute("message", Objects.requireNonNullElseGet(failure.getMessage(), failure::toString));
         this.testCase(id, millis).appendChild(result);
+        if (required) {
+            this.requiredFailures++;
+        }
+    }
+    
+    ///
+    /// The exit code of the run, which is the number of tests marked as required that were recorded as failed.
+    ///
+    /// The number is capped at {@value TestReport#MAX_EXIT_CODE}, so that a run with failed tests never exits with `0`.
+    ///
+    /// @return The exit code of the run.
+    ///
+    public int exitCode() {
+        return Math.min(this.requiredFailures, TestReport.MAX_EXIT_CODE);
     }
     
     ///

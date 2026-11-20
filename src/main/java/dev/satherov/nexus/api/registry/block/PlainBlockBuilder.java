@@ -6,6 +6,7 @@ import dev.satherov.nexus.api.registry.client.ClientOnly;
 import dev.satherov.nexus.api.registry.item.ItemBuilder;
 import dev.satherov.nexus.api.text.Translation;
 import dev.satherov.nexus.internal.registry.client.ClientDispatch;
+import dev.satherov.zelqro.mapping.ObjectMapping;
 
 import net.neoforged.neoforge.registries.DeferredHolder;
 
@@ -17,6 +18,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 
+import com.google.common.base.Suppliers;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 
 import org.jspecify.annotations.Nullable;
@@ -26,6 +28,7 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
+import java.util.stream.Stream;
 
 ///
 /// A builder of one block without an item.
@@ -49,9 +52,9 @@ public final class PlainBlockBuilder<BLOCK extends Block, PARENT>
 {
     
     ///
-    /// The `block.<modid>.<name>` translation.
+    /// The `block.<modid>.<name>` translation, declared on the first call.
     ///
-    private final Translation translation;
+    private final Supplier<Translation> translation;
     
     ///
     /// The factory of the block, called with the properties once the id is set.
@@ -74,7 +77,12 @@ public final class PlainBlockBuilder<BLOCK extends Block, PARENT>
     private @Nullable Function<ResourceKey<Block>, BlockEntry<BLOCK, ?>> blockEntryFactory;
     
     ///
-    /// Starts the block `<modid>:<name>` and declares its English name under `block.<modid>.<name>`.
+    /// The builder of the item, or `null` if [#item(BiFunction)] was not called.
+    ///
+    private @Nullable ItemBuilder<?, ?> item;
+    
+    ///
+    /// Starts the block `<modid>:<name>` under `block.<modid>.<name>`.
     /// - `<modid>` is the id of the mod of the given registrations.
     /// - `<name>` is the given name.
     ///
@@ -88,7 +96,7 @@ public final class PlainBlockBuilder<BLOCK extends Block, PARENT>
         super(registrations, Registries.BLOCK, name, parent);
         this.factory = factory;
         
-        this.translation = this.define("block", english);
+        this.translation = Suppliers.memoize(() -> this.define("block", english));
     }
     
     ///
@@ -96,16 +104,18 @@ public final class PlainBlockBuilder<BLOCK extends Block, PARENT>
     ///
     /// Replaces all previous calls, including the edits of [#properties(UnaryOperator)].
     ///
-    /// @param properties The properties of the block.
+    /// The properties the supplier returns will be edited, so they should not be shared with another builder.
+    ///
+    /// @param properties The supplier of the properties of the block, called once inside the registry event.
     ///
     /// @return The builder for chaining.
     ///
     /// @throws IllegalStateException If [#register()] was already called or another builder took over this one.
     ///
     @CanIgnoreReturnValue
-    public PlainBlockBuilder<BLOCK, PARENT> properties(BlockBehaviour.Properties properties) {
+    public PlainBlockBuilder<BLOCK, PARENT> properties(Supplier<BlockBehaviour.Properties> properties) {
         this.checkUnregistered();
-        this.properties = () -> properties;
+        this.properties = properties;
         return this;
     }
     
@@ -150,6 +160,8 @@ public final class PlainBlockBuilder<BLOCK extends Block, PARENT>
     /// The identifier and translation will be the same as those of the block.
     /// The translation can be overwritten with [ItemBuilder#named(String)].
     ///
+    /// The item requires the features of the block, until an edit of its properties sets others.
+    ///
     /// This builder will throw on every later call.
     ///
     /// @param factory The factory of the item, called once inside the registry event with the block and the properties with the id set.
@@ -166,11 +178,12 @@ public final class PlainBlockBuilder<BLOCK extends Block, PARENT>
                 this.getName(),
                 this.translation,
                 builder,
+                properties -> properties.requiredFeatures(holder.value().requiredFeatures()),
                 properties -> factory.apply(holder.value(), properties)
         );
         
-        item.properties(properties -> properties.requiredFeatures(holder.value().requiredFeatures()));
-        this.blockEntryFactory = key -> new BlockEntry<>(key, builder, this.translation, EntryBuilder.registerSubObject(item));
+        this.item = item;
+        this.blockEntryFactory = key -> new BlockEntry<>(key, builder, this.translation.get(), EntryBuilder.registerSubObject(item));
         return item;
     }
     
@@ -211,12 +224,33 @@ public final class PlainBlockBuilder<BLOCK extends Block, PARENT>
     @Override
     protected PlainBlockEntry<BLOCK> createEntry(ResourceKey<Block> key) {
         Function<ResourceKey<Block>, BlockEntry<BLOCK, ?>> blockEntryFactory = this.blockEntryFactory;
-        PlainBlockEntry<BLOCK> entry = blockEntryFactory == null ? new PlainBlockEntry<>(key, this, this.translation) : blockEntryFactory.apply(key);
+        PlainBlockEntry<BLOCK> entry = blockEntryFactory == null ? new PlainBlockEntry<>(key, this, this.translation.get()) : blockEntryFactory.apply(key);
         ClientOnly<List<BlockTintSource>> tints = this.tints;
         if (tints != null) {
             this.addClientHook(bus -> ClientDispatch.tint(bus, entry, tints));
         }
         
         return entry;
+    }
+    
+    ///
+    /// The keys of the item and its sub-objects if [#item(BiFunction)] was called.
+    ///
+    /// @return The keys of the item and its sub-objects, or an empty list if the block has no item.
+    ///
+    @Override
+    protected List<ResourceKey<?>> getSubObjectKeys() {
+        return ObjectMapping.mapNonNullOrElse(this.item, EntryBuilder::getAllKeys, List.of());
+    }
+    
+    ///
+    /// The translation key of the block, and the translation keys of the item if [#item(BiFunction)] was called.
+    ///
+    /// @return The translation keys of the block and the item.
+    ///
+    @Override
+    protected List<String> getTranslationKeys() {
+        List<String> item = ObjectMapping.mapNonNullOrElse(this.item, EntryBuilder::getAllTranslationKeys, List.of());
+        return Stream.concat(Stream.of(this.getTranslationKey("block")), item.stream()).toList();
     }
 }

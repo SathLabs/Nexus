@@ -21,16 +21,20 @@ public interface ServerboundPayload<VALUE> {
     ///
     /// Wraps the given value and sends it over the game connection of this client.
     ///
+    /// The value will be encoded later on a network thread and should not change after this call.
+    ///
+    /// If the payload is optional and the server doesn't have it, nothing will be sent.
+    ///
     /// @param value The value to send.
     ///
-    /// @throws IllegalStateException If this is a dedicated server or the client is not in play.
+    /// @throws IllegalStateException If this is a dedicated server, the client is not in play, or the payload is not a play payload.
     ///
     void sendToServer(VALUE value);
     
     ///
     /// If the server that this client is connected to has registered the payload for the play protocol.
     ///
-    /// Will always be `true` for a required payload.
+    /// Will always be `true` for a required play payload.
     ///
     /// @return `true` if the server registered the payload.
     ///
@@ -41,10 +45,14 @@ public interface ServerboundPayload<VALUE> {
     ///
     /// Wraps the given value and sends it back over the connection that a client handler received on, in play or configuration.
     ///
+    /// The value will be encoded later on a network thread and should not change after this call.
+    ///
+    /// If the payload is optional and the server doesn't have it, nothing will be sent.
+    ///
     /// @param value   The value to send.
     /// @param context The context of the client handler.
     ///
-    /// @throws IllegalStateException If this is a dedicated server.
+    /// @throws IllegalStateException If this is a dedicated server or the connection is in another protocol than the payload.
     ///
     void reply(VALUE value, ClientHandlerContext context);
 }

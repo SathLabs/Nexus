@@ -52,7 +52,7 @@ public sealed interface Item {
     record Function(String name, String text, int line) implements Item { }
     
     ///
-    /// A vertex input declared as `in <type> <name>;`, which may have a layout qualifier in front.
+    /// A vertex input declared as `in <type> <name>;`.
     ///
     /// @param type The GLSL type of the input.
     /// @param name The name of the input.

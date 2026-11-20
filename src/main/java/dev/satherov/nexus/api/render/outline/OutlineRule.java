@@ -14,6 +14,7 @@ public interface OutlineRule {
     /// Gets the outline of the given target, or `null` to leave it to vanilla and the other rules.
     ///
     /// Called on the client thread when the target changes, and the outline is kept until it changes again.
+    /// Every rule is asked again once a rule is added or the resources reload.
     ///
     /// @param target The targeted block.
     ///

@@ -12,6 +12,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLConstructModEvent;
 import net.neoforged.neoforge.attachment.AttachmentHolder;
+import net.neoforged.neoforge.attachment.AttachmentInternals;
 
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -26,15 +27,24 @@ import org.assertj.core.api.Assertions;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 ///
-/// Checks the values that attachment entries read from, write to, and remove from a holder, and the form their types save them in.
+/// Checks the values that attachment entries read from, write to, update, and remove from a holder, the form their types save them in,
+/// and that a value their codec refuses leaves the other attachments of the holder to load, save, and copy.
 ///
 public class AttachmentBuilderTest {
 
     private static final RegistryAccess.Frozen REGISTRIES = RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY);
     private static final StructCodec<Counter, Access.Plain> CODEC = NexusCodec.struct("counter", NexusCodec.INT.field("count", Counter::count), Counter::new);
+    private static final StructCodec<Counter, Access.Plain> CHECKED = NexusCodec.struct(
+            "checked",
+            NexusCodec.INT.validate(count -> count < 0 ? "The count is negative" : null).field("count", Counter::count),
+            Counter::new
+    );
+    
     private static final Format<Counter> FORMAT = Format.of(AttachmentBuilderTest.CODEC).upgradeFrom(0, AttachmentBuilderTest::renameStacks);
 
     private static @Nullable AttachmentEntry<Counter> counter;
@@ -42,6 +52,8 @@ public class AttachmentBuilderTest {
     private static @Nullable AttachmentEntry<Counter> formatted;
     private static @Nullable AttachmentEntry<Counter> formatAfterCodec;
     private static @Nullable AttachmentEntry<Counter> codecAfterFormat;
+    private static @Nullable AttachmentEntry<Counter> checked;
+    private static @Nullable AttachmentEntry<List<Integer>> list;
 
     @Test
     public void createsTheInitialValueOnTheFirstRead() {
@@ -84,6 +96,15 @@ public class AttachmentBuilderTest {
     public void removesNothingFromAHolderWithoutTheValue() {
         PlainHolder holder = new PlainHolder();
         Assertions.assertThat(AttachmentBuilderTest.counter().remove(holder)).isNull();
+    }
+    
+    @Test
+    public void updateWithTheSameValueSetsItAgain() {
+        AttachmentEntry<List<Integer>> list = AttachmentBuilderTest.list();
+        PlainHolder holder = new PlainHolder();
+        List<Integer> current = list.get(holder);
+        Assertions.assertThat(list.update(holder, AttachmentBuilderTest::addOne)).isSameAs(current);
+        Assertions.assertThat(list.get(holder)).containsExactly(1);
     }
     
     @Test
@@ -146,8 +167,54 @@ public class AttachmentBuilderTest {
         Assertions.assertThat(AttachmentBuilderTest.save(holder).get(codecAfterFormat.getId().toString())).isEqualTo(AttachmentBuilderTest.tag("count", 5));
     }
 
+    @Test
+    public void loadsTheOtherAttachmentsBesideOneTheCodecRefuses() {
+        AttachmentEntry<Counter> checked = AttachmentBuilderTest.checked();
+        AttachmentEntry<Counter> persisted = AttachmentBuilderTest.persisted();
+        CompoundTag saved = new CompoundTag();
+        saved.put(checked.getId().toString(), AttachmentBuilderTest.tag("count", -1));
+        saved.put(persisted.getId().toString(), AttachmentBuilderTest.tag("count", 5));
+        ProblemReporter.Collector reporter = new ProblemReporter.Collector();
+        PlainHolder loaded = new PlainHolder();
+        loaded.load(TagValueInput.create(reporter, AttachmentBuilderTest.REGISTRIES, saved));
+        Assertions.assertThat(reporter.isEmpty()).isTrue();
+        Assertions.assertThat(checked.has(loaded)).isFalse();
+        Assertions.assertThat(persisted.get(loaded)).isEqualTo(new Counter(5));
+    }
+    
+    @Test
+    public void savesTheOtherAttachmentsBesideOneTheCodecCannotWrite() {
+        AttachmentEntry<Counter> checked = AttachmentBuilderTest.checked();
+        AttachmentEntry<Counter> persisted = AttachmentBuilderTest.persisted();
+        PlainHolder holder = new PlainHolder();
+        checked.set(holder, new Counter(-1));
+        persisted.set(holder, new Counter(5));
+        ProblemReporter.Collector reporter = new ProblemReporter.Collector();
+        CompoundTag saved = AttachmentBuilderTest.save(holder, reporter);
+        Assertions.assertThat(reporter.isEmpty()).isTrue();
+        Assertions.assertThat(saved.contains(checked.getId().toString())).isFalse();
+        Assertions.assertThat(saved.get(persisted.getId().toString())).isEqualTo(AttachmentBuilderTest.tag("count", 5));
+    }
+    
+    @Test
+    public void copiesTheOtherAttachmentsBesideOneTheCodecCannotWrite() {
+        AttachmentEntry<Counter> checked = AttachmentBuilderTest.checked();
+        AttachmentEntry<Counter> persisted = AttachmentBuilderTest.persisted();
+        AttachmentHolder.AsField from = new AttachmentHolder.AsField(new PlainHolder());
+        checked.set(from, new Counter(-1));
+        persisted.set(from, new Counter(5));
+        AttachmentHolder.AsField to = new AttachmentHolder.AsField(new PlainHolder());
+        AttachmentInternals.copyChunkAttachmentsOnPromotion(AttachmentBuilderTest.REGISTRIES, from, to);
+        Assertions.assertThat(checked.has(to)).isFalse();
+        Assertions.assertThat(persisted.get(to)).isEqualTo(new Counter(5));
+    }
+    
     private static CompoundTag save(PlainHolder holder) {
-        TagValueOutput output = TagValueOutput.createWithContext(ProblemReporter.DISCARDING, AttachmentBuilderTest.REGISTRIES);
+        return AttachmentBuilderTest.save(holder, ProblemReporter.DISCARDING);
+    }
+    
+    private static CompoundTag save(PlainHolder holder, ProblemReporter reporter) {
+        TagValueOutput output = TagValueOutput.createWithContext(reporter, AttachmentBuilderTest.REGISTRIES);
         holder.serializeAttachments(output);
         return output.buildResult();
     }
@@ -168,6 +235,11 @@ public class AttachmentBuilderTest {
         CompoundTag versioned = AttachmentBuilderTest.tag("count", count);
         versioned.putInt("version", 1);
         return versioned;
+    }
+    
+    private static List<Integer> addOne(List<Integer> values) {
+        values.add(1);
+        return values;
     }
 
     private static Tag renameStacks(Tag tag) {
@@ -195,6 +267,14 @@ public class AttachmentBuilderTest {
 
     private static AttachmentEntry<Counter> codecAfterFormat() {
         return Objects.requireNonNull(AttachmentBuilderTest.codecAfterFormat);
+    }
+    
+    private static AttachmentEntry<Counter> checked() {
+        return Objects.requireNonNull(AttachmentBuilderTest.checked);
+    }
+    
+    private static AttachmentEntry<List<Integer>> list() {
+        return Objects.requireNonNull(AttachmentBuilderTest.list);
     }
 
     private record Counter(int count) { }
@@ -229,6 +309,10 @@ public class AttachmentBuilderTest {
                     .format(AttachmentBuilderTest.FORMAT)
                     .codec(AttachmentBuilderTest.CODEC)
                     .register();
+            AttachmentBuilderTest.checked = registrations.attachment("attachment_builder_test_checked", () -> new Counter(1))
+                    .codec(AttachmentBuilderTest.CHECKED)
+                    .register();
+            AttachmentBuilderTest.list = registrations.<List<Integer>>attachment("attachment_builder_test_list", ArrayList::new).register();
         }
     }
 }

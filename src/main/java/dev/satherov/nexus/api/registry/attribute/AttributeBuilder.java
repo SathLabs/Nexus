@@ -16,6 +16,8 @@ import net.minecraft.world.entity.ai.attributes.Attribute;
 import com.google.common.base.Suppliers;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -57,14 +59,14 @@ public final class AttributeBuilder<ATTRIBUTE extends Attribute, PARENT>
     private final List<Supplier<? extends EntityType<? extends LivingEntity>>> types = new ArrayList<>();
     
     ///
-    /// If the attribute is synced to the clients.
+    /// If syncing should be turned on for the attribute.
     ///
     private boolean synced;
     
     ///
-    /// The sentiment of the attribute.
+    /// The sentiment of the attribute, or `null` if [#sentiment(Attribute.Sentiment)] was not called.
     ///
-    private Attribute.Sentiment sentiment = Attribute.Sentiment.POSITIVE;
+    private Attribute.@Nullable Sentiment sentiment;
     
     ///
     /// Starts the attribute `<modid>:<name>` under `attribute.name.<modid>.<name>`.
@@ -89,6 +91,8 @@ public final class AttributeBuilder<ATTRIBUTE extends Attribute, PARENT>
     ///
     /// Syncs the value of the attribute on each entity to the client.
     ///
+    /// If this is not called, the attribute will be synced only if the factory turned syncing on.
+    ///
     /// @return The builder for chaining.
     ///
     /// @throws IllegalStateException If [#register()] was already called or another builder took over this one.
@@ -103,7 +107,7 @@ public final class AttributeBuilder<ATTRIBUTE extends Attribute, PARENT>
     ///
     /// Sets if an increased value of the attribute is good, bad, or neutral for the entity.
     ///
-    /// Defaults to [Attribute.Sentiment#POSITIVE].
+    /// Defaults to the sentiment the factory created the attribute with, which is [Attribute.Sentiment#POSITIVE] unless the factory set another.
     ///
     /// @param sentiment The sentiment of the attribute.
     ///
@@ -138,14 +142,21 @@ public final class AttributeBuilder<ATTRIBUTE extends Attribute, PARENT>
     }
     
     ///
-    /// Creates the attribute with the translation key as its description id, synced and with the sentiment.
+    /// Creates the attribute with the translation key as its description id, and then applies the syncing and the sentiment of this builder if they were set.
     ///
     /// @return The created attribute.
     ///
     @Override
     protected ATTRIBUTE create() {
         ATTRIBUTE attribute = this.factory.apply(this.translation.get().getKey());
-        attribute.setSyncable(this.synced).setSentiment(this.sentiment);
+        if (this.synced) {
+            attribute.setSyncable(true);
+        }
+        
+        if (this.sentiment != null) {
+            attribute.setSentiment(this.sentiment);
+        }
+        
         return attribute;
     }
     

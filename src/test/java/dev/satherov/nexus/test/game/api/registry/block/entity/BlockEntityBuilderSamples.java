@@ -11,8 +11,10 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLConstructModEvent;
 import net.neoforged.neoforge.capabilities.BlockCapability;
+import net.neoforged.neoforge.event.BlockEntityTypeAddBlocksEvent;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
@@ -25,6 +27,7 @@ import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 
+import org.assertj.core.api.Assertions;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -46,6 +49,8 @@ public class BlockEntityBuilderSamples {
     private static @Nullable BlockEntityEntry<SampleBlockEntity> sample;
     private static @Nullable PlainBlockEntry<TickingBlock> tickingBlock;
     private static @Nullable BlockEntityEntry<TickingBlockEntity> ticking;
+    private static @Nullable Throwable blocklessRefusal;
+    private static @Nullable BlockEntityEntry<SampleBlockEntity> filledLater;
 
     @ServerTest
     public static void isValidForEveryGivenBlockOnly(GameTestHelper helper) {
@@ -158,6 +163,23 @@ public class BlockEntityBuilderSamples {
         });
     }
 
+    @ServerTest
+    public static void refusesATypeWithoutBlocks(GameTestHelper helper) {
+        Throwable refusal = BlockEntityBuilderSamples.blocklessRefusal;
+        helper.assertTrue(refusal instanceof IllegalStateException, "The type without blocks was registered");
+        helper.assertValueEqual(Objects.requireNonNull(refusal).getMessage(), "Could not register 'nexus:block_entity_builder_samples_blockless' because it has no blocks", "message");
+        helper.assertFalse(BuiltInRegistries.BLOCK_ENTITY_TYPE.containsKey(Nexus.getMod().id("block_entity_builder_samples_blockless")), "The type without blocks is in the registry");
+        helper.succeed();
+    }
+
+    @ServerTest
+    public static void registersATypeWithoutBlocksForTheBlocksAddedLater(GameTestHelper helper) {
+        BlockEntityType<SampleBlockEntity> type = Objects.requireNonNull(BlockEntityBuilderSamples.filledLater).value();
+        helper.assertTrue(type.isValid(BlockEntityBuilderSamples.first().getDefaultState()), "The type is not valid for the added block");
+        helper.assertFalse(type.isValid(BlockEntityBuilderSamples.second().getDefaultState()), "The type is valid for a block that was not added");
+        helper.succeed();
+    }
+
     private static TickingBlockEntity placeTicking(GameTestHelper helper, BlockPos pos) {
         helper.setBlock(pos, BlockEntityBuilderSamples.tickingBlock().value());
         return helper.getBlockEntity(pos, TickingBlockEntity.class);
@@ -250,6 +272,16 @@ public class BlockEntityBuilderSamples {
                     .blocks(tickingBlock)
                     .serverTicker(TickingBlockEntity::tick)
                     .register();
+            BlockEntityBuilderSamples.blocklessRefusal = Assertions.catchThrowable(() -> registrations.blockEntity("block_entity_builder_samples_blockless", SampleBlockEntity::new).register());
+            BlockEntityBuilderSamples.filledLater = registrations.blockEntity("block_entity_builder_samples_filled_later", SampleBlockEntity::new)
+                    .blocks(second)
+                    .noBlocks()
+                    .register();
+        }
+
+        @SubscribeEvent
+        public static void onAddBlocks(BlockEntityTypeAddBlocksEvent event) {
+            event.modify(Objects.requireNonNull(BlockEntityBuilderSamples.filledLater).value(), BlockEntityBuilderSamples.first().value());
         }
     }
 }

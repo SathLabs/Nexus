@@ -77,6 +77,8 @@ public final class GametestClient extends Entrypoint {
     /// or the startup fails if the pack is missing.
     ///
     /// If the startup fails, the failure will be reported on the console and the run will exit with `1`.
+    /// The same happens if `nexus.gametest.report` is set and the client exits without writing the report there,
+    /// as vanilla does when it could not create the window.
     ///
     /// @param args The program arguments of the run.
     ///
@@ -87,8 +89,18 @@ public final class GametestClient extends Entrypoint {
                 GametestClient.installShaderPack(shaderpack);
             }
             
+            // A report left from an earlier run would hide a client that exits before this run writes its own.
+            String report = System.getProperty("nexus.gametest.report");
+            if (report != null) {
+                Files.deleteIfExists(Path.of(report));
+            }
+            
             try (Entrypoint.StartupResult result = Entrypoint.startup(args, true, Dist.CLIENT, true)) {
                 Entrypoint.createMainMethodCallable(result, "net.minecraft.client.main.Main").invokeExact(result.loader().getProgramArgs().getArguments());
+            }
+            
+            if (report != null && !Files.exists(Path.of(report))) {
+                throw new IllegalStateException("The client exited before the test run wrote its report to '" + report + "'");
             }
         } catch (Throwable failure) {
             FatalErrorReporting.reportFatalErrorOnConsole(failure);

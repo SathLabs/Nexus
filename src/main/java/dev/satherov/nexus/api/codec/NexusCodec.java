@@ -31,6 +31,7 @@ import net.minecraft.resources.RegistryFixedCodec;
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.ExtraCodecs;
+import net.minecraft.util.HashOps;
 import net.minecraft.util.StringRepresentable;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
@@ -75,6 +76,9 @@ import java.util.function.UnaryOperator;
 ///
 /// Similar to DFU's [Codec].
 /// It writes the same JSON and NBT as the equivalent DFU codec, and the same bytes as the equivalent vanilla stream codec.
+///
+/// A decoded value should never be modified.
+/// The fallback of an optional field or a [KeyedCodec] will be the same instance every time its key is missing.
 ///
 /// @param <T> The type of value this codec encodes and decodes.
 /// @param <A> The access a format has to offer to be used with this codec.
@@ -209,7 +213,9 @@ public interface NexusCodec<T, A extends Access.Plain> {
     /// Creates a codec that writes no data and always decodes to the given value.
     ///
     /// In JSON and NBT, it writes an empty object and reads any object, the same as DFU.
-    /// On the network, it writes nothing.
+    /// On the network, it writes nothing, the same as [StreamCodec#unit(Object)].
+    ///
+    /// Fails to encode a value other than the given value on the network.
     ///
     /// @param value The value to decode to.
     ///
@@ -907,6 +913,9 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// In JSON and NBT, if neither codec can read the input, the failure will hold the errors of both, the left ones first.
     ///
+    /// In JSON and NBT, a number that is out of range for the left codec will be read by the right codec.
+    /// DFU's left codec would narrow it instead.
+    ///
     /// @param left  The codec of the left side.
     /// @param right The codec of the right side.
     ///
@@ -950,6 +959,8 @@ public interface NexusCodec<T, A extends Access.Plain> {
     /// It writes and reads the same as the codec the definition returns.
     /// The definition is called once, the first time the codec is used.
     ///
+    /// Fails to encode or decode a value that nests the codec more than 512 levels deep.
+    ///
     /// If encode or decode is called on the returned codec, the given name will be on the first line of a failure.
     ///
     /// @param name       The name of the codec, used in the failure message.
@@ -965,9 +976,10 @@ public interface NexusCodec<T, A extends Access.Plain> {
     /// Creates the codec of a holder of the given registry.
     /// Similar to vanilla's [RegistryFixedCodec].
     ///
-    /// In JSON and NBT, it writes the identifier of a reference holder and fails on a direct holder.
-    /// On the network, it writes the id of the holder's value as a VarInt, the same as [ByteBufCodecs#holderRegistry(ResourceKey)].
+    /// In JSON and NBT, it writes the identifier of a reference holder.
+    /// On the network, it writes the id of a reference holder's value as a VarInt, the same as [ByteBufCodecs#holderRegistry(ResourceKey)].
     ///
+    /// Fails on a direct holder in every format, even though vanilla's stream codec writes it as the id of its value.
     /// Fails if an identifier or an id is not in the registry, and the failure quotes it and the registry.
     /// Fails if the format's registries don't have the registry, if the holder belongs to other registries, or on the network if the registry is a built-in one that isn't synced.
     ///
@@ -1012,6 +1024,7 @@ public interface NexusCodec<T, A extends Access.Plain> {
     /// On the network, it writes the same as [ByteBufCodecs#holderSet(ResourceKey)].
     /// A custom set is only written as one if the buffer is for a connection to NeoForge, and as its holders otherwise.
     ///
+    /// Fails on a direct holder in the set in every format, even though vanilla's stream codec writes it as the id of its value.
     /// Fails if an identifier, an id, or a tag is not in the registry, and the failure quotes it and the registry.
     /// In JSON and NBT, a failure of a list holds the errors of every holder that failed, each at its index.
     ///
@@ -1068,6 +1081,7 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// Fails to encode and decode in JSON and NBT.
     /// If the stream codec throws, it will fail with the message of that exception.
+    /// Cannot back a data component, on its own or inside another codec.
     ///
     /// @param codec The stream codec.
     ///
@@ -1084,6 +1098,7 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// Fails to encode and decode in JSON and NBT.
     /// If the stream codec throws, it will fail with the message of that exception.
+    /// Cannot back a data component, on its own or inside another codec.
     ///
     /// @param codec  The stream codec, which may need a [RegistryFriendlyByteBuf].
     /// @param access The access of the codec, which is always `Access.Registries.class`.
@@ -1181,6 +1196,8 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// Returns a failure holding the same [NexusCodecException] that [#encode(CodecFormat, Object)] would throw.
     ///
+    /// If the format is a [BufferFormat] and encoding fails, the writer index of its buffer will be back where it was before.
+    ///
     /// @param format The format to encode the value in.
     /// @param value  The value to encode.
     ///
@@ -1192,6 +1209,8 @@ public interface NexusCodec<T, A extends Access.Plain> {
     /// Decodes a value from the given input in the given format.
     ///
     /// Returns a failure holding the same [NexusCodecException] that [#decode(CodecFormat, Object)] would throw.
+    ///
+    /// If the format is a [BufferFormat] and decoding fails, the reader index of its buffer will be back where it was before.
     ///
     /// @param format The format the input is in.
     /// @param input  The input to decode, which is the buffer the format was built on for a [BufferFormat].
@@ -1217,6 +1236,8 @@ public interface NexusCodec<T, A extends Access.Plain> {
     /// Decodes a value from the buffer the given format was built on.
     ///
     /// Returns a failure holding the same [NexusCodecException] that [#decode(BufferFormat)] would throw.
+    ///
+    /// If decoding fails, the reader index of the buffer will be back where it was before.
     ///
     /// @param format The format to decode from.
     ///
@@ -1278,9 +1299,7 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// @return The keyed codec.
     ///
-    default KeyedCodec<T, A> keyed(String key, T fallback) {
-        return new KeyedCodec<>(this, key, fallback);
-    }
+    KeyedCodec<T, A> keyed(String key, T fallback);
     
     ///
     /// Creates the codec of a list of at most the given number of values of this codec.
@@ -1410,6 +1429,7 @@ public interface NexusCodec<T, A extends Access.Plain> {
     /// If this codec needs registries, it will take them from the [RegistryOps], and fail over any other ops.
     /// Fails over ops that compress maps, such as [JsonOps#COMPRESSED].
     /// A failure is an error with the message of the [NexusCodecException], without a partial result.
+    /// Over [HashOps], a value that could not be encoded is hashed as the string `nexus:unencodable` instead, since vanilla throws on a component it can't hash.
     ///
     /// @return The DFU codec.
     ///
@@ -1429,7 +1449,11 @@ public interface NexusCodec<T, A extends Access.Plain> {
     ///
     /// Creates a data component type that is saved with the DFU codec of this codec and synced with its stream codec.
     ///
+    /// The stream codec of the type fails to decode a value that this codec could not encode in JSON.
+    ///
     /// @return The data component type.
+    ///
+    /// @throws IllegalArgumentException If this codec cannot encode in JSON and NBT, such as a codec of [#ofStream(StreamCodec)] or a codec that holds one.
     ///
     /// @see #asDfu()
     /// @see #asStream()

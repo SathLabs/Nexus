@@ -26,12 +26,17 @@ public interface ClientboundPayload<VALUE> {
     Identifier getId();
     
     ///
-    /// Wraps the given value and delivers it to the given recipients on the calling thread.
+    /// Wraps the given value and delivers it to the given recipients.
+    ///
+    /// The recipients will be resolved on the calling thread.
+    /// The value will be encoded later on a network thread and should not change after this call.
     ///
     /// If the payload is optional, every recipient that doesn't have it will be skipped.
     ///
     /// @param value      The value to send.
     /// @param recipients The recipients to deliver the value to.
+    ///
+    /// @throws IllegalStateException If a recipient is connected in another protocol than the payload.
     ///
     void send(VALUE value, ClientRecipients recipients);
 
@@ -42,6 +47,8 @@ public interface ClientboundPayload<VALUE> {
     /// Neoforge will leave it out of the bundle for every connection that doesn't have the payload.
     /// A payload declared with [PayloadBuilder#onNetworkThread()] will be handled on the main thread of the client if it arrives in a bundle.
     ///
+    /// The value will be encoded later on a network thread and should not change after this call.
+    ///
     /// @param value The value to wrap.
     ///
     /// @return The packet that holds the value.
@@ -51,7 +58,7 @@ public interface ClientboundPayload<VALUE> {
     ///
     /// If the client of the given player registered the payload for the play protocol.
     ///
-    /// Will always be `true` for a required payload.
+    /// Will always be `true` for a required play payload.
     ///
     /// @param player The player to check the client of.
     ///
@@ -62,7 +69,7 @@ public interface ClientboundPayload<VALUE> {
     ///
     /// If the other side of the given listener registered the payload for the current protocol of the connection.
     ///
-    /// Will always be `true` for a required payload.
+    /// Will always be `true` for a required payload of the protocol the connection is in.
     ///
     /// @param listener The listener of the connection to check.
     ///

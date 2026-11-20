@@ -1,5 +1,7 @@
 package dev.satherov.nexus.test.game.internal.codec.path;
 
+import lombok.SneakyThrows;
+
 import dev.satherov.nexus.api.codec.NexusCodec;
 import dev.satherov.nexus.gametest.api.client.Client;
 import dev.satherov.nexus.gametest.api.client.ClientTest;
@@ -15,11 +17,13 @@ import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.Enchantments;
 
 import org.assertj.core.api.Assertions;
+import org.jspecify.annotations.Nullable;
 
+import java.lang.reflect.Field;
 import java.util.Objects;
 
 ///
-/// The client tests that check the registries encoding uses on the client thread.
+/// The client tests that check the registries encoding uses on the client thread and drops once the world is left.
 ///
 public class EncodingSamples {
     
@@ -42,5 +46,22 @@ public class EncodingSamples {
     public static void ownerOutsideAWorldIsTheBuiltInRegistry(Client client) {
         Assertions.assertThat(Encoding.owner(Registries.ITEM)).isSameAs(BuiltInRegistries.ITEM);
         Assertions.assertThat(Encoding.owner(Registries.ENCHANTMENT)).isNull();
+    }
+    
+    @ClientTest
+    public static void leavingTheWorldDropsTheRegistriesOfItsServer(Client client) {
+        client.joinWorld();
+        
+        Assertions.assertThat(Encoding.owner(Registries.ENCHANTMENT)).isNotNull();
+        Assertions.assertThat(EncodingSamples.lastRegistries()).isNotNull();
+        client.leaveWorld();
+        Assertions.assertThat(EncodingSamples.lastRegistries()).isNull();
+    }
+    
+    @SneakyThrows
+    private static @Nullable Object lastRegistries() {
+        Field registries = Encoding.class.getDeclaredField("lastRegistries");
+        registries.setAccessible(true);
+        return registries.get(null);
     }
 }

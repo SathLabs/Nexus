@@ -7,7 +7,11 @@ import dev.satherov.nexus.api.tick.ticker.Tickable;
 import dev.satherov.nexus.internal.tick.TickStatistics;
 
 import net.minecraft.CrashReportCategory;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Util;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
 import org.jspecify.annotations.Nullable;
@@ -82,6 +86,19 @@ public final class Ticker {
     }
     
     ///
+    /// If the given level ticks block entities at the given position, which vanilla checks before every block entity tick.
+    ///
+    /// Requires the position to be inside the world border, and on the server also in a ticking chunk whose entities have loaded.
+    ///
+    private static boolean isTicking(Level level, BlockPos pos) {
+        if (!level.getWorldBorder().isWithinBounds(pos)) {
+            return false;
+        }
+        
+        return !(level instanceof ServerLevel serverLevel) || serverLevel.isPositionTickingWithEntitiesLoaded(ChunkPos.pack(pos));
+    }
+    
+    ///
     /// Ticks the ticker on the next pass, even if it is asleep or due later.
     ///
     /// If called during its own tick, the return value is ignored.
@@ -114,7 +131,7 @@ public final class Ticker {
     void tick() {
         long pass = this.scope.passes;
         //noinspection DataFlowIssue A bound block entity is always in a level.
-        if (this.entity != null && !this.entity.getLevel().shouldTickBlocksAt(this.entity.getBlockPos())) {
+        if (this.entity != null && !Ticker.isTicking(this.entity.getLevel(), this.entity.getBlockPos())) {
             this.due = pass + this.interval;
             return;
         }

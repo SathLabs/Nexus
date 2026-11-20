@@ -1,6 +1,7 @@
 package dev.satherov.nexus.internal.persistence.saved.client;
 
 import dev.satherov.nexus.api.network.context.ClientHandlerContext;
+import dev.satherov.nexus.internal.network.client.ClientConnection;
 
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.common.NeoForge;
@@ -33,7 +34,7 @@ public final class SyncedValue<VALUE> implements BiConsumer<VALUE, ClientHandler
     private @Nullable VALUE received;
     
     ///
-    /// Subscribes the listener that drops the received value when the client logs out.
+    /// Subscribes the listeners that drop the received value when the client logs in and when it logs out.
     ///
     /// @param initial The supplier of the initial value.
     ///
@@ -41,7 +42,8 @@ public final class SyncedValue<VALUE> implements BiConsumer<VALUE, ClientHandler
         this.initial = initial;
         
         // TODO: Evaluate if we want one event per value or one event draining a list.
-        NeoForge.EVENT_BUS.addListener(ClientPlayerNetworkEvent.LoggingOut.class, this::onLoggingOut);
+        NeoForge.EVENT_BUS.addListener(ClientPlayerNetworkEvent.LoggingIn.class, this::onLoggingInOrOut);
+        NeoForge.EVENT_BUS.addListener(ClientPlayerNetworkEvent.LoggingOut.class, this::onLoggingInOrOut);
     }
     
     ///
@@ -54,22 +56,28 @@ public final class SyncedValue<VALUE> implements BiConsumer<VALUE, ClientHandler
     }
     
     ///
-    /// Stores the value the server sent.
+    /// Stores the value the server sent, unless it came over a connection that the client already left.
     ///
     /// @param value   The value the server sent.
-    /// @param context The client handler context, not used here.
+    /// @param context The client handler context, which holds the listener of the connection the value came over.
     ///
     @Override
     public void accept(VALUE value, ClientHandlerContext context) {
-        this.received = value;
+        // A payload that was queued before the client left a server is still handled after it left.
+        if (context.getListener() == ClientConnection.tryGetListener()) {
+            this.received = value;
+        }
     }
     
     ///
     /// Drops the received value.
     ///
-    /// @param event The logging-out event, not used here.
+    /// When a proxy moves the client to another server through the configuration phase, the client logs in again without logging out,
+    /// so both events drop the value.
     ///
-    private void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
+    /// @param event The logging-in or logging-out event, not used here.
+    ///
+    private void onLoggingInOrOut(ClientPlayerNetworkEvent event) {
         this.received = null;
     }
 }

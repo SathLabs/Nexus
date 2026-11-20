@@ -31,19 +31,25 @@ public interface Retention<KEY> {
     /// Creates a new rule that keeps the given number of greatest keys of each group and drops the rest.
     ///
     /// The count will be read on every run.
+    /// If the count is negative, every key will be kept.
+    /// A [TimedKey] with a time in the future, written while the clock was ahead, is greater than every new key and will be kept over them.
     ///
     /// @param count The supplier of the number of keys to keep.
     ///
     /// @return The new rule.
     ///
     static <KEY> Retention<KEY> newest(IntSupplier count) {
-        return keys -> keys.subList(0, Math.clamp(keys.size() - (long) count.getAsInt(), 0, keys.size()));
+        return keys -> {
+            int kept = count.getAsInt();
+            return kept < 0 ? List.of() : keys.subList(0, Math.max(keys.size() - kept, 0));
+        };
     }
 
     ///
     /// Creates a new rule that drops the keys whose time is more than the given number of days ago.
     ///
     /// The number of days will be read on every run.
+    /// If the number of days is negative, every key will be kept.
     ///
     /// @param days The supplier of the number of days to keep a key.
     ///
@@ -51,7 +57,12 @@ public interface Retention<KEY> {
     ///
     static <KEY extends TimedKey<KEY>> Retention<KEY> maxAge(IntSupplier days) {
         return keys -> {
-            Instant limit = Instant.now().minus(Duration.ofDays(days.getAsInt()));
+            int maxDays = days.getAsInt();
+            if (maxDays < 0) {
+                return List.of();
+            }
+
+            Instant limit = Instant.now().minus(Duration.ofDays(maxDays));
             return keys.stream()
                     .filter(key -> key.time().isBefore(limit))
                     .toList();
