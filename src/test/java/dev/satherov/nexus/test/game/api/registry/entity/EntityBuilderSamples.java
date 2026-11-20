@@ -126,9 +126,9 @@ public class EntityBuilderSamples {
         BlockPos pos = helper.absolutePos(new BlockPos(1, 1, 1));
         SampleEntity spawned = Objects.requireNonNull(plain.spawn(helper.getLevel(), pos, EntitySpawnReason.COMMAND));
         helper.assertValueEqual(spawned.getType(), plain.value(), "type of the spawned entity");
-        helper.assertValueEqual(helper.getLevel().getEntity(spawned.getUUID()), spawned, "entity in the level");
         helper.assertValueEqual(spawned.blockPosition(), pos, "position of the spawned entity");
-        helper.succeed();
+        // The level only looks the entity up once the section it was added to is accessible, which may take a tick.
+        helper.succeedWhen(() -> helper.assertTrue(helper.getLevel().getEntity(spawned.getUUID()) == spawned, "The spawned entity is not in the level"));
     }
     
     @ServerTest
