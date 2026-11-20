@@ -49,7 +49,7 @@ import java.util.function.Consumer;
 ///
 /// A fully opaque color in [Paint.Depth#VISIBLE] writes the depth, except in a ring.
 /// Every render type draws into the item entity target of vanilla, which is the main target while improved transparency is off,
-/// except that the shape render types draw into the [PackOverlay] while a shader pack is in use.
+/// except that the line and shape render types draw into the [PackOverlay] while a shader pack is in use.
 ///
 @UtilityClass
 @ApiStatus.Internal
@@ -61,7 +61,7 @@ public class ShapePipelines {
     private static final int OPAQUE_ALPHA = 0xFF;
     
     ///
-    /// The output target of the shape render types, which is the [PackOverlay] while a shader pack is in use and the item entity target of vanilla otherwise.
+    /// The output target of the line and shape render types, which is the [PackOverlay] while a shader pack is in use and the item entity target of vanilla otherwise.
     ///
     private static final OutputTarget SHAPE_TARGET = new OutputTarget(
             "nexus_shape",
@@ -125,7 +125,7 @@ public class ShapePipelines {
     ///
     private static final Map<DepthState, RenderType> LINE_TYPES = Util.makeEnumMap(
             DepthState.class,
-            state -> ShapePipelines.type("nexus_lines", state, ShapePipelines.setup(ShapePipelines.LINE_PIPELINES.get(state)).createRenderSetup())
+            state -> ShapePipelines.type("nexus_lines", state, ShapePipelines.setup(ShapePipelines.LINE_PIPELINES.get(state)).setOutputTarget(ShapePipelines.SHAPE_TARGET).createRenderSetup())
     );
     
     ///
@@ -344,7 +344,7 @@ public class ShapePipelines {
     /// @param registrar The registrar of the registration event.
     ///
     public static void register(Consumer<RenderPipeline> registrar) {
-        ShapePipelines.register(registrar, ShapePipelines.LINE_PIPELINES, Shading.LINES);
+        ShapePipelines.register(registrar, ShapePipelines.LINE_PIPELINES, Shading.OWN);
         ShapePipelines.register(registrar, ShapePipelines.FILL_PIPELINES, Shading.BASIC);
         ShapePipelines.register(registrar, ShapePipelines.SPRITE_PIPELINES, Shading.TEXTURED);
     }

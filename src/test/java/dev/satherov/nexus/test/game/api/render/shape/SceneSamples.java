@@ -459,8 +459,8 @@ public class SceneSamples {
     public static void visibleStrokeIsCutByWall(Client client) {
         Vec3 eye = SceneSamples.drawStrokedBox(client, Paint.Depth.VISIBLE);
         Capture capture = client.capture();
-        Assertions.assertThat(SceneSamples.isNear(SceneSamples.color(client, capture, eye.add(0.0D, 0.0D, 7.0D)), SceneSamples.shaded(client, SceneSamples.RED))).as("the edge behind the wall").isFalse();
-        SceneSamples.assertNear(client, capture, eye.add(2.0D, 0.0D, 7.0D), SceneSamples.shaded(client, SceneSamples.RED));
+        Assertions.assertThat(SceneSamples.isNear(SceneSamples.color(client, capture, eye.add(0.0D, 0.0D, 7.0D)), SceneSamples.RED)).as("the edge behind the wall").isFalse();
+        SceneSamples.assertNear(client, capture, eye.add(2.0D, 0.0D, 7.0D), SceneSamples.RED);
         capture.assertGolden("visible_stroke_is_cut_by_wall");
     }
     
@@ -468,8 +468,8 @@ public class SceneSamples {
     public static void hiddenStrokeShowsOnlyBehindWall(Client client) {
         Vec3 eye = SceneSamples.drawStrokedBox(client, Paint.Depth.HIDDEN);
         Capture capture = client.capture();
-        SceneSamples.assertNear(client, capture, eye.add(0.0D, 0.0D, 7.0D), SceneSamples.shaded(client, SceneSamples.RED));
-        Assertions.assertThat(SceneSamples.isNear(SceneSamples.color(client, capture, eye.add(2.0D, 0.0D, 7.0D)), SceneSamples.shaded(client, SceneSamples.RED))).as("the edge beside the wall").isFalse();
+        SceneSamples.assertNear(client, capture, eye.add(0.0D, 0.0D, 7.0D), SceneSamples.RED);
+        Assertions.assertThat(SceneSamples.isNear(SceneSamples.color(client, capture, eye.add(2.0D, 0.0D, 7.0D)), SceneSamples.RED)).as("the edge beside the wall").isFalse();
         capture.assertGolden("hidden_stroke_shows_only_behind_wall");
     }
     
@@ -477,8 +477,8 @@ public class SceneSamples {
     public static void alwaysStrokeShowsEverywhere(Client client) {
         Vec3 eye = SceneSamples.drawStrokedBox(client, Paint.Depth.ALWAYS);
         Capture capture = client.capture();
-        SceneSamples.assertNear(client, capture, eye.add(0.0D, 0.0D, 7.0D), SceneSamples.shaded(client, SceneSamples.RED));
-        SceneSamples.assertNear(client, capture, eye.add(2.0D, 0.0D, 7.0D), SceneSamples.shaded(client, SceneSamples.RED));
+        SceneSamples.assertNear(client, capture, eye.add(0.0D, 0.0D, 7.0D), SceneSamples.RED);
+        SceneSamples.assertNear(client, capture, eye.add(2.0D, 0.0D, 7.0D), SceneSamples.RED);
         capture.assertGolden("always_stroke_shows_everywhere");
     }
     
@@ -493,7 +493,7 @@ public class SceneSamples {
         
         client.pose(client.serverLevel().getRespawnData().pos().getBottomCenter().add(0.0D, SceneSamples.HEIGHT, distance), 0.0F, 0.0F);
         client.tick();
-        SceneSamples.assertNear(client, client.capture(), near.add(2.0D, 0.0D, 7.0D), SceneSamples.shaded(client, SceneSamples.RED));
+        SceneSamples.assertNear(client, client.capture(), near.add(2.0D, 0.0D, 7.0D), SceneSamples.RED);
     }
     
     @ClientTest

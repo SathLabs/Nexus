@@ -3,11 +3,8 @@ package dev.satherov.nexus.internal.render.shape;
 import dev.satherov.nexus.api.render.shape.Drawing;
 import dev.satherov.nexus.internal.render.client.PackOverlay;
 import dev.satherov.nexus.internal.render.client.ShapePipelines;
-import dev.satherov.nexus.internal.render.iris.IrisBridge;
 import dev.satherov.nexus.internal.render.shader.Programs;
 import dev.satherov.nexus.internal.render.shader.VanillaBlock;
-
-import net.neoforged.fml.ModList;
 
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
@@ -160,12 +157,11 @@ public final class SceneMesh implements AutoCloseable {
     /// Draws every buffer, each group at its interpolated origin, through one render pass per render target that the render types draw into.
     ///
     /// The buffers are drawn in the order of [ShapePipelines#getAllRenderTypes()], with the groups in their order within each render type.
-    /// The shape render types draw into the [PackOverlay] while a shader pack is in use.
+    /// The line and shape render types draw into the [PackOverlay] while a shader pack is in use.
     /// Looking up the overlay seeds it, so the targets are looked up before any pass opens.
     /// A buffer whose program could not be compiled is skipped.
     ///
     /// A line buffer gets the offset of its group as its model offset, and every other buffer gets it in its model-view matrix.
-    /// If a shader pack is in use, a line buffer will get it in its model-view matrix too.
     ///
     /// @param pose         The pose stack of the frame, whose origin is the camera.
     /// @param deltaTracker The delta tracker of the frame.
@@ -199,8 +195,6 @@ public final class SceneMesh implements AutoCloseable {
         
         Minecraft minecraft = Minecraft.getInstance();
         Vec3 camera = minecraft.gameRenderer.getMainCamera().position();
-        // A shader pack draws the lines with its own program, which might ignore the model offset.
-        boolean offsetLines = !(ModList.get().isLoaded("iris") && IrisBridge.isShaderPackInUse());
         Matrix4fStack modelView = RenderSystem.getModelViewStack();
         modelView.pushMatrix();
         SceneMesh.LAYERING.accept(modelView);
@@ -211,9 +205,7 @@ public final class SceneMesh implements AutoCloseable {
             Vector3f offset = group.at(deltaTracker).subtract(camera).toVector3f();
             Matrix4f transform = new Matrix4f(modelView).translate(offset);
             transforms.add(RenderSystem.getDynamicUniforms().writeTransform(transform, new Vector4f(1.0F, 1.0F, 1.0F, 1.0F), new Vector3f(), new Matrix4f()));
-            if (offsetLines) {
-                lineTransforms.add(RenderSystem.getDynamicUniforms().writeTransform(modelView, new Vector4f(1.0F, 1.0F, 1.0F, 1.0F), offset, new Matrix4f()));
-            }
+            lineTransforms.add(RenderSystem.getDynamicUniforms().writeTransform(modelView, new Vector4f(1.0F, 1.0F, 1.0F, 1.0F), offset, new Matrix4f()));
         }
         
         modelView.popMatrix();
@@ -226,7 +218,7 @@ public final class SceneMesh implements AutoCloseable {
                 RenderSystem.bindDefaultUniforms(pass);
                 for (RenderType type : types) {
                     // The line shader adds the model offset itself, so it gets the model-view matrix without the offset of the group.
-                    List<GpuBufferSlice> placements = offsetLines && type.mode() == VertexFormat.Mode.LINES ? lineTransforms : transforms;
+                    List<GpuBufferSlice> placements = type.mode() == VertexFormat.Mode.LINES ? lineTransforms : transforms;
                     RenderSystem.AutoStorageIndexBuffer indices = RenderSystem.getSequentialBuffer(type.mode());
                     for (int i = 0; i < this.groups.size(); i++) {
                         Buffer buffer = this.groups.get(i).buffers().get(type);
